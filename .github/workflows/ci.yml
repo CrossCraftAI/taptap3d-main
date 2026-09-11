@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+# One run per branch. Cancel superseded runs on branches, but never on main —
+# a cancelled main run leaves the branch with no verdict at all.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    # A REAL POSTGRES, because the database-backed tests are meant to fail
+    # without one rather than skip. The predecessor's suites self-skipped when
+    # Postgres was unreachable and quietly dropped ~121 tests while the headline
+    # stayed green; a service container is what makes "no skips" affordable.
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: taptap3d
+          POSTGRES_PASSWORD: taptap3d
+          POSTGRES_DB: taptap3d
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U taptap3d -d taptap3d"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 20
+
+    env:
+      DATABASE_URL: postgres://taptap3d:taptap3d@localhost:5432/taptap3d
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # Migrate before anything reads the schema. Ordered first so that a broken
+      # migration fails here, where the message says so, rather than inside a
+      # test where it reads as a broken test.
+      - name: Apply migrations
+        run: npm run db:migrate
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      # Lint is a separate step and not folded into the build. The predecessor
+      # shipped a CI failure from unused imports after running tsc and the tests
+      # but not the linter.
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build

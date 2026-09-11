@@ -1,0 +1,33 @@
+# The local development database.
+#
+# Committed rather than left to a README instruction, so that "it works on my
+# machine" has one meaning. Production is a managed instance co-located with the
+# application; this exists only so a developer can run the migrations and the
+# database-backed tests.
+#
+#   docker compose up -d
+#   npm run db:migrate
+services:
+  db:
+    image: postgres:17-alpine
+    container_name: taptap3d-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: taptap3d
+      POSTGRES_PASSWORD: taptap3d
+      POSTGRES_DB: taptap3d
+    ports:
+      - "5432:5432"
+    volumes:
+      - taptap3d-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      # The migration step races the container otherwise: Postgres accepts TCP
+      # connections briefly before it is ready to serve, and a migration that
+      # arrives in that window fails in a way that looks like a bad migration.
+      test: ["CMD-SHELL", "pg_isready -U taptap3d -d taptap3d"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  taptap3d-pgdata:
