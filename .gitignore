@@ -1,0 +1,43 @@
+# dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# next
+.next/
+out/
+next-env.d.ts
+
+# production
+build/
+dist/
+
+# environment
+.env
+.env.local
+.env*.local
+
+# working data — assets, renders, probe output
+.data/
+
+# client material. Never committed: these are other people's copyrighted
+# catalogues and other people's lot data.
+samples/
+
+# os / editor
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/
+
+# logs
+*.log
+npm-debug.log*
+
+# test / coverage
+coverage/
+.vitest/
+
+# typescript
+*.tsbuildinfo
