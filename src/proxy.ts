@@ -1,6 +1,13 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-// THE M0 ACCESS GATE. This is not authentication and it is not a step towards
+// THE M0 ACCESS GATE, in proxy.ts rather than middleware.ts.
+//
+// Next 16 deprecated the `middleware` filename and the `middleware` export in
+// favour of `proxy`, to make the network boundary explicit. The old name still
+// works and is exactly the kind of thing that gets carried forward for years by
+// habit; it is renamed here on the way in rather than left for a codemod.
+// `proxy` runs on the nodejs runtime and cannot be configured to edge.
+// This is not authentication and it is not a step towards
 // it — the identity system is a separate, deferred decision (ROADMAP D14).
 //
 // It exists because the predecessor was deployed to the public internet with no
@@ -36,7 +43,7 @@ function unauthorised(): NextResponse {
   });
 }
 
-export function middleware(request: NextRequest): NextResponse {
+export function proxy(request: NextRequest): NextResponse {
   const expected = process.env.GATE_PASSWORD;
   if (!expected) return NextResponse.next();
 
