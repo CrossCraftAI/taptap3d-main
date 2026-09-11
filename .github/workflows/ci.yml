@@ -69,3 +69,31 @@ jobs:
 
       - name: Build
         run: npm run build
+
+  deploy:
+    # NEEDS: verify. That dependency is the whole point of putting deploy in this
+    # workflow rather than in its own — a deploy that can outrun the tests is a
+    # deploy that ships red.
+    needs: verify
+    # Skips itself until the app exists. FLY_API_TOKEN is unset while the Fly app
+    # is unprovisioned (ROADMAP M1), so this stays green rather than failing on
+    # every push for want of infrastructure nobody has paid for yet.
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      github.event_name == 'push' &&
+      secrets.FLY_API_TOKEN != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    # One deploy at a time, and never cancel one in flight: interrupting flyctl
+    # partway through a release can leave the app on a half-applied version.
+    concurrency:
+      group: deploy-fly
+      cancel-in-progress: false
+
+    steps:
+      - uses: actions/checkout@v5
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - run: flyctl deploy --remote-only --wait-timeout 600
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}

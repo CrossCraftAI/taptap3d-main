@@ -1,0 +1,37 @@
+# NOT PROVISIONED YET. This file, the Dockerfile and the deploy job exist so the
+# pipeline is ready; the app and its database are created when there is something
+# worth deploying (ROADMAP M1). Until then the deploy job skips itself, because
+# FLY_API_TOKEN is unset.
+
+app = "taptap3d"
+primary_region = "sin"
+
+[build]
+
+[env]
+  PORT = "3000"
+  NODE_ENV = "production"
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = "suspend"
+  auto_start_machines = true
+  # Zero is deliberate for a pre-revenue app: the first request after an idle
+  # period pays a cold start, and nobody is watching a demo at 4am.
+  min_machines_running = 0
+
+  [[http_service.checks]]
+    # /api/health is exempt from the access gate on purpose (src/middleware.ts):
+    # a check that cannot authenticate concludes a working container is down and
+    # restarts it forever. This one also reports whether Postgres is reachable,
+    # which a TCP probe cannot.
+    grace_period = "15s"
+    interval = "30s"
+    method = "GET"
+    timeout = "5s"
+    path = "/api/health"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "1gb"

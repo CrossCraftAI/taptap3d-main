@@ -1,0 +1,21 @@
+# Everything the image does not need. Keeping this tight is not tidiness — a fat
+# build context is uploaded to the builder on every deploy.
+node_modules
+.next
+.git
+.github
+.data
+samples
+coverage
+.env
+.env.*
+!.env.example
+*.log
+README.md
+DFD.md
+ARCHITECTURE.md
+ROADMAP.md
+AGENTS.md
+CLAUDE.md
+docker-compose.yml
+test
