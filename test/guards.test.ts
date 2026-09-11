@@ -94,3 +94,33 @@ describe("the founding documents are present", () => {
     },
   );
 });
+
+describe("correlated counts stay qualified", () => {
+  // Interpolating drizzle columns into a `sql` template renders them WITHOUT a
+  // table qualifier, so `${lots.eventId} = ${events.id}` becomes
+  // `"event_id" = "id"` — which inside a subquery both resolve against `lots`,
+  // is never true, and returns zero for every count. Nothing errors. The page
+  // just reports that every sale is empty.
+  //
+  // The behaviour is covered by test/data.db.test.ts against real rows; this
+  // guards the SHAPE, because the obvious tidy-up — "why is this raw SQL?" —
+  // reintroduces the bug and the only symptom is a wrong number.
+  // COMMENTS STRIPPED FIRST, so this reads code and not prose. The comment in
+  // events.ts explains the bug by quoting the broken form verbatim — so a naive
+  // search finds the forbidden string inside the very sentence warning against
+  // it, and the guard fails on correct code. Only whole-line `//` comments are
+  // removed, which is how every comment in that file is written.
+  const source = read("src/lib/data/events.ts")
+    .split(/\r?\n/)
+    .filter((line) => !/^\s*\/\//.test(line))
+    .join("\n");
+
+  it("writes the join condition with qualified names", () => {
+    expect(source).toContain("lots.event_id = events.id");
+  });
+
+  it("does not interpolate drizzle columns into the subqueries", () => {
+    expect(source).not.toMatch(/\$\{lots\.\w+\}/);
+    expect(source).not.toMatch(/\$\{events\.id\}/);
+  });
+});
