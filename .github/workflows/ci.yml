@@ -75,13 +75,7 @@ jobs:
     # workflow rather than in its own — a deploy that can outrun the tests is a
     # deploy that ships red.
     needs: verify
-    # Skips itself until the app exists. FLY_API_TOKEN is unset while the Fly app
-    # is unprovisioned (ROADMAP M1), so this stays green rather than failing on
-    # every push for want of infrastructure nobody has paid for yet.
-    if: >-
-      github.ref == 'refs/heads/main' &&
-      github.event_name == 'push' &&
-      secrets.FLY_API_TOKEN != ''
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
@@ -94,6 +88,19 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: superfly/flyctl-actions/setup-flyctl@master
-      - run: flyctl deploy --remote-only --wait-timeout 600
+
+      # THE SKIP IS INSIDE THE STEP, not on the job. `secrets` is not available
+      # in a job-level `if` — GitHub rejects the whole workflow file, which fails
+      # every run in 0s with "workflow file issue" and no log, and looks nothing
+      # like the expression mistake it is. Checking the value in the shell is
+      # what actually works.
+      - name: Deploy to Fly
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          if [ -z "$FLY_API_TOKEN" ]; then
+            echo "FLY_API_TOKEN is not set — the Fly app is not provisioned yet."
+            echo "Skipping deploy. See ROADMAP.md M1."
+            exit 0
+          fi
+          flyctl deploy --remote-only --wait-timeout 600
