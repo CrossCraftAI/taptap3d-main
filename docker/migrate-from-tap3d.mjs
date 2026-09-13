@@ -204,6 +204,41 @@ async function copyBlob(hash) {
   return true;
 }
 
+/**
+ * What is actually in the predecessor, table by table.
+ *
+ * A MIGRATION YOU CANNOT INSPECT IS A MIGRATION YOU RUN BLIND — and a dry run
+ * that reports "0 lots" is indistinguishable from one whose queries all matched
+ * nothing for some other reason. This says which tables exist and how many rows
+ * each holds, so "there was nothing to move" is a finding rather than a guess.
+ */
+async function report() {
+  const tables = [
+    "tenants", "projects", "project_lots", "project_assets", "lot_assets",
+    "asset_geometry", "layouts", "layout_versions", "layout_spreads",
+    "lot_field_overrides", "lot_field_proposals", "import_runs", "lot_comments",
+    "events", "lots", "media_assets", "brand_specs", "provenance_log",
+  ];
+  const present = new Set(
+    (
+      await read(
+        `select table_name from information_schema.tables where table_schema = 'public'`,
+      )
+    ).map((r) => r.table_name),
+  );
+  console.log("source tables:");
+  for (const table of tables) {
+    if (!present.has(table)) {
+      console.log(`  ${table.padEnd(22)} (absent)`);
+      continue;
+    }
+    const [row] = await read(`select count(*)::int as n from "${table}"`);
+    console.log(`  ${table.padEnd(22)} ${String(row.n).padStart(7)}`);
+  }
+  const unlisted = [...present].filter((t) => !tables.includes(t));
+  if (unlisted.length > 0) console.log(`  other tables: ${unlisted.join(", ")}`);
+}
+
 async function main() {
   console.log(
     `migrate-from-tap3d: ${COMMIT ? "COMMITTING" : "DRY RUN — nothing will be written"}`,
@@ -211,6 +246,14 @@ async function main() {
   console.log(`  source db   ${SOURCE_URL.replace(/:\/\/[^@]+@/, "://…@")}`);
   console.log(`  source bytes ${ORIGIN}`);
   console.log(`  asset root  ${ASSET_ROOT}`);
+  console.log("");
+  await report();
+  console.log("");
+  if (process.argv.includes("--report")) {
+    await source.end();
+    await target.end();
+    return;
+  }
 
   // ── orgs ← tenants ────────────────────────────────────────────────────────
   const tenants = await read(`select id, slug, name from tenants`);
