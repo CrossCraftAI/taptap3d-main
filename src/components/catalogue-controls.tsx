@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 
 import { setCatalogueParamsAction } from "@/app/events/[id]/catalogue/actions";
 import { DENSITIES, type CatalogueParams } from "@/lib/engine/derive";
@@ -23,8 +23,11 @@ import { DENSITIES, type CatalogueParams } from "@/lib/engine/derive";
  * a time.
  *
  * Local state exists only so the control responds in the same frame the pointer
- * moves; the effect below hands authority straight back to the server once the
- * action returns.
+ * moves. Authority returns to the server by REMOUNTING: the parent keys this
+ * component on the stored parameters, so when the action lands the component is
+ * new and `useState` reads the server's answer as its initial value. That is the
+ * React-idiomatic reset, and it is why there is no effect here syncing a prop
+ * into state — which is both a lint error and the slower of the two paths.
  */
 export function CatalogueControls({
   eventId,
@@ -35,10 +38,6 @@ export function CatalogueControls({
 }): React.ReactElement {
   const form = useRef<HTMLFormElement>(null);
   const [local, setLocal] = useState<CatalogueParams>(params);
-
-  useEffect(() => {
-    setLocal(params);
-  }, [params.perPage, params.imagePlacement, params.showRef, params.fit]);
 
   const submit = (): void => form.current?.requestSubmit();
   const change = (patch: Partial<CatalogueParams>): void => {

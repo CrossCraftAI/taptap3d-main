@@ -69,7 +69,15 @@ export default async function CataloguePage({
       </header>
 
       <div className="shrink-0 px-8 pt-4">
-        <CatalogueControls eventId={event.id} params={layoutParams} />
+        {/* KEYED ON THE STORED PARAMETERS. The controls hold local state so
+            they respond in the same frame the pointer moves; this is what hands
+            authority back to the server once the action lands, by making the
+            component new rather than by syncing a prop into state. */}
+        <CatalogueControls
+          key={previewKey}
+          eventId={event.id}
+          params={layoutParams}
+        />
       </div>
 
       <div className="min-h-0 flex-1 px-8 pb-8 pt-4">
