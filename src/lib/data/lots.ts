@@ -1,8 +1,8 @@
 // Writing lots, and reading them back.
 
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, desc, eq } from "drizzle-orm";
 
-import { getDb, lots } from "@/db";
+import { assets, getDb, lotAssets, lots } from "@/db";
 import type { PreparedLot } from "@/lib/import/apply";
 
 export async function listLots(
@@ -50,4 +50,66 @@ export async function insertLots(
     )
     .returning({ id: lots.id });
   return rows.length;
+}
+
+export interface LotWithImages {
+  id: string;
+  ref: string | null;
+  fields: Record<string, unknown>;
+  position: number;
+  /** Content hashes, primary first — the order the engine reads as significance. */
+  images: string[];
+}
+
+/**
+ * Lots with their photographs, for the workspace and for the engine.
+ *
+ * A LEFT JOIN and one pass, not a query per lot. `is_primary` descending first
+ * so the primary plate lands at `images[0]`, which is the only element the
+ * engine reads; then `position`, then the hash, so the order is TOTAL — two
+ * non-primary photographs with the same position must not swap places between
+ * two renders of the same catalogue.
+ */
+export async function listLotsWithImages(
+  orgId: string,
+  eventId: string,
+): Promise<LotWithImages[]> {
+  const db = getDb();
+  const rows = await db
+    .select({
+      id: lots.id,
+      ref: lots.ref,
+      fields: lots.fields,
+      position: lots.position,
+      hash: assets.contentHash,
+      isPrimary: lotAssets.isPrimary,
+      assetPosition: lotAssets.position,
+    })
+    .from(lots)
+    .leftJoin(lotAssets, eq(lotAssets.lotId, lots.id))
+    .leftJoin(assets, eq(assets.id, lotAssets.assetId))
+    .where(and(eq(lots.orgId, orgId), eq(lots.eventId, eventId)))
+    .orderBy(
+      asc(lots.position),
+      desc(lotAssets.isPrimary),
+      asc(lotAssets.position),
+      asc(assets.contentHash),
+    );
+
+  const byLot = new Map<string, LotWithImages>();
+  for (const row of rows) {
+    let lot = byLot.get(row.id);
+    if (!lot) {
+      lot = {
+        id: row.id,
+        ref: row.ref,
+        fields: row.fields,
+        position: row.position,
+        images: [],
+      };
+      byLot.set(row.id, lot);
+    }
+    if (row.hash) lot.images.push(row.hash);
+  }
+  return [...byLot.values()];
 }

@@ -70,3 +70,25 @@ export async function currentOrgId(): Promise<string> {
   }
   return rows[0]!.id;
 }
+
+/**
+ * The acting org as a row, or null when there is not exactly one.
+ *
+ * The shell needs to render SOMETHING on a machine with no org yet — a chrome
+ * that throws leaves a blank page and no way to find out why. `currentOrgId`
+ * stays strict because a write must never guess which tenant it is writing for;
+ * this one is for chrome, and it says "not resolved" instead of refusing.
+ */
+export async function currentOrgOrNull(): Promise<
+  typeof orgs.$inferSelect | null
+> {
+  try {
+    const id = await currentOrgId();
+    const db = getDb();
+    const [row] = await db.select().from(orgs).where(eq(orgs.id, id)).limit(1);
+    return row ?? null;
+  } catch (error) {
+    if (error instanceof NoOrgError) return null;
+    throw error;
+  }
+}

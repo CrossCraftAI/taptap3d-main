@@ -280,6 +280,43 @@ export const pinMembers = pgTable(
   ],
 );
 
+// ── Provenance of an import ─────────────────────────────────────────────────
+
+export const importRuns = pgTable(
+  "import_runs",
+  {
+    ...rowBase,
+    orgId: uuid("org_id")
+      .references(() => orgs.id, { onDelete: "cascade" })
+      .notNull(),
+    eventId: uuid("event_id")
+      .references(() => events.id, { onDelete: "cascade" })
+      .notNull(),
+    // The name of the file the client brought, and nothing else about it. DFD.md
+    // §4.3 requires the PROVENANCE OF THE MAPPING to cross the import → lots
+    // boundary; it does not require the file, and the file is the customer's
+    // property and frequently their copyright. Keeping it would turn a
+    // thirty-second decision into a retention policy.
+    sourceFilename: text("source_filename").notNull(),
+    sourceFormat: text("source_format").notNull(),
+    // The mapping AS A HUMAN CLEARED IT — one target per column, positionally.
+    // This is the answer to "why is this lot's maker in the title field", asked
+    // three weeks later about a file nobody still has.
+    mapping: jsonb("mapping").$type<unknown[]>().default([]).notNull(),
+    rowCount: integer("row_count").default(0).notNull(),
+    // How many of the parsed rows became lots. Differs from rowCount when rows
+    // were skipped for having nothing in any mapped column.
+    lotCount: integer("lot_count").default(0).notNull(),
+    // Warnings shown to the person before they committed. Stored because "it
+    // warned me and I went ahead" and "it never told me" are different facts.
+    warnings: jsonb("warnings").$type<string[]>().default([]).notNull(),
+  },
+  (t) => [
+    index("import_runs_org").on(t.orgId),
+    index("import_runs_event").on(t.eventId),
+  ],
+);
+
 // ── The instrument ──────────────────────────────────────────────────────────
 
 export const actionLog = pgTable(

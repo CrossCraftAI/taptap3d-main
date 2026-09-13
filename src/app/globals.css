@@ -1,20 +1,79 @@
 @import "tailwindcss";
 
-/* Design tokens live here rather than in a JS config — Tailwind v4 is CSS-first.
-   Deliberately sparse: this is M0. The real palette arrives with the shell in M1
-   and should be derived from something, not invented in a hurry here. */
+/* ── The palette is NEUTRAL ON PURPOSE, and this is the one design decision
+   here with a reason outside taste.
+
+   `photo colour proofreading` is a box in the operator's own cycle (DFD.md §1).
+   A specialist judges a plate's colour against the ground it sits on, so an
+   interface with a warm or cool cast lies to them about every photograph in it —
+   and the warm-parchment palette every piece of auction software reaches for is
+   the worst possible choice for the one job this product exists to support.
+
+   So the greys are true greys: equal red, green and blue, every one of them.
+   There is exactly one chromatic value in the system, and it is used the way a
+   seal is used on a document — once, where it means something.
+
+   For the same reason there is NO DARK THEME. You cannot proof a photograph on
+   a dark ground, and a theme that makes the product's central task impossible is
+   not a feature. The catalogue preview is white because paper is. */
+
 @theme {
   --font-sans:
     ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
     "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif;
+  --font-serif:
+    "Noto Serif TC", "Songti TC", "Source Han Serif TC", Georgia,
+    "Times New Roman", serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  --color-paper: #ffffff;
+  --color-field: #f6f6f6;
+  --color-sunk: #eeeeee;
+  --color-rule: #e0e0e0;
+  --color-ruleStrong: #c9c9c9;
+  --color-ink: #1b1b1b;
+  --color-muted: #6e6e6e;
+  --color-faint: #9a9a9a;
+  --color-seal: #a32a24;
+  --color-sealSoft: #f7ecec;
 }
 
 :root {
-  color-scheme: light dark;
+  color-scheme: light;
 }
 
 html,
 body {
   height: 100%;
+}
+
+body {
+  background: var(--color-field);
+  color: var(--color-ink);
+}
+
+/* Counts, references and estimates line up in a column or they are not a
+   ledger. Applied globally rather than per-component because the failure is
+   invisible until two numbers of different widths sit above one another. */
+table,
+[data-numeric] {
+  font-variant-numeric: tabular-nums;
+}
+
+/* A focus ring that survives on both the grey ground and white surfaces.
+   Never removed — a specialist keyboarding down 500 lots needs to see where
+   they are. */
+:focus-visible {
+  outline: 2px solid var(--color-seal);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }

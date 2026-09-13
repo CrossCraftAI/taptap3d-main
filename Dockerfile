@@ -42,11 +42,21 @@ COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 # standalone trace has it.
 COPY --from=builder --chown=nextjs:nodejs /app/drizzle ./drizzle
 COPY --from=builder --chown=nextjs:nodejs /app/docker/migrate.mjs ./migrate.mjs
+# The one-off that brings the predecessor across. It ships in the image rather
+# than being run from a laptop: it needs both production databases and 71 MB of
+# photographs, and a laptop run means materialising both credentials locally and
+# pulling every plate down and back up again. See docker/migrate-from-tap3d.mjs.
+COPY --from=builder --chown=nextjs:nodejs /app/docker/migrate-from-tap3d.mjs ./migrate-from-tap3d.mjs
 COPY --from=builder --chown=nextjs:nodejs /app/docker/entrypoint.sh ./entrypoint.sh
 # Set here rather than relied upon from git: the repository is developed on
 # Windows, which does not carry the executable bit, so an entrypoint that works
 # locally would fail to start in the image with "permission denied".
 RUN chmod +x /app/entrypoint.sh
+
+# The asset store writes here and the volume is mounted over it at boot, so the
+# directory must exist AND be owned by the runtime user — a volume mounted onto a
+# root-owned path leaves a non-root process unable to write its first upload.
+RUN mkdir -p /data/assets && chown -R nextjs:nodejs /data
 
 USER nextjs
 EXPOSE 3000

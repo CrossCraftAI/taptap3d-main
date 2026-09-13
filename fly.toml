@@ -26,6 +26,10 @@ primary_region = "sin"
 [env]
   PORT = "3000"
   NODE_ENV = "production"
+  # The photographs live on the volume, never in the image. Content-addressed
+  # under objects/, so a redeploy cannot disturb them and two orgs holding the
+  # same plate hold one blob.
+  TAPTAP3D_ASSET_ROOT = "/data/assets"
 
 [http_service]
   internal_port = 3000
@@ -50,3 +54,12 @@ primary_region = "sin"
 [[vm]]
   size = "shared-cpu-1x"
   memory = "1gb"
+
+[mounts]
+  source = "taptap3d_data"
+  destination = "/data"
+  # ONE MACHINE, for as long as the asset store is a filesystem. Two machines
+  # each get their OWN volume, so a photograph uploaded through one 404s on the
+  # other — intermittently, which is the worst way for this to fail. Scaling past
+  # one machine is the S3 implementation of the AssetStore interface in
+  # src/lib/assets/store.ts, and nothing above that interface changes.

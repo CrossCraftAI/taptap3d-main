@@ -15,7 +15,10 @@ README.md
 DFD.md
 ARCHITECTURE.md
 ROADMAP.md
+M1.md
 AGENTS.md
 CLAUDE.md
 docker-compose.yml
 test
+playwright.config.ts
+test-results
