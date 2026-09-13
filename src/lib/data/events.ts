@@ -99,3 +99,13 @@ export async function createEvent(
     .returning();
   return row!;
 }
+
+/** How many events the org has. For the rail, which must not load them all. */
+export async function countEvents(orgId: string): Promise<number> {
+  const db = getDb();
+  const [row] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(events)
+    .where(eq(events.orgId, orgId));
+  return Number(row?.n ?? 0);
+}

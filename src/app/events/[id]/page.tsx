@@ -93,12 +93,22 @@ export default async function EventPage({
                   className="border-b border-rule last:border-b-0 hover:bg-field"
                 >
                   <td className="px-4 py-2 font-medium" data-numeric>
-                    {lot.ref ?? <span className="text-faint">—</span>}
+                    <Link
+                      href={`/events/${event.id}/lots/${lot.id}`}
+                      className="hover:text-seal hover:underline"
+                    >
+                      {lot.ref ?? <span className="text-faint">—</span>}
+                    </Link>
                   </td>
                   <td className="max-w-0 truncate px-4 py-2">
-                    {asText(lot.fields.title) || (
-                      <span className="text-faint">untitled</span>
-                    )}
+                    <Link
+                      href={`/events/${event.id}/lots/${lot.id}`}
+                      className="hover:text-seal hover:underline"
+                    >
+                      {asText(lot.fields.title) || (
+                        <span className="text-faint">untitled</span>
+                      )}
+                    </Link>
                   </td>
                   <td className="max-w-0 truncate px-4 py-2 text-muted">
                     {asText(lot.fields.maker) || "—"}

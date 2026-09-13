@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 
 import { Nav } from "@/components/nav";
+import { countAssets } from "@/lib/data/assets";
+import { countEvents } from "@/lib/data/events";
 import { currentOrgOrNull } from "@/lib/data/org";
 
 import "./globals.css";
@@ -18,6 +20,12 @@ export default async function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   const org = await currentOrgOrNull();
+  // The rail's numbers. Zeroes when there is no org, so the chrome renders on a
+  // machine that has not been seeded rather than throwing and leaving a blank
+  // page with no way to find out why.
+  const [events, photographs] = org
+    ? await Promise.all([countEvents(org.id), countAssets(org.id)])
+    : [0, { total: 0, unassigned: 0 }];
 
   // zh-Hant, not zh-TW and not en: the first customers are Hong Kong auction
   // houses and the catalogue text is Traditional Chinese. Stated on the document
@@ -38,7 +46,13 @@ export default async function RootLayout({
                   {org ? org.name : "No organisation"}
                 </p>
               </div>
-              <Nav />
+              <Nav
+                counts={{
+                  events,
+                  photographs: photographs.total,
+                  unassigned: photographs.unassigned,
+                }}
+              />
               <p className="mt-auto px-3 text-[11px] leading-relaxed text-faint">
                 M1 — the pitch. Catalogue production; no money path.
               </p>

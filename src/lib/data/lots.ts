@@ -1,8 +1,8 @@
 // Writing lots, and reading them back.
 
-import { and, asc, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, sql } from "drizzle-orm";
 
-import { assets, getDb, lotAssets, lots } from "@/db";
+import { assets, events, getDb, lotAssets, lots } from "@/db";
 import type { PreparedLot } from "@/lib/import/apply";
 
 export async function listLots(
@@ -112,4 +112,68 @@ export async function listLotsWithImages(
     if (row.hash) lot.images.push(row.hash);
   }
   return [...byLot.values()];
+}
+
+export interface LotChoice {
+  id: string;
+  ref: string | null;
+  title: string;
+  eventName: string;
+  photoCount: number;
+}
+
+/**
+ * Every lot in the org, flattened for a picker.
+ *
+ * ONE QUERY AND THE WHOLE SET, not a search endpoint. A house's sale is a few
+ * hundred lots; sending them once lets the picker filter as the person types
+ * with no round trip, which is the difference between assigning forty
+ * photographs in a sitting and giving up. When a customer arrives with a
+ * five-thousand-lot back catalogue this becomes a search endpoint, and the
+ * component above it does not change shape.
+ */
+export async function listLotChoices(orgId: string): Promise<LotChoice[]> {
+  const db = getDb();
+  const rows = await db
+    .select({
+      id: lots.id,
+      ref: lots.ref,
+      fields: lots.fields,
+      eventName: events.name,
+      position: lots.position,
+      photoCount: sql<number>`(
+        select count(*)::int from lot_assets where lot_assets.lot_id = lots.id
+      )`,
+    })
+    .from(lots)
+    .innerJoin(events, eq(events.id, lots.eventId))
+    .where(eq(lots.orgId, orgId))
+    .orderBy(events.name, lots.position)
+    .limit(5000);
+
+  return rows.map((r) => ({
+    id: r.id,
+    ref: r.ref,
+    title: typeof r.fields?.title === "string"
+      ? r.fields.title
+      : ((r.fields?.title as { zh?: string; en?: string } | undefined)?.zh ??
+         (r.fields?.title as { zh?: string; en?: string } | undefined)?.en ??
+         ""),
+    eventName: r.eventName,
+    photoCount: Number(r.photoCount),
+  }));
+}
+
+/** One lot, scoped. Both conditions, always. */
+export async function getLot(
+  orgId: string,
+  lotId: string,
+): Promise<typeof lots.$inferSelect | null> {
+  const db = getDb();
+  const [row] = await db
+    .select()
+    .from(lots)
+    .where(and(eq(lots.orgId, orgId), eq(lots.id, lotId)))
+    .limit(1);
+  return row ?? null;
 }
