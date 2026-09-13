@@ -100,22 +100,10 @@ export function renderCatalogue(
     9: [3, 3],
   };
   const [columns, rows] = GRID[doc.params.perPage] ?? [2, 2];
-  // How many lines of description a slot can hold at this density.
-  //
-  // DELIBERATELY CONSERVATIVE. The clamp cuts at a line boundary; the caption box
-  // around it cuts wherever it happens to end — so a count larger than the box
-  // can hold produces a sliver of half-height glyphs along the bottom edge,
-  // which is what production showed at two-up. Under-filling costs a line of
-  // description; over-filling costs the page's credibility.
-  //
-  // Provisional numbers, and knowingly so: the honest version measures the
-  // painted boxes from the parent, which is the editor overlay's job and lands
-  // with it.
-  const DESCRIPTION_LINES: Record<number, number> = { 1: 10, 2: 5, 4: 3, 6: 2, 9: 1 };
-  const descriptionLines = DESCRIPTION_LINES[doc.params.perPage] ?? 3;
-  // The description's lines plus the ref, title, maker, date, material,
-  // dimensions and price that can precede it.
-  const captionLines = descriptionLines + 7;
+  // A ceiling on the caption box, in line boxes. The engine already bounds what
+  // goes into a caption; this is the last resort that keeps a pathological value
+  // off the lot beneath it.
+  const captionLines = { 1: 24, 2: 16, 4: 11, 6: 8, 9: 6 }[doc.params.perPage] ?? 11;
   const beside = doc.params.imagePlacement === "beside";
   // FIT PAGE sizes by height so a whole page is in the frame; FIT WIDTH sizes by
   // width and lets the page run past the fold. They are genuinely different at
@@ -246,14 +234,17 @@ export function renderCatalogue(
   .line--title .value { font-weight: 600; font-size: 1.12em; }
   .line--maker .value { color: #3a3a3a; }
   .line--price .value { font-variant-numeric: tabular-nums; letter-spacing: .01em; }
-  /* The description is the only long-form field and the only one clamped. The
-     line count follows the density, because how much room a caption has is a
-     function of how many lots share the page — and the ellipsis is what tells a
-     person the text continues. */
-  .line--description .value {
-    color: #5a5a5a; display: -webkit-box; -webkit-box-orient: vertical;
-    -webkit-line-clamp: ${descriptionLines}; overflow: hidden;
-  }
+  /* NO CLAMP HERE ANY MORE. It was keyed to the description class and never
+     fired on real data: the predecessor's long prose arrives under a column the
+     house calls notes, which prints as a custom field and matched no rule. Any
+     field can be long, so the bound moved into the engine, where it is
+     field-agnostic, derived, and does not depend on a browser honouring a
+     prefixed property.
+
+     (And no backticks in here: this stylesheet lives inside a template literal,
+     so one in a comment ends the string mid-rule. That has now cost two
+     debugging sessions.) */
+  .line--description .value { color: #5a5a5a; }
   .value { overflow-wrap: anywhere; }
   .folio {
     margin-top: 3%; text-align: center;

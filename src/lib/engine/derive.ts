@@ -192,7 +192,66 @@ const CAPTION_PRIORITY: CoreFieldKey[] = [
   "description",
 ];
 
-function captionFor(lot: EngineLot, budget: number): CaptionLine[] {
+/**
+ * How long one caption line may be, in units, at each density.
+ *
+ * A Chinese character is counted as two because it occupies about twice the
+ * advance of a Latin one, so a single budget serves a bilingual catalogue
+ * without needing to know which language a value is in.
+ *
+ * ── WHY THIS IS NOT A CSS LINE-CLAMP ────────────────────────────────────────
+ *
+ * It was. `-webkit-line-clamp` was set on `.line--description`, and it never
+ * fired once on real data: the predecessor's long prose does not live in the
+ * `description` field at all — it arrived under a column the house calls
+ * `notes`, which prints as a custom field and matched no rule. A cap keyed to
+ * one field NAME cannot bound a caption, because any field can be long.
+ *
+ * So the bound is here, field-agnostic and derived. It also does not depend on a
+ * browser honouring a prefixed property, which matters when the output is a
+ * printed page rather than a screen someone can scroll.
+ */
+const LINE_BUDGET: Record<number, number> = {
+  1: 900,
+  2: 460,
+  4: 170,
+  6: 96,
+  9: 44,
+};
+
+/** Latin counts one, CJK counts two. Enough to bound a line, not to lay it out. */
+function units(text: string): number {
+  let total = 0;
+  for (const character of text) {
+    total += /[ᄀ-ᅟ⺀-꓏ꥠ-꥿가-힣豈-﫿︐-﹯＀-｠￠-￦]/.test(
+      character,
+    )
+      ? 2
+      : 1;
+  }
+  return total;
+}
+
+/**
+ * Shorten to fit, and SAY SO with an ellipsis.
+ *
+ * The stored value is untouched — this is a derivation, re-run on every change
+ * of density, and the lot page still shows the whole thing.
+ */
+function clip(text: string, budget: number): string {
+  if (units(text) <= budget) return text;
+  let total = 0;
+  let kept = "";
+  for (const character of text) {
+    const width = units(character);
+    if (total + width > budget - 1) break;
+    total += width;
+    kept += character;
+  }
+  return `${kept.trimEnd()}…`;
+}
+
+function captionFor(lot: EngineLot, budget: number, lineBudget: number): CaptionLine[] {
   const present = CAPTION_ORDER.filter((key) => asText(lot.fields[key]) !== "");
   // Chosen by priority, then printed in the catalogue's own order.
   const keep = new Set(
@@ -203,7 +262,7 @@ function captionFor(lot: EngineLot, budget: number): CaptionLine[] {
     if (!keep.has(key)) continue;
     const value = asText(lot.fields[key]);
     if (!value) continue;
-    lines.push({ key, label: LABELS.get(key)?.zh ?? key, value });
+    lines.push({ key, label: LABELS.get(key)?.zh ?? key, value: clip(value, lineBudget) });
   }
   // CUSTOM FIELDS PRINT TOO, under the customer's own header — but AFTER the
   // core fields and only while there is room. The field set is theirs; a column
@@ -223,7 +282,7 @@ function captionFor(lot: EngineLot, budget: number): CaptionLine[] {
     if (lines.length >= budget) break;
     const value = asText(raw);
     if (!value) continue;
-    lines.push({ key, label: key, value });
+    lines.push({ key, label: key, value: clip(value, lineBudget) });
   }
   return lines;
 }
@@ -284,7 +343,11 @@ export function derive(
         lotId: lot.id,
         ref: params.showRef ? lot.ref : null,
         image: lot.images[0] ?? null,
-        caption: captionFor(lot, CAPTION_BUDGET[perPage] ?? 8),
+        caption: captionFor(
+          lot,
+          CAPTION_BUDGET[perPage] ?? 8,
+          LINE_BUDGET[perPage] ?? 170,
+        ),
       });
       if (current.length === perPage) flush();
     }

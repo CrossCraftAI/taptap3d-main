@@ -179,6 +179,39 @@ describe("derive", () => {
     expect(keys).toContain("price");
   });
 
+  it("caps a long caption line by density, whatever field it came from", () => {
+    // The clamp that used to do this was CSS keyed to the description class, and
+    // it never fired once on real data: the predecessor's long prose arrives
+    // under a column the house calls `notes`, which prints as a custom field.
+    // Any field can be long, so the bound is field-agnostic.
+    const prose = "此作為趙無極晚期重要油畫，展現其成熟的抽象風格。".repeat(12);
+    const busy = lot("a", { fields: { title: "青花瓶", notes: prose } });
+
+    const dense = derive([busy], { ...DEFAULT_PARAMS, perPage: 9 });
+    const sparse = derive([busy], { ...DEFAULT_PARAMS, perPage: 1 });
+    const lineAt = (doc: ReturnType<typeof derive>, key: string): string =>
+      doc.pages[0]!.slots[0]!.caption.find((l) => l.key === key)?.value ?? "";
+
+    expect(lineAt(dense, "notes").length).toBeLessThan(
+      lineAt(sparse, "notes").length,
+    );
+    // Shortened, and it SAYS so.
+    expect(lineAt(dense, "notes").endsWith("…")).toBe(true);
+    expect(lineAt(dense, "notes").length).toBeLessThan(prose.length);
+    // The lot itself is untouched — this is a derivation, not an edit.
+    expect(busy.fields.notes).toBe(prose);
+  });
+
+  it("leaves a caption that already fits exactly alone", () => {
+    const doc = derive(
+      [lot("a", { fields: { title: "青花瓶", maker: "張大千" } })],
+      DEFAULT_PARAMS,
+    );
+    const values = doc.pages[0]!.slots[0]!.caption.map((l) => l.value);
+    expect(values).toEqual(["青花瓶", "張大千"]);
+    expect(values.some((v) => v.endsWith("…"))).toBe(false);
+  });
+
   it("is deterministic — the same inputs give the same document", () => {
     const input = lots(7);
     expect(JSON.stringify(derive(input, DEFAULT_PARAMS))).toBe(
