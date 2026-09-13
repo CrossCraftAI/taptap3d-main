@@ -372,7 +372,10 @@ async function main() {
     bump("lots");
     if (REFRESH) {
       const updated = await write(
-        `update lots set fields = $1, updated_at = now()
+        // BOTH CASTS ARE EXPLICIT. The comparison forces $1 to text, and
+        // Postgres then refuses to assign that text to a jsonb column — the
+        // parameter cannot be two types at once and will not guess.
+        `update lots set fields = $1::jsonb, updated_at = now()
          where event_id = $2 and ref = $3 and fields::text is distinct from $1::text
          returning id`,
         [JSON.stringify(fieldsFor(lot)), event.id, lot.ref],
