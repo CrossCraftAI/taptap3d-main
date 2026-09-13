@@ -284,6 +284,26 @@ async function report() {
   }
   const unlisted = [...present].filter((t) => !tables.includes(t));
   if (unlisted.length > 0) console.log(`  other tables: ${unlisted.join(", ")}`);
+
+  // How much of the lot data is actually populated. An empty Estimate column on
+  // every migrated lot is either a mapping bug or a fact about the corpus, and
+  // guessing which is how a mapping bug survives to a demo.
+  if (present.has("project_lots")) {
+    const [c] = await read(`
+      select
+        count(*) filter (where price_display is not null and price_display <> '')::int as display,
+        count(*) filter (where price_low is not null)::int as low,
+        count(*) filter (where price_amount is not null)::int as amount,
+        count(*) filter (where dimensions_display is not null and dimensions_display <> '')::int as dims,
+        count(*) filter (where description_zh is not null and description_zh <> '')::int as descr,
+        count(*)::int as total
+      from project_lots`);
+    console.log(
+      `  of ${c.total} source lots: ${c.display} have a written estimate, ` +
+        `${c.low} a low, ${c.amount} an amount, ${c.dims} a written dimension, ` +
+        `${c.descr} a description`,
+    );
+  }
 }
 
 async function main() {
@@ -398,11 +418,13 @@ async function main() {
     bump("lots");
     if (REFRESH) {
       const updated = await write(
-        // BOTH CASTS ARE EXPLICIT. The comparison forces $1 to text, and
-        // Postgres then refuses to assign that text to a jsonb column — the
-        // parameter cannot be two types at once and will not guess.
+        // COMPARED AS JSONB, NOT AS TEXT. The text comparison was useless:
+        // Postgres normalises jsonb key order, so `fields::text` almost never
+        // matches a JSON.stringify of the same object and every run reported
+        // all 215 rows as changed — which made "215 refreshed" carry no
+        // information at all. jsonb = jsonb compares by value.
         `update lots set fields = $1::jsonb, updated_at = now()
-         where event_id = $2 and ref = $3 and fields::text is distinct from $1::text
+         where event_id = $2 and ref = $3 and fields is distinct from $1::jsonb
          returning id`,
         [JSON.stringify(fieldsFor(lot)), event.id, lot.ref],
       );
