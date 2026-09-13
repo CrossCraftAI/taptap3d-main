@@ -1,0 +1,12 @@
+# Line endings, decided here rather than by whoever cloned the repository.
+#
+# THE SHELL SCRIPTS ARE LF OR THE IMAGE DOES NOT BOOT. A CRLF entrypoint fails
+# with `exec /app/entrypoint.sh: no such file or directory` — the kernel is
+# reporting that it cannot find `/bin/sh\r`, which is the least helpful true
+# statement it could make. This repository is developed on Windows, so the
+# default would otherwise be CRLF and the failure would arrive at deploy time.
+* text=auto
+*.sh text eol=lf
+*.mjs text eol=lf
+Dockerfile text eol=lf
+docker/** text eol=lf

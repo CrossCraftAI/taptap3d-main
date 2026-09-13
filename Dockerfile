@@ -25,11 +25,26 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=3000
-ENV HOSTNAME=0.0.0.0
+# `::`, NOT 0.0.0.0. Fly's private network is IPv6 only, so an IPv4 bind is
+# reachable through the public proxy and by nothing inside the organisation —
+# which is exactly why the predecessor could not be read app-to-app during the
+# migration and needed a temporary server standing in for it. Node's dual-stack
+# `::` accepts IPv4 as well, so this costs nothing and prevents a repeat.
+ENV HOSTNAME=::
 
-# Not root. The application never needs to write to its own image, and a
-# container that could is one exploit away from rewriting itself.
-RUN addgroup -g 1001 -S nodejs && adduser -S nextjs -u 1001
+# Not root — but the drop happens in the ENTRYPOINT, not here.
+#
+# The application never needs to write to its own image, and a container that
+# could is one exploit away from rewriting itself. `USER nextjs` was how this
+# said so, and it was not enough: Fly mounts the volume over /data at boot, so
+# whatever ownership the image gave that path is replaced by the volume's own,
+# and an unprivileged process cannot fix it. The entrypoint starts as root,
+# corrects the mount, and drops before serving a single request.
+#
+# `-G nodejs` matters and was missing: without it the user's primary group is
+# `nogroup`, so a chown to nextjs:nodejs leaves the process outside the group it
+# was given.
+RUN apk add --no-cache su-exec  && addgroup -g 1001 -S nodejs  && adduser -S nextjs -u 1001 -G nodejs
 
 # `output: "standalone"` in next.config.ts traces exactly the dependencies the
 # server imports, so node_modules is not copied wholesale.
@@ -57,12 +72,13 @@ COPY --from=builder --chown=nextjs:nodejs /app/docker/entrypoint.sh ./entrypoint
 # locally would fail to start in the image with "permission denied".
 RUN chmod +x /app/entrypoint.sh
 
-# The asset store writes here and the volume is mounted over it at boot, so the
-# directory must exist AND be owned by the runtime user — a volume mounted onto a
-# root-owned path leaves a non-root process unable to write its first upload.
+# Created so a container run WITHOUT a volume still has somewhere to put an
+# upload. With a volume this is shadowed at boot, which is what the entrypoint
+# exists to deal with.
 RUN mkdir -p /data/assets && chown -R nextjs:nodejs /data
 
-USER nextjs
+# NO `USER` HERE. See the entrypoint: it drops to nextjs after fixing the mount,
+# and the server process is unprivileged from its first instruction.
 EXPOSE 3000
 
 ENTRYPOINT ["/app/entrypoint.sh"]
