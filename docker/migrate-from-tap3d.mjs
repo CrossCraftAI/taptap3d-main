@@ -162,7 +162,33 @@ function fieldsFor(row) {
     text(row.dimensions_display) ??
       (measured.length > 0 ? `${measured.join(" × ")} cm` : undefined),
   );
-  put("price", text(row.price_display));
+  // THE ESTIMATE, AND IT IS A RANGE.
+  //
+  // The written string wins where there is one. Where there is not — and for
+  // this corpus there mostly is not — the low and the high are composed back
+  // into the range they describe. That is not the flattening the predecessor's
+  // corpus warns against: flattening is picking ONE number out of an estimate.
+  // Keeping both and printing them apart is what an estimate is.
+  //
+  // Without this the migrated ledger showed an empty Estimate column on every
+  // one of 215 lots, because the numbers were there and nothing printed them.
+  const currency = text(row.price_currency) ?? "";
+  const amount = (value) => {
+    const n = Number(value);
+    return Number.isFinite(n) ? n.toLocaleString("en-US") : text(value);
+  };
+  const low = row.price_low === null ? undefined : amount(row.price_low);
+  const high = row.price_high === null ? undefined : amount(row.price_high);
+  const single = row.price_amount === null ? undefined : amount(row.price_amount);
+  const composed =
+    low && high
+      ? `${low} – ${high}${currency ? ` ${currency}` : ""}`
+      : single
+        ? `${single}${currency ? ` ${currency}` : ""}`
+        : (low ?? high)
+          ? `${low ?? high}${currency ? ` ${currency}` : ""}`
+          : undefined;
+  put("price", text(row.price_display) ?? composed);
 
   // The measured values, kept — they are the house's data and dropping them
   // because a display string exists is not this script's decision to make.
