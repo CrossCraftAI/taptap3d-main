@@ -151,16 +151,65 @@ export function asText(value: unknown): string {
   return "";
 }
 
-function captionFor(lot: EngineLot): CaptionLine[] {
+/**
+ * How many entries a caption may carry at each density.
+ *
+ * THE ENGINE DECIDES THIS, not the stylesheet, because it is a property of the
+ * document rather than of how it is painted — and because it must be re-derived
+ * when the density changes rather than clipped after the fact.
+ *
+ * The migration brought the predecessor's own columns across (notes, sealMarks,
+ * substrate, provenance), and they are the house's data so they are kept. But a
+ * caption prints every field it does not recognise, so a four-up page grew
+ * captions of eleven entries into a box that holds six, and the overflow was cut
+ * mid-sentence. On screen a fade reads as "there is more". On paper there is no
+ * more, and it reads as a printing fault.
+ *
+ * A default, not a lock (principle 9): the core fields a catalogue prints fill
+ * the budget first, the house's own columns take what is left, and nothing is
+ * deleted — the lot page shows every value it holds.
+ */
+const CAPTION_BUDGET: Record<number, number> = { 1: 20, 2: 12, 4: 8, 6: 6, 9: 4 };
+
+/**
+ * Which core field goes first when they do not all fit.
+ *
+ * NOT the order they print in — that is CAPTION_ORDER and it does not change.
+ * This is the order they SURVIVE in, and it is the trade's own answer: a dense
+ * page carries the work, who made it and what it is expected to fetch. The
+ * description is the first thing a nine-up page gives up and the last thing a
+ * one-up page would.
+ *
+ * Dropping the estimate to keep the medium would be the obvious bug here.
+ */
+const CAPTION_PRIORITY: CoreFieldKey[] = [
+  "title",
+  "maker",
+  "price",
+  "date",
+  "dimensions",
+  "material",
+  "description",
+];
+
+function captionFor(lot: EngineLot, budget: number): CaptionLine[] {
+  const present = CAPTION_ORDER.filter((key) => asText(lot.fields[key]) !== "");
+  // Chosen by priority, then printed in the catalogue's own order.
+  const keep = new Set(
+    CAPTION_PRIORITY.filter((key) => present.includes(key)).slice(0, budget),
+  );
   const lines: CaptionLine[] = [];
   for (const key of CAPTION_ORDER) {
+    if (!keep.has(key)) continue;
     const value = asText(lot.fields[key]);
     if (!value) continue;
     lines.push({ key, label: LABELS.get(key)?.zh ?? key, value });
   }
-  // CUSTOM FIELDS PRINT TOO, under the customer's own header. The field set is
-  // theirs; a column they asked to keep and then never see again is a column we
-  // silently discarded with extra steps.
+  // CUSTOM FIELDS PRINT TOO, under the customer's own header — but AFTER the
+  // core fields and only while there is room. The field set is theirs; a column
+  // they asked to keep and then never see again is a column we silently
+  // discarded with extra steps. A caption that runs off the page is not showing
+  // it to them either.
   //
   // EXCEPT KEYS PREFIXED WITH `_`, which are carried data rather than caption
   // content — the predecessor's separate numeric columns for height, width and
@@ -171,6 +220,7 @@ function captionFor(lot: EngineLot): CaptionLine[] {
   for (const [key, raw] of Object.entries(lot.fields)) {
     if (CAPTION_ORDER.includes(key as CoreFieldKey)) continue;
     if (key === "ref" || key === "images" || key.startsWith("_")) continue;
+    if (lines.length >= budget) break;
     const value = asText(raw);
     if (!value) continue;
     lines.push({ key, label: key, value });
@@ -234,7 +284,7 @@ export function derive(
         lotId: lot.id,
         ref: params.showRef ? lot.ref : null,
         image: lot.images[0] ?? null,
-        caption: captionFor(lot),
+        caption: captionFor(lot, CAPTION_BUDGET[perPage] ?? 8),
       });
       if (current.length === perPage) flush();
     }

@@ -271,6 +271,12 @@ export function renderCatalogue(
       height: 297mm; width: 210mm; max-width: none;
     }
     .page:last-child { break-after: auto; }
+    /* NO FADE ON PAPER. A gradient at the foot of a caption tells a reader on a
+       screen that the text continues. A printed page has no "continues", so the
+       same gradient reads as a smear — as though the press ran out of ink. The
+       engine's caption budget is what keeps the text inside the box; this makes
+       sure nothing pretends otherwise. */
+    .caption::after { display: none; }
   }
 </style>
 </head>

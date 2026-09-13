@@ -128,6 +128,57 @@ describe("derive", () => {
     expect(keys.indexOf("title")).toBeLessThan(keys.indexOf("品相"));
   });
 
+  it("budgets the caption by density, core fields first", () => {
+    // The migration brought the house's own columns across, and a caption prints
+    // every field it does not recognise — so a four-up page grew captions of
+    // eleven entries into a box that holds six and printed the overflow cut
+    // mid-sentence. Core fields win the budget; the customer's own columns take
+    // what is left; nothing is deleted from the lot.
+    const busy = lot("a", {
+      fields: {
+        title: "青花瓶",
+        maker: "張大千",
+        date: "1965",
+        material: "設色",
+        dimensions: "60 × 95 cm",
+        price: "800,000 – 1,200,000 HKD",
+        description: "長篇說明",
+        notes: "n",
+        sealMarks: "s",
+        substrate: "紙本",
+        provenance: "p",
+      },
+    });
+
+    const dense = derive([busy], { ...DEFAULT_PARAMS, perPage: 9 });
+    const sparse = derive([busy], { ...DEFAULT_PARAMS, perPage: 1 });
+    const denseKeys = dense.pages[0]!.slots[0]!.caption.map((l) => l.key);
+    const sparseKeys = sparse.pages[0]!.slots[0]!.caption.map((l) => l.key);
+
+    expect(denseKeys.length).toBeLessThan(sparseKeys.length);
+    // Whatever survives at nine-up is catalogue content, never a stray column.
+    // A dense page carries the work, who made it, when, and what it is expected
+    // to fetch. It gives up the description first — and never the estimate.
+    expect(denseKeys).toEqual(["title", "maker", "date", "price"]);
+    expect(denseKeys).not.toContain("description");
+    // With room, the house's own columns print under their own names.
+    expect(sparseKeys).toContain("provenance");
+  });
+
+  it("never drops a core field to make room for a custom one", () => {
+    const doc = derive(
+      [
+        lot("a", {
+          fields: { zzz: "custom", title: "青花瓶", price: "1,000 HKD" },
+        }),
+      ],
+      { ...DEFAULT_PARAMS, perPage: 9 },
+    );
+    const keys = doc.pages[0]!.slots[0]!.caption.map((l) => l.key);
+    expect(keys.indexOf("title")).toBeLessThan(keys.indexOf("zzz"));
+    expect(keys).toContain("price");
+  });
+
   it("is deterministic — the same inputs give the same document", () => {
     const input = lots(7);
     expect(JSON.stringify(derive(input, DEFAULT_PARAMS))).toBe(
