@@ -39,8 +39,31 @@ import { createHash } from "node:crypto";
 import pg from "pg";
 
 const COMMIT = process.argv.includes("--commit");
-const SOURCE_URL = process.env.TAP3D_SOURCE_URL;
 const TARGET_URL = process.env.DATABASE_URL;
+
+/**
+ * The predecessor's database, WITHOUT A SECOND CREDENTIAL.
+ *
+ * Both databases live on the same Managed Postgres cluster — the new app was
+ * given its own database on the predecessor's idle cluster rather than a second
+ * one nobody is paying for twice. So the source URL is this app's own URL with
+ * the database name swapped, and the role it connects as is the one the app
+ * already holds. No second secret exists to leak, rotate, or forget to revoke.
+ *
+ * TAP3D_SOURCE_URL overrides it, for the day the two are not co-tenant.
+ */
+function derivedSourceUrl() {
+  if (process.env.TAP3D_SOURCE_URL) return process.env.TAP3D_SOURCE_URL;
+  if (!TARGET_URL) return undefined;
+  try {
+    const url = new URL(TARGET_URL);
+    url.pathname = `/${process.env.TAP3D_SOURCE_DATABASE ?? "fly-db"}`;
+    return url.toString();
+  } catch {
+    return undefined;
+  }
+}
+const SOURCE_URL = derivedSourceUrl();
 // The predecessor over Fly's private network. It has no public address any more
 // and needs none — 6PN reaches it from inside the organisation.
 const ORIGIN = process.env.TAP3D_SOURCE_ORIGIN ?? "http://tap3d.internal:3000";
@@ -49,7 +72,9 @@ const ASSET_ROOT = process.env.TAPTAP3D_ASSET_ROOT ?? "/data/assets";
 const FALLBACK_SLUG = process.env.TAPTAP3D_ORG_SLUG ?? "dev";
 
 if (!SOURCE_URL) {
-  console.error("TAP3D_SOURCE_URL is not set. It is the predecessor's database.");
+  console.error(
+    "No source database. Set TAP3D_SOURCE_URL, or DATABASE_URL so one can be derived.",
+  );
   process.exit(1);
 }
 if (!TARGET_URL) {

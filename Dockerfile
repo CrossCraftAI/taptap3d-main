@@ -47,6 +47,10 @@ COPY --from=builder --chown=nextjs:nodejs /app/docker/migrate.mjs ./migrate.mjs
 # photographs, and a laptop run means materialising both credentials locally and
 # pulling every plate down and back up again. See docker/migrate-from-tap3d.mjs.
 COPY --from=builder --chown=nextjs:nodejs /app/docker/migrate-from-tap3d.mjs ./migrate-from-tap3d.mjs
+# Creating the first organisation of a deployment. Not signup (ROADMAP D15) — the
+# one-off an operator runs once, because currentOrgId() refuses to invent a
+# tenant and is right to.
+COPY --from=builder --chown=nextjs:nodejs /app/docker/seed-org.mjs ./seed-org.mjs
 COPY --from=builder --chown=nextjs:nodejs /app/docker/entrypoint.sh ./entrypoint.sh
 # Set here rather than relied upon from git: the repository is developed on
 # Windows, which does not carry the executable bit, so an entrypoint that works
