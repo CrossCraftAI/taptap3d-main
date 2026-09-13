@@ -78,6 +78,10 @@ export function renderCatalogue(doc: CatalogueDocument): string {
     9: [3, 3],
   };
   const [columns, rows] = GRID[doc.params.perPage] ?? [2, 2];
+  // How many lines of description a slot can hold at this density. Nine-up gives
+  // a caption about a centimetre of page.
+  const DESCRIPTION_LINES: Record<number, number> = { 1: 14, 2: 9, 4: 4, 6: 3, 9: 2 };
+  const descriptionLines = DESCRIPTION_LINES[doc.params.perPage] ?? 4;
   const beside = doc.params.imagePlacement === "beside";
   // FIT PAGE sizes by height so a whole page is in the frame; FIT WIDTH sizes by
   // width and lets the page run past the fold. They are genuinely different at
@@ -161,11 +165,14 @@ export function renderCatalogue(doc: CatalogueDocument): string {
   .slot--beside { flex-direction: row; align-items: stretch; gap: 12px; }
   .slot--beside .plate { flex: 0 0 44%; }
   .slot--beside .caption { flex: 1; min-width: 0; }
-  /* Overflow is VISIBLE, deliberately. A caption too long for its slot is a
-     defect (ARCHITECTURE.md principle 4) and the deterministic gate that will
-     fail the build on it is D8; hiding it here would make that gate blind and
-     let the page print wrong instead. */
-  .caption { flex: 1; min-height: 0; overflow: visible; font-size: clamp(7px, 1.1vh, 12px); line-height: 1.45; }
+  /* CONTAINED. This was overflow:visible, on the argument that a caption too
+     long for its slot is a defect and hiding it would make the future defect
+     gate blind. Production said otherwise: a 90-character provenance note ran
+     straight down through the plate of the lot beneath it, and three overlapping
+     lots is not a more honest page than a truncated one — it is an unreadable
+     one. The long-form field is clamped with an ellipsis, which is a visible
+     mark rather than a silent cut, and the rest is contained. */
+  .caption { flex: 1; min-height: 0; overflow: hidden; font-size: clamp(7px, 1.1vh, 12px); line-height: 1.45; }
   .ref {
     margin: 0 0 3px; font-family: system-ui, sans-serif; font-weight: 600;
     font-size: .82em; letter-spacing: .1em; color: #8a8a8a;
@@ -175,11 +182,14 @@ export function renderCatalogue(doc: CatalogueDocument): string {
   .line--title .value { font-weight: 600; font-size: 1.12em; }
   .line--maker .value { color: #3a3a3a; }
   .line--price .value { font-variant-numeric: tabular-nums; letter-spacing: .01em; }
-  /* NOT CLAMPED. A three-line clamp here would look tidier and would be a
-     silent lie: the specialist would approve a page whose description prints
-     truncated. It overflows instead, visibly, which is a defect someone can see
-     and act on — by editing the field or by changing the density. */
-  .line--description .value { color: #5a5a5a; }
+  /* The description is the only long-form field and the only one clamped. The
+     line count follows the density, because how much room a caption has is a
+     function of how many lots share the page — and the ellipsis is what tells a
+     person the text continues. */
+  .line--description .value {
+    color: #5a5a5a; display: -webkit-box; -webkit-box-orient: vertical;
+    -webkit-line-clamp: ${descriptionLines}; overflow: hidden;
+  }
   .value { overflow-wrap: anywhere; }
   .folio {
     margin-top: 3%; text-align: center;

@@ -39,6 +39,10 @@ import { createHash } from "node:crypto";
 import pg from "pg";
 
 const COMMIT = process.argv.includes("--commit");
+// Recompute `fields` for lots that are already here. The inserts are additive by
+// design — a second run must not clobber an edit someone made since — so bringing
+// a CHANGE in the mapping across has to be asked for explicitly.
+const REFRESH = process.argv.includes("--refresh-fields");
 const TARGET_URL = process.env.DATABASE_URL;
 
 /**
@@ -160,9 +164,14 @@ function fieldsFor(row) {
   );
   put("price", text(row.price_display));
 
-  // The measured values, kept under their own keys. They are the house's data
-  // and dropping them because the display string exists would be a decision
-  // this script has no right to make.
+  // The measured values, kept — they are the house's data and dropping them
+  // because a display string exists is not this script's decision to make.
+  //
+  // UNDER AN UNDERSCORE, because a caption prints every field it does not
+  // recognise, and these are not caption content: the dimensions and the
+  // estimate already print in the form a person wrote them. Without the prefix
+  // every migrated lot carried a column of bare numbers beneath its description
+  // — "301", "144", "84.9" — which is what the first run actually produced.
   for (const key of [
     "height_cm",
     "width_cm",
@@ -172,7 +181,7 @@ function fieldsFor(row) {
     "price_high",
     "price_currency",
   ]) {
-    put(key, text(row[key]));
+    put(`_${key}`, text(row[key]));
   }
 
   const custom = row.custom_fields ?? {};
@@ -258,6 +267,7 @@ async function main() {
   console.log(`  source db   ${SOURCE_URL.replace(/:\/\/[^@]+@/, "://…@")}`);
   console.log(`  source bytes ${ORIGIN}`);
   console.log(`  asset root  ${ASSET_ROOT}`);
+  if (REFRESH) console.log("  --refresh-fields: existing lots will have `fields` recomputed");
   console.log("");
   await report();
   console.log("");
@@ -360,6 +370,15 @@ async function main() {
       ],
     );
     bump("lots");
+    if (REFRESH) {
+      const updated = await write(
+        `update lots set fields = $1, updated_at = now()
+         where event_id = $2 and ref = $3 and fields::text is distinct from $1::text
+         returning id`,
+        [JSON.stringify(fieldsFor(lot)), event.id, lot.ref],
+      );
+      if (updated.length > 0) bump("lots whose fields were refreshed");
+    }
     const [row] = (
       await client.query(`select id from lots where event_id = $1 and ref = $2 limit 1`, [
         event.id,

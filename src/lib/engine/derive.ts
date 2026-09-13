@@ -161,9 +161,16 @@ function captionFor(lot: EngineLot): CaptionLine[] {
   // CUSTOM FIELDS PRINT TOO, under the customer's own header. The field set is
   // theirs; a column they asked to keep and then never see again is a column we
   // silently discarded with extra steps.
+  //
+  // EXCEPT KEYS PREFIXED WITH `_`, which are carried data rather than caption
+  // content — the predecessor's separate numeric columns for height, width and
+  // estimate, kept because they are the house's own values and dropping them is
+  // not this system's decision to make. They printed, at first, as a column of
+  // bare numbers under every migrated lot: "301", "144", "84.9". The dimensions
+  // and the estimate already print, in the form a person wrote them.
   for (const [key, raw] of Object.entries(lot.fields)) {
     if (CAPTION_ORDER.includes(key as CoreFieldKey)) continue;
-    if (key === "ref" || key === "images") continue;
+    if (key === "ref" || key === "images" || key.startsWith("_")) continue;
     const value = asText(raw);
     if (!value) continue;
     lines.push({ key, label: key, value });
