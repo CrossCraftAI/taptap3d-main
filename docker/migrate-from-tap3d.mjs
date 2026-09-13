@@ -93,10 +93,22 @@ const target = new pg.Pool({ connectionString: TARGET_URL, max: 2 });
 /** Read from the predecessor. Never writes — there is no write helper here. */
 const read = async (sql, values = []) => (await source.query(sql, values)).rows;
 
-const write = async (sql, values = []) => {
-  if (!COMMIT) return [];
-  return (await target.query(sql, values)).rows;
-};
+/**
+ * EVERYTHING ON THE TARGET GOES THROUGH ONE TRANSACTION, and the dry run is that
+ * transaction rolled back.
+ *
+ * The first version skipped the writes instead, which made the dry run worthless
+ * past its first step: every later step reads back the id of the row it just
+ * inserted, so with the inserts skipped the maps stayed empty and 215 lots
+ * reported as zero. A dry run that can only see one step ahead is a dry run that
+ * lies about the other five.
+ *
+ * The real run gets the property for free, and it is the more valuable half: a
+ * migration that fails in the middle leaves nothing behind rather than half a
+ * sale nobody can tell from a whole one.
+ */
+let client;
+const write = async (sql, values = []) => (await client.query(sql, values)).rows;
 
 const exists = (path) =>
   new Promise((resolve) => access(path, constants.R_OK, (e) => resolve(!e)));
@@ -255,6 +267,9 @@ async function main() {
     return;
   }
 
+  client = await target.connect();
+  await client.query("begin");
+
   // ── orgs ← tenants ────────────────────────────────────────────────────────
   const tenants = await read(`select id, slug, name from tenants`);
   const orgBySourceId = new Map();
@@ -270,17 +285,30 @@ async function main() {
   // may be one an earlier run wrote, and its id is the one everything else must
   // point at.
   for (const tenant of tenants) {
-    const [row] = (await target.query(`select id from orgs where slug = $1`, [tenant.slug])).rows;
+    const [row] = (await client.query(`select id from orgs where slug = $1`, [tenant.slug])).rows;
     if (row) orgBySourceId.set(tenant.id, row.id);
   }
   const [fallbackOrg] = (
-    await target.query(`select id from orgs where slug = $1`, [FALLBACK_SLUG])
+    await client.query(`select id from orgs where slug = $1`, [FALLBACK_SLUG])
   ).rows;
-  if (!fallbackOrg && COMMIT) {
+  // NOT GATED ON --commit. It was, and that is exactly how the first dry run
+  // reported "nothing to migrate" against a database holding 215 lots: no
+  // fallback org meant every tenant-less project was skipped, silently, and the
+  // run still called itself complete.
+  if (!fallbackOrg && tenants.length === 0) {
+    console.error("");
     console.error(
-      `No org with slug "${FALLBACK_SLUG}" to receive projects that have no tenant. ` +
-        `Run the seed first, or set TAPTAP3D_ORG_SLUG.`,
+      `NOTHING CAN BE MIGRATED: the predecessor has no tenants, so every project ` +
+        `needs the fallback org — and no org has the slug "${FALLBACK_SLUG}".`,
     );
+    console.error(
+      `  Create one:  node /app/seed-org.mjs '<name>' ${FALLBACK_SLUG}`,
+    );
+    console.error(`  Or point at an existing org with TAPTAP3D_ORG_SLUG.`);
+    await client.query("rollback");
+    client.release();
+    await source.end();
+    await target.end();
     process.exit(1);
   }
   const orgFor = (tenantId) =>
@@ -302,7 +330,7 @@ async function main() {
     );
     bump("events");
     const [row] = (
-      await target.query(`select id from events where org_id = $1 and name = $2 limit 1`, [
+      await client.query(`select id from events where org_id = $1 and name = $2 limit 1`, [
         orgId,
         project.name,
       ])
@@ -333,7 +361,7 @@ async function main() {
     );
     bump("lots");
     const [row] = (
-      await target.query(`select id from lots where event_id = $1 and ref = $2 limit 1`, [
+      await client.query(`select id from lots where event_id = $1 and ref = $2 limit 1`, [
         event.id,
         lot.ref,
       ])
@@ -390,7 +418,7 @@ async function main() {
     );
     bump("assets");
     const [row] = (
-      await target.query(
+      await client.query(
         `select id from assets where org_id = $1 and content_hash = $2 limit 1`,
         [event.orgId, asset.hash],
       )
@@ -437,7 +465,7 @@ async function main() {
     );
     bump("catalogues");
     const [row] = (
-      await target.query(
+      await client.query(
         `select id from catalogues where event_id = $1 and name = $2 limit 1`,
         [event.id, name],
       )
@@ -575,10 +603,14 @@ async function main() {
     console.log(`  ${String(value).padStart(6)}  ${key}`);
   }
   console.log("");
+  await client.query(COMMIT ? "commit" : "rollback");
+  client.release();
+
   console.log(
     COMMIT
-      ? "migrate-from-tap3d: done. Nothing in tap3d was written to or deleted."
-      : "migrate-from-tap3d: dry run complete. Re-run with --commit to write.",
+      ? "migrate-from-tap3d: committed. Nothing in tap3d was written to or deleted."
+      : "migrate-from-tap3d: dry run complete, transaction rolled back. " +
+        "Re-run with --commit to write.",
   );
 
   await source.end();
@@ -587,6 +619,13 @@ async function main() {
 
 main().catch(async (error) => {
   console.error("migrate-from-tap3d: FAILED —", error?.message ?? error);
+  // Roll back rather than leave half a sale in the database. Blobs already
+  // written to the volume stay — they are content-addressed, inert without a
+  // row pointing at them, and re-used rather than re-fetched on the next run.
+  if (client) {
+    await client.query("rollback").catch(() => {});
+    client.release();
+  }
   await source.end().catch(() => {});
   await target.end().catch(() => {});
   process.exit(1);
