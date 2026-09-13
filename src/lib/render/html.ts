@@ -78,10 +78,22 @@ export function renderCatalogue(doc: CatalogueDocument): string {
     9: [3, 3],
   };
   const [columns, rows] = GRID[doc.params.perPage] ?? [2, 2];
-  // How many lines of description a slot can hold at this density. Nine-up gives
-  // a caption about a centimetre of page.
-  const DESCRIPTION_LINES: Record<number, number> = { 1: 14, 2: 9, 4: 4, 6: 3, 9: 2 };
-  const descriptionLines = DESCRIPTION_LINES[doc.params.perPage] ?? 4;
+  // How many lines of description a slot can hold at this density.
+  //
+  // DELIBERATELY CONSERVATIVE. The clamp cuts at a line boundary; the caption box
+  // around it cuts wherever it happens to end — so a count larger than the box
+  // can hold produces a sliver of half-height glyphs along the bottom edge,
+  // which is what production showed at two-up. Under-filling costs a line of
+  // description; over-filling costs the page's credibility.
+  //
+  // Provisional numbers, and knowingly so: the honest version measures the
+  // painted boxes from the parent, which is the editor overlay's job and lands
+  // with it.
+  const DESCRIPTION_LINES: Record<number, number> = { 1: 10, 2: 5, 4: 3, 6: 2, 9: 1 };
+  const descriptionLines = DESCRIPTION_LINES[doc.params.perPage] ?? 3;
+  // The description's lines plus the ref, title, maker, date, material,
+  // dimensions and price that can precede it.
+  const captionLines = descriptionLines + 7;
   const beside = doc.params.imagePlacement === "beside";
   // FIT PAGE sizes by height so a whole page is in the frame; FIT WIDTH sizes by
   // width and lets the page run past the fold. They are genuinely different at
@@ -172,7 +184,13 @@ export function renderCatalogue(doc: CatalogueDocument): string {
      lots is not a more honest page than a truncated one — it is an unreadable
      one. The long-form field is clamped with an ellipsis, which is a visible
      mark rather than a silent cut, and the rest is contained. */
-  .caption { flex: 1; min-height: 0; overflow: hidden; font-size: clamp(7px, 1.1vh, 12px); line-height: 1.45; }
+  .caption {
+    flex: 1; min-height: 0; overflow: hidden;
+    font-size: clamp(7px, 1.1vh, 12px); line-height: 1.45;
+    /* A whole number of line boxes, so the container's own clip lands between
+       lines instead of through one. */
+    max-height: calc(1.45em * ${captionLines});
+  }
   .ref {
     margin: 0 0 3px; font-family: system-ui, sans-serif; font-weight: 600;
     font-size: .82em; letter-spacing: .1em; color: #8a8a8a;
