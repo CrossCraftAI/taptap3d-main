@@ -26,6 +26,10 @@ export default defineConfig({
       // these tests are measuring.
       GATE_PASSWORD: "",
       TAPTAP3D_ASSET_ROOT: ".data/assets",
+      // The export needs a browser. The image ships one; here we lend it the
+      // browser Playwright already installed, so the PDF path is exercised
+      // locally instead of only in production.
+      PUPPETEER_EXECUTABLE_PATH: process.env.PUPPETEER_EXECUTABLE_PATH ?? "",
     },
   },
   use: {
@@ -38,6 +42,14 @@ export default defineConfig({
   },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
   reporter: [["list"]],
+  // ONE WORKER, because these tests drive the real application against one
+  // database and one asset store — deliberately, since that is what makes them
+  // worth more than the unit suite. Two workers therefore share mutable state:
+  // the photographs spec counts how many photographs exist before and after its
+  // own upload, and the PDF spec uploads a plate of its own halfway through
+  // that count. Both passed alone and failed together, which is the most
+  // expensive kind of flake to diagnose and the cheapest to prevent.
+  workers: 1,
   // A flake retried into green is a flake shipped. One attempt.
   retries: 0,
   timeout: 60_000,

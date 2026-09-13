@@ -56,6 +56,16 @@ export default async function CataloguePage({
               Catalogue
             </h1>
           </div>
+          <div className="flex items-center gap-4">
+            <a
+              href={`/events/${event.id}/catalogue/pdf`}
+              className="bg-seal px-3 py-1.5 text-[13px] font-medium text-white hover:bg-[#8d241f]"
+            >
+              Download PDF
+            </a>
+          </div>
+        </div>
+        <div className="mt-2 flex flex-wrap items-baseline justify-between gap-2">
           <p className="text-[12px] text-muted" data-numeric>
             {document.pages.length} pages · {document.lotCount} lots
             {document.unphotographed > 0 && (
@@ -64,6 +74,10 @@ export default async function CataloguePage({
                 · {document.unphotographed} without a photograph
               </span>
             )}
+          </p>
+          <p className="text-[12px] text-faint">
+            The PDF is this same document, printed. It takes a moment on a long
+            sale.
           </p>
         </div>
       </header>

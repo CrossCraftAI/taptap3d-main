@@ -23,6 +23,24 @@
 
 import type { CatalogueDocument, DocSlot } from "@/lib/engine/derive";
 
+/**
+ * How a plate's content hash becomes something the document can load.
+ *
+ * THE ONE THING THE PREVIEW AND THE PDF DISAGREE ABOUT, and it is a leaf rather
+ * than a branch. The preview points at `/api/assets/<hash>`, which is
+ * same-origin and org-scoped by the route that serves it. The PDF has no origin
+ * and no session — it is painted by a headless browser from a string — so it
+ * carries its plates inline as `data:` URIs, which the document's own policy
+ * already permits.
+ *
+ * Keeping the difference here is what "one renderer behind every output" means
+ * in practice: two consumers resolve an asset reference differently and paint
+ * identically.
+ */
+export type AssetResolver = (contentHash: string) => string;
+
+const byRoute: AssetResolver = (hash) => `/api/assets/${hash}`;
+
 /** Escape for text and attribute positions alike. */
 function escapeHtml(value: string): string {
   return value
@@ -36,11 +54,11 @@ function escapeHtml(value: string): string {
 export const PREVIEW_CSP =
   "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'";
 
-function plate(slot: DocSlot): string {
+function plate(slot: DocSlot, asset: AssetResolver): string {
   if (!slot.image) {
     return '<div class="plate plate--empty"><span>no photograph</span></div>';
   }
-  return `<div class="plate"><img src="/api/assets/${escapeHtml(slot.image)}" alt=""></div>`;
+  return `<div class="plate"><img src="${escapeHtml(asset(slot.image))}" alt=""></div>`;
 }
 
 function caption(slot: DocSlot): string {
@@ -66,7 +84,11 @@ function caption(slot: DocSlot): string {
  * depends on a second request is a print deliverable that sometimes arrives
  * unstyled.
  */
-export function renderCatalogue(doc: CatalogueDocument): string {
+export function renderCatalogue(
+  doc: CatalogueDocument,
+  options: { asset?: AssetResolver } = {},
+): string {
+  const asset = options.asset ?? byRoute;
   // A real catalogue grid, not a flow. Rows AND columns are declared so every
   // slot on a page is the same box — two plates that differ in height by the
   // length of the caption under them is the thing a specialist notices first.
@@ -113,7 +135,7 @@ export function renderCatalogue(doc: CatalogueDocument): string {
           .map(
             (slot) =>
               `<article class="slot${beside ? " slot--beside" : ""}">` +
-              plate(slot) +
+              plate(slot, asset) +
               caption(slot) +
               `</article>`,
           )
@@ -141,7 +163,19 @@ export function renderCatalogue(doc: CatalogueDocument): string {
   * { box-sizing: border-box; }
   body {
     margin: 0; padding: 16px; background: #f6f6f6;
-    font-family: "Noto Serif TC", "Songti TC", Georgia, "Times New Roman", serif;
+    /* HK BEFORE TC, AND THAT IS A DOMAIN DECISION RATHER THAN A PREFERENCE.
+       Noto Serif CJK ships separate HK and TC faces because Hong Kong and
+       Taiwan standardise different glyph forms for the same characters, and the
+       first customers are Hong Kong houses printing Hong Kong catalogues. Both
+       are in the image; naming HK first is the difference between a catalogue
+       that looks locally typeset and one that looks imported.
+
+       The container's faces come first, then a specialist's own machine, then
+       Latin. "Noto Sans CJK HK" is the last CJK rung on purpose: a sans
+       catalogue is a compromise, and tofu is a reprint. */
+    font-family: "Noto Serif CJK HK", "Noto Serif CJK TC", "Noto Serif TC",
+      "Source Han Serif TC", "Songti TC", "Noto Sans CJK HK", Georgia,
+      "Times New Roman", serif;
     color: #1b1b1b;
   }
   /* SIZED BY HEIGHT, so a WHOLE PAGE is in the frame. A preview scaled to the
@@ -226,8 +260,17 @@ export function renderCatalogue(doc: CatalogueDocument): string {
     font: 9px/1 system-ui, sans-serif; color: #a8a8a8; letter-spacing: .12em;
   }
   @media print {
+    /* MARGIN ZERO, and the page's own 5% padding is the margin. Without this the
+       browser adds its default half-inch outside a box that is already exactly
+       A4, and every page overflows onto a second, blank one — eleven pages
+       become twenty-two. */
+    @page { size: A4; margin: 0; }
     body { background: #fff; padding: 0; }
-    .page { box-shadow: none; margin: 0; height: 297mm; width: 210mm; max-width: none; break-after: page; }
+    .page {
+      box-shadow: none; margin: 0; break-after: page;
+      height: 297mm; width: 210mm; max-width: none;
+    }
+    .page:last-child { break-after: auto; }
   }
 </style>
 </head>

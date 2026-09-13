@@ -60,8 +60,13 @@ primary_region = "sin"
     path = "/api/health"
 
 [[vm]]
-  size = "shared-cpu-1x"
-  memory = "1gb"
+  size = "shared-cpu-2x"
+  # 2GB BECAUSE OF THE PDF, and for no other reason. Every other path here is
+  # comfortable in 512MB; the export drives a real Chromium over a catalogue
+  # carrying tens of megabytes of photography, all of it inline in one document.
+  # The predecessor set exactly this number for exactly this reason, and an OOM
+  # there kills the single most important output of the product.
+  memory = "2gb"
 
 [mounts]
   source = "taptap3d_data"

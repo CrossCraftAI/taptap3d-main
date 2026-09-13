@@ -44,7 +44,28 @@ ENV HOSTNAME=::
 # `-G nodejs` matters and was missing: without it the user's primary group is
 # `nogroup`, so a chown to nextjs:nodejs leaves the process outside the group it
 # was given.
-RUN apk add --no-cache su-exec  && addgroup -g 1001 -S nodejs  && adduser -S nextjs -u 1001 -G nodejs
+# ── CHROMIUM AND THE FONTS, and the fonts are the part that matters ─────────
+#
+# This image carried neither, on the argument that they arrive "with the
+# renderer, in the commit that needs them". This is that commit: the print PDF
+# is the deliverable an auction house actually buys, and a browser is how one
+# document becomes both the preview and the printed page.
+#
+# THE FONTS ARE NOT OPTIONAL AND THEIR ABSENCE IS SILENT. A specialist's preview
+# reads correctly because their own machine has a Chinese serif; a server has
+# none, and the result is not an error but a PDF full of tofu boxes, produced
+# successfully, discovered at the printer's. font-noto-cjk-extra is what carries
+# the SERIF faces — font-noto-cjk alone is sans, which would quietly reset the
+# typography of every catalogue this thing prints.
+#
+# `--no-sandbox` in the launch flags needs no SUID helper, so nothing else here
+# is required for Chromium to start.
+RUN apk add --no-cache       su-exec       chromium       nss freetype freetype-dev harfbuzz ca-certificates       font-noto font-noto-cjk font-noto-cjk-extra fontconfig  && fc-cache -f  && addgroup -g 1001 -S nodejs  && adduser -S nextjs -u 1001 -G nodejs
+
+# Named rather than discovered, so a missing browser fails where it is
+# configured instead of three layers up inside a library.
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
+ENV PUPPETEER_SKIP_DOWNLOAD=true
 
 # `output: "standalone"` in next.config.ts traces exactly the dependencies the
 # server imports, so node_modules is not copied wholesale.
