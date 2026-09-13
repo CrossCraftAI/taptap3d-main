@@ -30,6 +30,14 @@ primary_region = "sin"
   # under objects/, so a redeploy cannot disturb them and two orgs holding the
   # same plate hold one blob.
   TAPTAP3D_ASSET_ROOT = "/data/assets"
+  # THE DEPLOYMENT IS PINNED TO ONE TENANT, explicitly.
+  #
+  # `currentOrgId()` refuses to guess when more than one org exists, which is
+  # correct and is why it must never be left to chance on a deployed app: the
+  # day a second org appears — the migration creating one per predecessor tenant
+  # would have done it — every page would start refusing instead of one screen
+  # saying so. Naming the tenant here is what that function was built to accept.
+  TAPTAP3D_ORG_SLUG = "demo"
 
 [http_service]
   internal_port = 3000
