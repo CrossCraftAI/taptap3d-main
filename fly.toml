@@ -1,7 +1,22 @@
-# NOT PROVISIONED YET. This file, the Dockerfile and the deploy job exist so the
-# pipeline is ready; the app and its database are created when there is something
-# worth deploying (ROADMAP M1). Until then the deploy job skips itself, because
-# FLY_API_TOKEN is unset.
+# PROVISIONED. https://taptap3d.fly.dev, deployed from `main` on green by the
+# deploy job in .github/workflows/ci.yml, which holds a Fly deploy token scoped
+# to this app alone (repository secret FLY_API_TOKEN).
+#
+# This app REPLACED the predecessor's deployment. `tap3d` still exists in the
+# same organisation, but its public addresses have been released, so nothing
+# routes to it; its machine, its 3GB `tap3d_data` volume and its database are
+# untouched, because the specialist's UAT edits live on that volume and the
+# predecessor is meant to stay readable (README, "Relationship to tap3d").
+# Retiring it for good is `fly apps destroy tap3d`, and that is deliberately not
+# automated.
+#
+# THE DATABASE IS THE PREDECESSOR'S CLUSTER, NOT A NEW ONE. Managed Postgres
+# `tap3d-db` (dzx6qo65m8p0jpv5, sin) already existed and sat idle at ~10GB; this
+# app was given its own database and role on it (`taptap3d`/`taptap3d`) rather
+# than a second cluster, which would have doubled the standing bill for a
+# pre-revenue demo. The two databases share a server and nothing else. Splitting
+# them is `fly mpg create` plus a new DATABASE_URL, and nothing in the app
+# assumes co-tenancy.
 
 app = "taptap3d"
 primary_region = "sin"
