@@ -185,11 +185,23 @@ export function renderCatalogue(doc: CatalogueDocument): string {
      one. The long-form field is clamped with an ellipsis, which is a visible
      mark rather than a silent cut, and the rest is contained. */
   .caption {
-    flex: 1; min-height: 0; overflow: hidden;
+    flex: 1; min-height: 0; overflow: hidden; position: relative;
     font-size: clamp(7px, 1.1vh, 12px); line-height: 1.45;
-    /* A whole number of line boxes, so the container's own clip lands between
-       lines instead of through one. */
     max-height: calc(1.45em * ${captionLines});
+  }
+  /* THE CUT IS A FADE, NOT A GUILLOTINE.
+     How many lines precede the description varies per lot — a work with no maker
+     and no date has two more lines of room than the one beside it — so no fixed
+     clamp fits every slot, and where it does not the box clips through the
+     middle of a glyph. Measuring the painted boxes is the honest answer and it
+     belongs to the editor overlay, which reads the preview from the parent.
+     Until then this: the last line fades into the page, which reads as "there is
+     more" instead of as a rendering fault. On a caption that does not fill its
+     box the gradient lies over blank paper and is invisible. */
+  .caption::after {
+    content: ""; position: absolute; left: 0; right: 0; bottom: 0;
+    height: 1.5em; pointer-events: none;
+    background: linear-gradient(to bottom, rgba(255,255,255,0) 0%, #fff 85%);
   }
   .ref {
     margin: 0 0 3px; font-family: system-ui, sans-serif; font-weight: 600;
