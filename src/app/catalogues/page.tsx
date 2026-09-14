@@ -4,11 +4,12 @@ import { EventChooser } from "@/components/event-chooser";
 import { PageHeader } from "@/components/page-header";
 import { listEvents } from "@/lib/data/events";
 import { currentOrgOrNull } from "@/lib/data/org";
+import { workflowOf } from "@/lib/data/workflow";
 
 export const dynamic = "force-dynamic";
 
 /**
- * Compose → Catalogue. The flagship, given a front door.
+ * Catalogues. The flagship, given a front door.
  *
  * A catalogue is a CHILD of an event rather than the event itself (DFD.md §3),
  * which is what makes one catalogue spanning two sessions, a re-issue, or an
@@ -20,7 +21,10 @@ export const dynamic = "force-dynamic";
  */
 export default async function CataloguesPage(): Promise<React.ReactElement> {
   const org = await currentOrgOrNull();
-  const events = org ? await listEvents(org.id) : null;
+  const [events, workflow] = await Promise.all([
+    org ? listEvents(org.id) : null,
+    workflowOf(org?.id ?? null),
+  ]);
 
   return (
     <div className="px-8 py-8">
@@ -45,6 +49,7 @@ export default async function CataloguesPage(): Promise<React.ReactElement> {
 
       <EventChooser
         events={events}
+        workflow={workflow}
         action={(event) => (
           <Link
             href={`/events/${event.id}/catalogue`}

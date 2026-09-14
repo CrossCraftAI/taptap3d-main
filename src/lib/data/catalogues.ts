@@ -84,6 +84,28 @@ export async function touchCatalogue(
     .where(and(eq(catalogues.orgId, orgId), eq(catalogues.id, catalogueId)));
 }
 
+/**
+ * Record that the catalogue's PDF was taken.
+ *
+ * Called by the print route on a successful render and by nothing else. It is
+ * the fact the workflow reads as "exported" (src/lib/workflow.ts), and the
+ * only fact about a sale that nothing else in the schema already implied.
+ *
+ * It does NOT touch `updated_at`. That column keys the preview frame and the
+ * pin panel, and an export changes nothing about the document — bumping it
+ * would reload a preview nobody changed.
+ */
+export async function markExported(
+  orgId: string,
+  catalogueId: string,
+): Promise<void> {
+  const db = getDb();
+  await db
+    .update(catalogues)
+    .set({ exportedAt: new Date() })
+    .where(and(eq(catalogues.orgId, orgId), eq(catalogues.id, catalogueId)));
+}
+
 // ── Pins ────────────────────────────────────────────────────────────────────
 
 /** A pin as stored: the engine's shape plus the id a person needs to remove it. */

@@ -1,19 +1,22 @@
-import type { EventSummary } from "@/lib/data/events";
+import { StageCell } from "@/components/stage";
+import { factsOf, type EventSummary } from "@/lib/data/events";
+import { readStage, type Workflow } from "@/lib/workflow";
 
 /**
- * "Which one?" — the question every function-first place has to ask first.
+ * "Which one?" — the question every place that acts on a sale has to ask first.
  *
- * The rail holds places, not actions. A global *Import* or *PDF export* cannot
+ * The rail holds places, not actions. A global *Catalogues* or *Exports* cannot
  * know which sale a specialist means, and picking one for them is exactly the
  * hoisting that keeps an event's own buttons on the event's own header. So each
  * of those places opens on the ledger and hands off to the event's screen, where
  * the action has always lived.
  *
- * ONE COMPONENT RATHER THAN THREE TABLES. The columns are the operator's
- * progress indicators — lots in, lots photographed — and three copies of them
- * would drift apart the first time one screen learned something the others did
- * not. The landing keeps its own table because it carries quick-add inside it,
- * which is a different shape and the one place an event is created.
+ * ONE COMPONENT RATHER THAN TWO TABLES. The columns are the operator's progress
+ * indicators — lots in, lots photographed, and where the sale is — and copies
+ * of them would drift apart the first time one screen learned something the
+ * others did not. The landing keeps its own table because it carries quick-add
+ * inside it and the stage's own next action, which is a different shape and the
+ * one place an event is created.
  */
 
 function formatDate(value: Date | null): string {
@@ -31,11 +34,14 @@ function formatDate(value: Date | null): string {
 
 export function EventChooser({
   events,
+  workflow,
   action,
   nothing,
 }: {
   /** Null when no organisation resolved — the chrome renders and says why. */
   events: EventSummary[] | null;
+  /** The house's workflow, which the Progress column reads. */
+  workflow: Workflow;
   /** What this place does to the event. The only link in the row. */
   action: (event: EventSummary) => React.ReactNode;
   /** What to say to an org that has no events at all. */
@@ -62,6 +68,7 @@ export function EventChooser({
             <th className="w-32 px-4 py-2 text-right font-medium">
               Photographed
             </th>
+            <th className="w-52 px-4 py-2 font-medium">Progress</th>
             <th className="w-40 px-4 py-2 text-right font-medium">
               <span className="sr-only">Action</span>
             </th>
@@ -101,6 +108,11 @@ export function EventChooser({
                     <span className="text-faint"> / {event.lotCount}</span>
                   </span>
                 )}
+              </td>
+              <td className="px-4 py-2.5">
+                <StageCell
+                  reading={readStage(workflow, factsOf(event), event.stageOverride)}
+                />
               </td>
               <td className="px-4 py-2.5 text-right">{action(event)}</td>
             </tr>

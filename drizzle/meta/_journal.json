@@ -15,6 +15,13 @@
       "when": 1789284229070,
       "tag": "0001_tiresome_jetstream",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1789370263138,
+      "tag": "0002_funny_doctor_doom",
+      "breakpoints": true
     }
   ]
 }

@@ -9,7 +9,14 @@ import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { assets, getDb, getPool, lotAssets, orgs } from "@/db";
-import { createEvent, getEvent, listEvents } from "@/lib/data/events";
+import { ensureCatalogue, markExported } from "@/lib/data/catalogues";
+import {
+  createEvent,
+  getEvent,
+  getEventSummary,
+  listEvents,
+  setStageOverride,
+} from "@/lib/data/events";
 import { currentOrgId, NoOrgError } from "@/lib/data/org";
 import { insertLots, listLots } from "@/lib/data/lots";
 import { applyMapping } from "@/lib/import/apply";
@@ -93,6 +100,64 @@ describe("events", () => {
     // And a number, not a string — node-postgres returns bigint counts as text,
     // which is how a count becomes "3" and a sum becomes "33".
     expect(typeof counted?.lotCount).toBe("number");
+  });
+
+  it("counts catalogues and exports — the facts the stage is read from", async () => {
+    // Same reason as the lot counts: a correlated subquery that quietly returns
+    // zero would read every sale as New forever, and nothing would error.
+    const event = await createEvent(orgA, { name: "Staged Sale" });
+    const summaryOf = async () =>
+      (await listEvents(orgA)).find((e) => e.id === event.id)!;
+
+    expect(await summaryOf()).toMatchObject({
+      catalogueCount: 0,
+      exportedCount: 0,
+      stageOverride: null,
+    });
+
+    // Opening the catalogue is the fact; taking the PDF is the next one.
+    const catalogue = await ensureCatalogue(orgA, event.id);
+    expect(await summaryOf()).toMatchObject({ catalogueCount: 1, exportedCount: 0 });
+
+    await markExported(orgA, catalogue.id);
+    const exported = await summaryOf();
+    expect(exported).toMatchObject({ catalogueCount: 1, exportedCount: 1 });
+    expect(typeof exported.exportedCount).toBe("number");
+
+    // ONE SHAPE. The event page reads the same row through getEventSummary,
+    // and the ledger and the event page must not disagree about one sale.
+    expect(await getEventSummary(orgA, event.id)).toEqual(exported);
+  });
+
+  it("records an export only for the org that owns the catalogue", async () => {
+    const event = await createEvent(orgA, { name: "Guarded Sale" });
+    const catalogue = await ensureCatalogue(orgA, event.id);
+    await markExported(orgB, catalogue.id);
+    const summary = await getEventSummary(orgA, event.id);
+    expect(summary?.exportedCount).toBe(0);
+  });
+
+  it("lets a person set the stage, remembers it, and lets them take it back", async () => {
+    const event = await createEvent(orgA, { name: "Pinned Sale" });
+
+    // Another org cannot set it by guessing the id — both conditions, always.
+    expect(await setStageOverride(orgB, event.id, "catalogued")).toBe(false);
+    expect((await getEventSummary(orgA, event.id))?.stageOverride).toBeNull();
+
+    expect(await setStageOverride(orgA, event.id, "catalogued")).toBe(true);
+    expect((await getEventSummary(orgA, event.id))?.stageOverride).toBe("catalogued");
+    // The ledger carries it too, so the row and the page say the same thing.
+    expect((await listEvents(orgA)).find((e) => e.id === event.id)?.stageOverride).toBe(
+      "catalogued",
+    );
+
+    // Reversible (principle 9): null is "as the data says", and it is a real
+    // write, not a no-op that leaves the old answer standing.
+    expect(await setStageOverride(orgA, event.id, null)).toBe(true);
+    expect((await getEventSummary(orgA, event.id))?.stageOverride).toBeNull();
+
+    // And the summary of another org's event is not this org's to read.
+    expect(await getEventSummary(orgB, event.id)).toBeNull();
   });
 });
 

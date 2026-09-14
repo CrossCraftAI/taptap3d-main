@@ -1,8 +1,11 @@
 import Link from "next/link";
 
 import { createEventAction } from "@/app/actions";
-import { listEvents } from "@/lib/data/events";
+import { NextAction, StageCell } from "@/components/stage";
+import { factsOf, listEvents } from "@/lib/data/events";
 import { currentOrgOrNull } from "@/lib/data/org";
+import { workflowOf } from "@/lib/data/workflow";
+import { readStage } from "@/lib/workflow";
 
 export const dynamic = "force-dynamic";
 
@@ -16,6 +19,23 @@ function formatDate(value: Date | null): string {
   }).format(value);
 }
 
+/**
+ * The ledger.
+ *
+ * ── PROGRESS IS A COLUMN, NOT A BAR ─────────────────────────────────────────
+ *
+ * Where a sale is in production and what to do about it next are two more
+ * columns of this table, beside the lot and photograph counts they are read
+ * from. A progress bar across the top of the editor was considered and
+ * rejected: it would cost every screen vertical space to say something about
+ * one sale, and the person who needs the answer is here, comparing sixty. The
+ * stage and the button come from the workflow (src/lib/workflow.ts) and this
+ * page knows none of its names.
+ *
+ * The column REPORTS. Nothing in a row is disabled or hidden because of it —
+ * the sale that comes back round after the export reads as a sale with work
+ * outstanding, which is what it is (DFD.md §1: a cycle, not a pipeline).
+ */
 export default async function EventsPage(): Promise<React.ReactElement> {
   const org = await currentOrgOrNull();
 
@@ -34,7 +54,10 @@ export default async function EventsPage(): Promise<React.ReactElement> {
     );
   }
 
-  const events = await listEvents(org.id);
+  const [events, workflow] = await Promise.all([
+    listEvents(org.id),
+    workflowOf(org.id),
+  ]);
 
   return (
     <div className="px-8 py-8">
@@ -53,10 +76,12 @@ export default async function EventsPage(): Promise<React.ReactElement> {
             <tr className="border-b border-rule text-left text-[11px] tracking-wide text-muted">
               <th className="px-4 py-2 font-medium">Event</th>
               <th className="w-32 px-4 py-2 font-medium">Date</th>
-              <th className="w-24 px-4 py-2 text-right font-medium">Lots</th>
+              <th className="w-20 px-4 py-2 text-right font-medium">Lots</th>
               <th className="w-32 px-4 py-2 text-right font-medium">
                 Photographed
               </th>
+              <th className="w-52 px-4 py-2 font-medium">Progress</th>
+              <th className="w-40 px-4 py-2 text-right font-medium">Next</th>
             </tr>
           </thead>
 
@@ -68,7 +93,7 @@ export default async function EventsPage(): Promise<React.ReactElement> {
                 from "I have a new sale" to "I am importing its lots" is one
                 keystroke and one click, which is the demo's opening move. */}
             <tr className="border-b border-rule bg-field/60">
-              <td className="px-4 py-2" colSpan={4}>
+              <td className="px-4 py-2" colSpan={6}>
                 <form
                   action={createEventAction}
                   className="flex flex-wrap items-center gap-2"
@@ -96,47 +121,56 @@ export default async function EventsPage(): Promise<React.ReactElement> {
               </td>
             </tr>
 
-            {events.map((event) => (
-              <tr
-                key={event.id}
-                className="border-b border-rule last:border-b-0 hover:bg-field"
-              >
-                <td className="px-4 py-2.5">
-                  <Link
-                    href={`/events/${event.id}`}
-                    className="font-medium hover:text-seal hover:underline"
-                  >
-                    {event.name}
-                  </Link>
-                </td>
-                <td className="px-4 py-2.5 text-muted">
-                  {formatDate(event.heldOn)}
-                </td>
-                <td className="px-4 py-2.5 text-right" data-numeric>
-                  {event.lotCount === 0 ? (
-                    <span className="text-faint">—</span>
-                  ) : (
-                    event.lotCount
-                  )}
-                </td>
-                <td className="px-4 py-2.5 text-right" data-numeric>
-                  {event.lotCount === 0 ? (
-                    <span className="text-faint">—</span>
-                  ) : (
-                    <span
-                      className={
-                        event.photographedCount === event.lotCount
-                          ? "text-ink"
-                          : "text-muted"
-                      }
+            {events.map((event) => {
+              const reading = readStage(workflow, factsOf(event), event.stageOverride);
+              return (
+                <tr
+                  key={event.id}
+                  className="border-b border-rule last:border-b-0 hover:bg-field"
+                >
+                  <td className="max-w-0 truncate px-4 py-2.5">
+                    <Link
+                      href={`/events/${event.id}`}
+                      className="font-medium hover:text-seal hover:underline"
                     >
-                      {event.photographedCount}
-                      <span className="text-faint"> / {event.lotCount}</span>
-                    </span>
-                  )}
-                </td>
-              </tr>
-            ))}
+                      {event.name}
+                    </Link>
+                  </td>
+                  <td className="px-4 py-2.5 text-muted">
+                    {formatDate(event.heldOn)}
+                  </td>
+                  <td className="px-4 py-2.5 text-right" data-numeric>
+                    {event.lotCount === 0 ? (
+                      <span className="text-faint">—</span>
+                    ) : (
+                      event.lotCount
+                    )}
+                  </td>
+                  <td className="px-4 py-2.5 text-right" data-numeric>
+                    {event.lotCount === 0 ? (
+                      <span className="text-faint">—</span>
+                    ) : (
+                      <span
+                        className={
+                          event.photographedCount === event.lotCount
+                            ? "text-ink"
+                            : "text-muted"
+                        }
+                      >
+                        {event.photographedCount}
+                        <span className="text-faint"> / {event.lotCount}</span>
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-4 py-2.5">
+                    <StageCell reading={reading} />
+                  </td>
+                  <td className="px-4 py-2 text-right">
+                    <NextAction reading={reading} eventId={event.id} />
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
 

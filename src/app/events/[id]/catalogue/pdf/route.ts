@@ -8,7 +8,7 @@
 import { notFound } from "next/navigation";
 
 import { getAssetStore } from "@/lib/assets/store";
-import { ensureCatalogue, listPins } from "@/lib/data/catalogues";
+import { ensureCatalogue, listPins, markExported } from "@/lib/data/catalogues";
 import { getEvent } from "@/lib/data/events";
 import { listLotsWithImages } from "@/lib/data/lots";
 import { currentOrgId } from "@/lib/data/org";
@@ -109,6 +109,15 @@ export async function GET(
 
   try {
     const { bytes, rendersCjk, fonts } = await renderPdf(html);
+
+    // THE EXPORT IS A FACT ABOUT THE SALE, and this is the moment it becomes
+    // true. The workflow (src/lib/workflow.ts) reads it as the last stage of
+    // catalogue production, so the ledger can say which sales have left the
+    // building. Recorded only on success: a 503 with no browser is not an
+    // export, and neither is a render that threw. A GET with a side effect,
+    // knowingly — it records that something happened, the way a download
+    // counter does, and changes nothing about the document.
+    await markExported(orgId, catalogue.id);
 
     // The template is in the name, because a house that prints the price list
     // and the catalogue of one sale should not have two files called the same

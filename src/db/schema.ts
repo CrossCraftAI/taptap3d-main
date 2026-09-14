@@ -95,6 +95,23 @@ export const events = pgTable(
     // When the sale/show happens, if it is known. Nullable because a catalogue
     // is often in production long before a date is fixed.
     heldOn: timestamp("held_on", { withTimezone: true }),
+    // WHERE THE SALE IS, AS A PERSON SAID IT — or null, which is the usual
+    // value and means "as the data says". The stage is DERIVED from facts the
+    // system already counts (src/lib/workflow.ts): lots, photographs, a
+    // catalogue, an export. This column is the exception that wins over the
+    // derivation and is remembered (ARCHITECTURE.md principle 3, "derived by
+    // default, pinned by exception"; principle 9, "a default, not a lock").
+    //
+    // A stage ID as text, not an enum and not an index: the built-in workflow
+    // is one of what will be several, and a house-authored one names its own
+    // stages. An id the current workflow does not have is not an error — the
+    // reading falls back to the derived stage — so nothing has to be migrated
+    // when a workflow changes under a stored answer.
+    //
+    // Rejected: a `status` column the application writes as work happens. That
+    // is a second source of truth for facts the tables already hold, and it
+    // drifts the first time a lot is deleted or a photograph detached.
+    stageOverride: text("stage_override"),
   },
   (t) => [index("events_org").on(t.orgId)],
 );
@@ -194,6 +211,18 @@ export const catalogues = pgTable(
     // engine that reads them does not exist yet, and inventing its columns now
     // would be inventing its design.
     params: jsonb("params").$type<Record<string, unknown>>().default({}).notNull(),
+    // WHEN THE PDF WAS LAST TAKEN. Null until it has been. Written by the print
+    // route on a successful render and nowhere else — it records that a thing
+    // happened, the way a download counter does; it says nothing about the
+    // document, which is why it does not bump `updated_at` (that key reloads
+    // the preview and remounts the pin panel, and an export changes neither).
+    //
+    // It exists because the workflow (src/lib/workflow.ts) reads "an export
+    // taken" as a fact about the sale, and before this column nothing in the
+    // system knew whether a catalogue had ever left the building. DFD.md §2:
+    // a fact gets a column the day someone performs the work here — and the
+    // PDF route is that work being performed.
+    exportedAt: timestamp("exported_at", { withTimezone: true }),
   },
   (t) => [index("catalogues_event").on(t.eventId)],
 );

@@ -143,8 +143,16 @@ test("the preview frame is inert by policy, not by sandbox", async ({ page }) =>
   const firstEvent = page.locator("tbody tr a").first();
   await expect(firstEvent).toBeVisible();
   await firstEvent.click();
-  // The event's own header, not the rail's place of the same name.
-  await page.locator("main").getByRole("link", { name: "Catalogue" }).click();
+  // WAIT FOR THE EVENT before looking for its buttons. The ledger now carries a
+  // stage-driven "Open catalogue" on every row, so a substring match for
+  // "Catalogue" resolved against nineteen of them on the page we were leaving —
+  // the locator was evaluated before the navigation landed. Exact, because
+  // "Open catalogue" is a different button on the same header.
+  await page.waitForURL(/\/events\/[0-9a-f-]+$/);
+  await page
+    .locator("main")
+    .getByRole("link", { name: "Catalogue", exact: true })
+    .click();
 
   const iframe = page.locator('iframe[title="Catalogue preview"]');
   await expect(iframe).toBeVisible();
