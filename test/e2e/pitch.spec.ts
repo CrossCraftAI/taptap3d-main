@@ -85,7 +85,11 @@ test("the pitch, end to end", async ({ page }) => {
   await page.screenshot({ path: shot("05-lots"), fullPage: true });
 
   // ── 6. The template generates a layout ──────────────────────────────────
-  await page.getByRole("link", { name: "Catalogue" }).click();
+  // SCOPED TO THE CONTENT COLUMN. The rail holds a place called Catalogue as
+  // well — Compose, in the function-first navigation — and this step is about
+  // the action on THIS event's header, not about the global list. Saying which
+  // one it means is the fix; `.first()` would have depended on document order.
+  await page.locator("main").getByRole("link", { name: "Catalogue" }).click();
   await expect(page.getByRole("heading", { name: "Catalogue" })).toBeVisible();
 
   const frame = page.frameLocator('iframe[title="Catalogue preview"]');
@@ -139,7 +143,8 @@ test("the preview frame is inert by policy, not by sandbox", async ({ page }) =>
   const firstEvent = page.locator("tbody tr a").first();
   await expect(firstEvent).toBeVisible();
   await firstEvent.click();
-  await page.getByRole("link", { name: "Catalogue" }).click();
+  // The event's own header, not the rail's place of the same name.
+  await page.locator("main").getByRole("link", { name: "Catalogue" }).click();
 
   const iframe = page.locator('iframe[title="Catalogue preview"]');
   await expect(iframe).toBeVisible();
