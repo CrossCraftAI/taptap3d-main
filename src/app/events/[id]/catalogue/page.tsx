@@ -9,6 +9,7 @@ import { listLotsWithImages } from "@/lib/data/lots";
 import { currentOrgId } from "@/lib/data/org";
 import { listOverrides } from "@/lib/data/overrides";
 import { asText, derive, normaliseParams } from "@/lib/engine/derive";
+import { BUILT_IN_TEMPLATES, templateChoice } from "@/lib/engine/templates";
 
 export const dynamic = "force-dynamic";
 
@@ -31,6 +32,9 @@ export default async function CataloguePage({
 
   const layoutParams = normaliseParams(catalogue.params);
   const previewKey = [
+    // The template first: a price list and a catalogue at the same density
+    // are different documents.
+    layoutParams.template,
     layoutParams.perPage,
     layoutParams.imagePlacement,
     layoutParams.showRef ? "ref" : "noref",
@@ -100,6 +104,7 @@ export default async function CataloguePage({
         </div>
         <div className="mt-2 flex flex-wrap items-baseline justify-between gap-2">
           <p className="text-[12px] text-muted" data-numeric>
+            <span className="text-ink">{document.template.name.en}</span> ·{" "}
             {document.pages.length} pages · {document.lotCount} lots
             {document.unphotographed > 0 && (
               <span className="text-seal">
@@ -137,6 +142,9 @@ export default async function CataloguePage({
           eventId={event.id}
           catalogueId={catalogue.id}
           params={layoutParams}
+          // The built-ins, reduced to what a control needs. A house-authored
+          // template joins this list from the data layer the day one exists.
+          templates={BUILT_IN_TEMPLATES.map(templateChoice)}
         />
       </div>
 

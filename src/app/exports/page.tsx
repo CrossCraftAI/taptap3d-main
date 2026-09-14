@@ -17,9 +17,11 @@ export const dynamic = "force-dynamic";
  * and it is why they are different categories on the rail.
  *
  * The route is `/exports` rather than `/exports/pdf` because the PDF is the only
- * output that exists. Tearsheet, price list, label and the per-lot embed are
- * ROADMAP D2–D4; when one lands it is a column here, not a new place, and
- * nothing has to be renamed.
+ * output that exists. The tearsheet and the price list landed as TEMPLATES
+ * (ROADMAP D6) rather than as outputs of their own: the catalogue screen chooses
+ * one and this same link prints whichever is chosen, through the same renderer.
+ * The label and the per-lot embed are D2–D4; when one lands it is a column
+ * here, not a new place, and nothing has to be renamed.
  *
  * An event with no lots gets no link at all. A Chromium launch that prints an
  * empty document is four seconds and 2 GB spent saying nothing.
@@ -44,8 +46,9 @@ export default async function ExportsPage(): Promise<React.ReactElement> {
 
       <p className="mt-3 max-w-prose text-[13px] leading-relaxed text-muted">
         The same document the preview shows, printed — one renderer behind both,
-        so what arrives at the printer is what was on screen. One export at a
-        time, and the first after a quiet spell pays for starting the browser.
+        so what arrives at the printer is what was on screen, on whichever
+        template the catalogue has chosen. One export at a time, and the first
+        after a quiet spell pays for starting the browser.
       </p>
 
       <EventChooser

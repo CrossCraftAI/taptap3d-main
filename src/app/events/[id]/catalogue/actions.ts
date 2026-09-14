@@ -9,7 +9,7 @@ import {
   updateCatalogueParams,
 } from "@/lib/data/catalogues";
 import { currentOrgId } from "@/lib/data/org";
-import { DENSITIES, normaliseParams } from "@/lib/engine/derive";
+import { normaliseParams } from "@/lib/engine/derive";
 // From src/lib/forms.ts, because a "use server" file may export only async
 // functions and the panel's initial state is an object.
 import type { PinFormState } from "@/lib/forms";
@@ -52,12 +52,19 @@ export async function unpinAction(
 }
 
 /**
- * Change the layout parameters.
+ * Change the template or the layout parameters.
  *
  * Density is a DEFAULT, NOT A LOCK (principle 9): it is stored so the catalogue
  * reopens where the specialist left it, and it re-derives every slot rather than
  * freezing any. Nothing keyed to a page survives this — nothing is keyed to a
- * page.
+ * page. Nor does a template change touch an override or a pin: both are keyed
+ * to lots, and the engine re-applies them on the price list exactly as it did
+ * on the grid.
+ *
+ * Everything posted is resolved AGAINST THE TEMPLATE by `normaliseParams`: a
+ * density the new template does not offer becomes its default, a placement it
+ * has no plate for becomes the one it has. The form does not know the
+ * template's vocabulary and does not need to.
  */
 export async function setCatalogueParamsAction(
   eventId: string,
@@ -66,11 +73,9 @@ export async function setCatalogueParamsAction(
   const orgId = await currentOrgId();
   const catalogue = await ensureCatalogue(orgId, eventId);
 
-  const perPage = Number(formData.get("perPage"));
   const params = normaliseParams({
-    perPage: DENSITIES.includes(perPage as (typeof DENSITIES)[number])
-      ? perPage
-      : undefined,
+    template: String(formData.get("template") ?? ""),
+    perPage: Number(formData.get("perPage")),
     imagePlacement: String(formData.get("imagePlacement") ?? ""),
     showRef: formData.get("showRef") === "on",
     fit: String(formData.get("fit") ?? ""),

@@ -110,7 +110,13 @@ export async function GET(
   try {
     const { bytes, rendersCjk, fonts } = await renderPdf(html);
 
-    const filename = `${event.name.replace(/[^\p{L}\p{N} ._-]/gu, "")}.pdf`.trim();
+    // The template is in the name, because a house that prints the price list
+    // and the catalogue of one sale should not have two files called the same
+    // thing.
+    const filename = `${event.name} ${document.template.name.en.toLowerCase()}`
+      .replace(/[^\p{L}\p{N} ._-]/gu, "")
+      .trim()
+      .concat(".pdf");
     return new Response(new Uint8Array(bytes), {
       headers: {
         "content-type": "application/pdf",
@@ -119,6 +125,9 @@ export async function GET(
         // one, and the encoded one because these names are Chinese.
         "content-disposition": `attachment; filename="catalogue.pdf"; filename*=UTF-8''${encodeURIComponent(filename)}`,
         "cache-control": "no-store",
+        // Which template printed, so a test — or a person reading a log — can
+        // tell a price list from a catalogue without opening the file.
+        "x-taptap3d-template": document.template.id,
         "x-taptap3d-pages": String(document.pages.length),
         "x-taptap3d-lots": String(document.lotCount),
         "x-taptap3d-plates": String(inline.size),

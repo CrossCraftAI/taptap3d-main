@@ -3,11 +3,26 @@
 import { useRef, useState } from "react";
 
 import { setCatalogueParamsAction } from "@/app/events/[id]/catalogue/actions";
-import { DENSITIES, type CatalogueParams } from "@/lib/engine/derive";
+import type { CatalogueParams } from "@/lib/engine/derive";
+import type { TemplateChoice } from "@/lib/engine/templates";
 import { logAction } from "@/lib/log/client";
 
 /**
- * Density, placement, fit, reference.
+ * Template, density, placement, fit, reference.
+ *
+ * ── THE TEMPLATE IS THE FIRST CONTROL, AND THE OTHERS READ IT ───────────────
+ *
+ * Density and placement are not the engine's vocabulary any more; they are the
+ * chosen template's (src/lib/engine/templates.ts). So the density select offers
+ * what THIS template offers — five grids for a catalogue, three row counts for
+ * a price list, one for a tearsheet — and the placement select offers where
+ * this template's plate may go, or nothing when it has no plate. A control
+ * that offered nine-up on a price list would be offering a number the engine
+ * would silently replace, which is the one thing principle 9 forbids.
+ *
+ * Choosing a template posts that template's own defaults for the rest, so the
+ * form is coherent in the same request. The server resolves everything against
+ * the template again, so a stale value cannot land whatever the bundle did.
  *
  * ── CONTROLLED, AND THE SERVER IS THE SOURCE OF TRUTH ───────────────────────
  *
@@ -34,23 +49,38 @@ export function CatalogueControls({
   eventId,
   catalogueId,
   params,
+  templates,
 }: {
   eventId: string;
   catalogueId: string;
   params: CatalogueParams;
+  templates: TemplateChoice[];
 }): React.ReactElement {
   const form = useRef<HTMLFormElement>(null);
   const [local, setLocal] = useState<CatalogueParams>(params);
+  const template =
+    templates.find((t) => t.id === local.template) ?? templates[0]!;
 
   const submit = (): void => form.current?.requestSubmit();
   const change = (patch: Partial<CatalogueParams>): void => {
     setLocal((previous) => ({ ...previous, ...patch }));
-    // Counted: a density change is a gesture D9 has to weigh against the
-    // corrections it causes or saves.
+    // Counted: a density or template change is a gesture D9 has to weigh
+    // against the corrections it causes or saves.
     logAction("catalogue.params", patch, catalogueId);
     // After the state update is committed, so the form posts the new value
     // rather than the one being replaced.
     queueMicrotask(submit);
+  };
+  const chooseTemplate = (id: string): void => {
+    const next = templates.find((t) => t.id === id);
+    if (!next) return;
+    change({
+      template: next.id,
+      perPage: next.defaultPerPage,
+      imagePlacement: next.placements.includes(local.imagePlacement)
+        ? local.imagePlacement
+        : (next.placements[0] ?? local.imagePlacement),
+    });
   };
 
   return (
@@ -60,14 +90,32 @@ export function CatalogueControls({
       className="flex flex-wrap items-center gap-x-5 gap-y-2 border border-rule bg-paper px-4 py-2.5"
     >
       <label className="flex items-center gap-2 text-[13px]">
+        <span className="text-muted">Template</span>
+        <select
+          name="template"
+          value={template.id}
+          onChange={(e) => chooseTemplate(e.target.value)}
+          className="border border-rule bg-paper px-2 py-1 text-[13px]"
+        >
+          {templates.map((t) => (
+            <option key={t.id} value={t.id}>
+              {t.name.en} · {t.name.zh}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      <label className="flex items-center gap-2 text-[13px]">
         <span className="text-muted">Per page</span>
         <select
           name="perPage"
           value={String(local.perPage)}
           onChange={(e) => change({ perPage: Number(e.target.value) })}
-          className="border border-rule bg-paper px-2 py-1 text-[13px]"
+          // One density is a fact about the template, not a choice to make.
+          disabled={template.densities.length < 2}
+          className="border border-rule bg-paper px-2 py-1 text-[13px] disabled:text-muted"
         >
-          {DENSITIES.map((density) => (
+          {template.densities.map((density) => (
             <option key={density} value={density}>
               {density}
             </option>
@@ -75,22 +123,31 @@ export function CatalogueControls({
         </select>
       </label>
 
-      <label className="flex items-center gap-2 text-[13px]">
-        <span className="text-muted">Photograph</span>
-        <select
-          name="imagePlacement"
-          value={local.imagePlacement}
-          onChange={(e) =>
-            change({
-              imagePlacement: e.target.value as CatalogueParams["imagePlacement"],
-            })
-          }
-          className="border border-rule bg-paper px-2 py-1 text-[13px]"
-        >
-          <option value="above">above the caption</option>
-          <option value="beside">beside the caption</option>
-        </select>
-      </label>
+      {template.placements.length > 0 && (
+        <label className="flex items-center gap-2 text-[13px]">
+          <span className="text-muted">Photograph</span>
+          <select
+            name="imagePlacement"
+            value={local.imagePlacement}
+            onChange={(e) =>
+              change({
+                imagePlacement: e.target.value as CatalogueParams["imagePlacement"],
+              })
+            }
+            disabled={template.placements.length < 2}
+            className="border border-rule bg-paper px-2 py-1 text-[13px] disabled:text-muted"
+          >
+            {template.placements.includes("above") && (
+              <option value="above">above the caption</option>
+            )}
+            {template.placements.includes("beside") && (
+              <option value="beside">
+                {template.arrangement === "table" ? "beside each row" : "beside the caption"}
+              </option>
+            )}
+          </select>
+        </label>
+      )}
 
       <label className="flex items-center gap-2 text-[13px]">
         <span className="text-muted">Fit</span>
@@ -117,6 +174,12 @@ export function CatalogueControls({
         />
         <span className="text-muted">Print the reference</span>
       </label>
+
+      {/* What the chosen template is FOR, in the template's own words, so the
+          choice is made on purpose rather than by trying each. */}
+      <p className="min-w-0 flex-1 truncate text-[12px] text-faint" title={template.purpose}>
+        {template.purpose}
+      </p>
 
       {/* The no-JavaScript path. Every control above submits on change, so this
           is never needed in a browser that ran the bundle — and is the only way

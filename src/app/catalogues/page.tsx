@@ -37,9 +37,10 @@ export default async function CataloguesPage(): Promise<React.ReactElement> {
 
       <p className="mt-3 max-w-prose text-[13px] leading-relaxed text-muted">
         The engine places every lot so nobody places five hundred boxes by hand.
-        Density and fit are parameters, not a layout you have to redo — a
-        correction is a value the engine re-applies, so it survives the next
-        change of density.
+        A template says what the output is — a catalogue, a price list, a
+        tearsheet — and density and fit are parameters, not a layout you have
+        to redo. A correction is a value the engine re-applies, so it survives
+        the next change of density or of template.
       </p>
 
       <EventChooser
