@@ -16,6 +16,8 @@ import { crc32, deflateSync } from "node:zlib";
 
 import { expect, test } from "@playwright/test";
 
+import { createEvent } from "./sale";
+
 const SHOTS = join("test", "e2e", "screens");
 const TEMP = join("test-results", "fixtures");
 mkdirSync(SHOTS, { recursive: true });
@@ -76,12 +78,9 @@ test.describe.configure({ timeout: 240_000 });
 test("the catalogue prints, with its plates and its Chinese in it", async ({
   page,
 }) => {
-  await page.goto("/");
-  await page.getByLabel("Event name").fill(EVENT);
-  await page.getByRole("button", { name: "Create event" }).click();
-  await expect(page.getByRole("heading", { name: EVENT })).toBeVisible();
-  const eventUrl = page.url();
+  const { eventUrl } = await createEvent(page, EVENT);
 
+  // From the blank editor's canvas, where quick-add lands.
   await page.getByRole("link", { name: "Import lots" }).first().click();
   await page
     .locator("textarea")

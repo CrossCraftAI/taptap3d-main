@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 
-import { Nav } from "@/components/nav";
+import { Shell } from "@/components/shell";
 import { countAssets } from "@/lib/data/assets";
 import { countEvents } from "@/lib/data/events";
 import { currentOrgOrNull } from "@/lib/data/org";
@@ -33,34 +33,20 @@ export default async function RootLayout({
   return (
     <html lang="zh-Hant">
       <body className="min-h-full bg-field font-sans text-ink antialiased">
-        <div className="flex min-h-screen">
-          {/* THE RAIL DOES NOT MOVE, and it is present inside the editor too.
-              The predecessor made its editor a separate world reached by a link,
-              so an event was somewhere you escaped from rather than somewhere
-              you were. */}
-          <aside className="hidden w-56 shrink-0 border-r border-rule bg-paper md:block">
-            <div className="sticky top-0 flex h-screen flex-col px-3 py-4">
-              <div className="px-3">
-                <p className="text-[15px] font-semibold tracking-tight">taptap3d</p>
-                <p className="mt-0.5 truncate text-[12px] text-muted">
-                  {org ? org.name : "No organisation"}
-                </p>
-              </div>
-              <Nav
-                counts={{
-                  events,
-                  photographs: photographs.total,
-                  unassigned: photographs.unassigned,
-                }}
-              />
-              <p className="mt-auto px-3 text-[11px] leading-relaxed text-faint">
-                M1 — the pitch. Catalogue production; no money path.
-              </p>
-            </div>
-          </aside>
-
-          <main className="min-w-0 flex-1">{children}</main>
-        </div>
+        {/* THE RAIL CAN BE PUT AWAY, and the editor arrives with it away. The
+            shell owns that (src/components/shell.tsx, src/lib/chrome.ts); this
+            layout only reads the numbers the rail shows. Measured before: the
+            chrome had 78% of a 1440×900 window and the page had 22%. */}
+        <Shell
+          org={org?.name ?? null}
+          counts={{
+            events,
+            photographs: photographs.total,
+            unassigned: photographs.unassigned,
+          }}
+        >
+          {children}
+        </Shell>
       </body>
     </html>
   );

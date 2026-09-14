@@ -270,9 +270,21 @@ export function renderCatalogue(
     )
     .join("");
 
+  // NO LOTS, ONE BLANK SHEET. The document truthfully has no pages — the
+  // editor's counts, the PDF's page header and the exports ledger all read that
+  // zero — but a person who has just named a sale is looking at an editor, and
+  // an editor shows the page they are about to fill, on the template's geometry
+  // with the template's margins. It carries no folio and no data-page: it is a
+  // sheet on the desk, not page one. The screen around the frame puts the way
+  // to fill it at its foot.
+  //
+  // Rejected: having the ENGINE emit one empty page for no lots. That would make
+  // "1 pages · 0 lots" the truth everywhere the count is read, and would print a
+  // page the engine never derived. Rejected, and previously shipped: a small
+  // grey box with a sentence in it — an empty-state card where paper belongs.
   const empty =
     doc.pages.length === 0
-      ? '<section class="page page--empty"><p>This catalogue has no lots yet.</p></section>'
+      ? '<section class="page page--empty" aria-label="Blank page"></section>'
       : "";
 
   return `<!doctype html>
@@ -313,7 +325,10 @@ export function renderCatalogue(
     box-shadow: 0 1px 2px rgba(0,0,0,.10), 0 6px 20px rgba(0,0,0,.06);
     display: flex; flex-direction: column;
   }
-  .page--empty { aspect-ratio: auto; height: auto; width: auto; padding: 48px; text-align: center; color: #6e6e6e; }
+  /* THE BLANK SHEET IS A .page AND NOTHING MORE: the same aspect, the same
+     fit, the same shadow. A rule stood here that made .page--empty an
+     auto-sized grey box with a sentence in it, which is an empty-state card
+     inside a frame whose one job is to show paper. */
   .folio {
     margin-top: 3%; text-align: center;
     font: 9px/1 system-ui, sans-serif; color: #a8a8a8; letter-spacing: .12em;

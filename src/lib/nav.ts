@@ -27,11 +27,16 @@
 // too: the ledger's Next column now says "Import lots" on exactly the sales that
 // need it, which is the question the global Import page existed to ask.
 //
-// Nothing collapses. Four items is not a directory, and at this size the
-// remembering machinery — localStorage, an external store, the effect that
-// reopened the category you were standing in — was complexity with no payoff.
-// It was deleted rather than left switched off, so nobody has to maintain a
-// feature nobody can see.
+// Nothing INSIDE the rail collapses. Four items is not a directory, and at this
+// size the per-category machinery — a store, the effect that reopened the
+// category you were standing in — was complexity with no payoff. It was
+// deleted rather than left switched off, so nobody has to maintain a feature
+// nobody can see, and it is not to come back under another name.
+//
+// The rail AS A WHOLE can be put away — one control, one shortcut, remembered
+// per viewer — because what a specialist laying out pages wants is not a
+// smaller menu but the window. src/lib/chrome.ts holds the measurement and the
+// mechanism; `isEditor` below is how the shell knows to start that way.
 
 import type { Route } from "next";
 
@@ -49,6 +54,14 @@ export interface NavItem {
 // because a person laying out pages is in the catalogues, whichever sale it is.
 // Everything else under an event — its lots, its import — is the event.
 const EVENT_CATALOGUE = /^\/events\/[^/]+\/catalogue(\/|$)/;
+
+/**
+ * Whether a path is the editor — the one screen where the canvas takes the
+ * window by default and the rail waits to be asked for.
+ */
+export function isEditor(pathname: string): boolean {
+  return EVENT_CATALOGUE.test(pathname);
+}
 
 export const NAV: readonly NavItem[] = [
   {

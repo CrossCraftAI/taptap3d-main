@@ -5,9 +5,10 @@
 // seven categories filed as a menu — a sequence of four and three "not yet"
 // labels — and the owner rejected it. So this asserts what the flattening can
 // get wrong and a unit test cannot see: that the rail is exactly the four places
-// and nothing else, that none of them is a dead link, that nothing in it is a
-// control (there is nothing to collapse any more), and that an event's own
-// screens light the place that owns them.
+// and nothing else, that none of them is a dead link, that nothing in the LIST
+// is a control (nothing inside the rail collapses; the one control puts the
+// whole rail away and sits outside the list — editor.spec.ts holds it), and
+// that an event's own screens light the place that owns them.
 //
 // The screenshots are the point. ARCHITECTURE.md principle 10: "the tests pass"
 // is not evidence that an interface exists.
@@ -112,6 +113,13 @@ test("an event's own screens light the place that owns them", async ({ page }) =
   // as the next action.
   await page.locator("main").getByRole("link", { name: /^(Open c|C)atalogue$/ }).click();
   await expect(page.getByRole("heading", { name: "Catalogue" })).toBeVisible();
+  // THE EDITOR PUTS THE RAIL AWAY — the canvas takes the window by default
+  // (editor.spec.ts holds why, and how much). Bring it back the way a person
+  // does, then read it: a hidden link has no role to find.
+  const toggle = page.getByRole("button", { name: "Navigation" });
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+  await toggle.click();
+  await expect(toggle).toHaveAttribute("aria-expanded", "true");
   await expect(nav.getByRole("link", { name: /^Catalogues/ })).toHaveAttribute(
     "aria-current",
     "page",

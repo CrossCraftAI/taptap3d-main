@@ -33,6 +33,14 @@ export default defineConfig({
     },
   },
   use: {
+    // THE DEVICE PRESET FIRST, so the lines under it win. It sat in the project
+    // below as `use: { ...devices["Desktop Chrome"] }`, and a project's `use`
+    // overrides this one — so the preset's 1280×720 at scale 1 quietly replaced
+    // the window declared here, and every screenshot this suite has produced
+    // was 1280×720 while the comment beside it said 1440. Found when the editor
+    // spec measured the page's share of "a 1440×900 window" and got a number
+    // that only made sense at 720 tall.
+    ...devices["Desktop Chrome"],
     baseURL: `http://127.0.0.1:${PORT}`,
     // 1440 wide so the rail and the content column are both in frame — the
     // screenshots are the deliverable here, not a by-product.
@@ -40,7 +48,7 @@ export default defineConfig({
     deviceScaleFactor: 2,
     trace: "retain-on-failure",
   },
-  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
+  projects: [{ name: "chromium" }],
   reporter: [["list"]],
   // ONE WORKER, because these tests drive the real application against one
   // database and one asset store — deliberately, since that is what makes them

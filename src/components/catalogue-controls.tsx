@@ -52,7 +52,8 @@ export function CatalogueControls({
   templates,
 }: {
   eventId: string;
-  catalogueId: string;
+  /** Null on a blank editor: the row is made by the first change (catalogue/actions.ts). */
+  catalogueId: string | null;
   params: CatalogueParams;
   templates: TemplateChoice[];
 }): React.ReactElement {
@@ -87,7 +88,10 @@ export function CatalogueControls({
     <form
       ref={form}
       action={setCatalogueParamsAction.bind(null, eventId)}
-      className="flex flex-wrap items-center gap-x-5 gap-y-2 border border-rule bg-paper px-4 py-2.5"
+      // No border or ground of its own: this is one row of the editor's toolbar
+      // (catalogue-workspace.tsx), which draws the rules. The bar it used to be
+      // cost the page 60px of the window's height.
+      className="flex w-full flex-wrap items-center gap-x-4 gap-y-1.5"
     >
       <label className="flex items-center gap-2 text-[13px]">
         <span className="text-muted">Template</span>

@@ -21,6 +21,8 @@ import { crc32, deflateSync } from "node:zlib";
 
 import { expect, test } from "@playwright/test";
 
+import { createEvent } from "./sale";
+
 const SHOTS = join("test", "e2e", "screens");
 const TEMP = join("test-results", "fixtures");
 mkdirSync(SHOTS, { recursive: true });
@@ -36,8 +38,19 @@ function pngChunk(type: string, data: Buffer): Buffer {
   return Buffer.concat([length, body, crc]);
 }
 
-/** A real, valid, 8-bit truecolour PNG — not a magic number with a name. */
-function writePng(path: string, w: number, h: number, tint: number): string {
+/**
+ * A real, valid, 8-bit truecolour PNG — not a magic number with a name.
+ *
+ * THE RUN IS WRITTEN INTO THE PIXELS, not only into the tint. The tint is
+ * `RUN % 200`, which is two hundred buckets: with twenty-seven runs already in
+ * the store, a fresh run had roughly one chance in four of producing bytes
+ * identical to an earlier morning's — and it did, at 186. The store then did
+ * its job, kept nothing, and this spec read a working deduplicator as a broken
+ * upload for a minute, exactly the failure the header above describes. So the
+ * full millisecond timestamp goes into the first row's channel values, where
+ * it changes the bytes and nothing anybody looks at.
+ */
+function writePng(path: string, w: number, h: number, tint: number, seed: number): string {
   const ihdr = Buffer.alloc(13);
   ihdr.writeUInt32BE(w, 0);
   ihdr.writeUInt32BE(h, 4);
@@ -53,6 +66,9 @@ function writePng(path: string, w: number, h: number, tint: number): string {
       raw[i + 2] = (tint * 7) % 256;
     }
   }
+  // After the first row's filter byte. Thirteen digits into the first four
+  // pixels and a channel; the row is far wider than that.
+  Buffer.from(String(seed), "ascii").copy(raw, 1);
   writeFileSync(
     path,
     Buffer.concat([
@@ -67,9 +83,9 @@ function writePng(path: string, w: number, h: number, tint: number): string {
 
 const RUN = Date.now();
 const tint = RUN % 200;
-const PHOTO_A = writePng(join(TEMP, `a-${RUN}.png`), 240, 180, tint);
-const PHOTO_B = writePng(join(TEMP, `b-${RUN}.png`), 180, 240, tint + 37);
-const PHOTO_C = writePng(join(TEMP, `c-${RUN}.png`), 200, 200, tint + 71);
+const PHOTO_A = writePng(join(TEMP, `a-${RUN}.png`), 240, 180, tint, RUN);
+const PHOTO_B = writePng(join(TEMP, `b-${RUN}.png`), 180, 240, tint + 37, RUN);
+const PHOTO_C = writePng(join(TEMP, `c-${RUN}.png`), 200, 200, tint + 71, RUN);
 
 const EVENT = `Photograph Sale ${RUN}`;
 // RUN-UNIQUE REFERENCES. Lot references repeat across sales in real life — two
@@ -85,11 +101,7 @@ test("photographs arrive unassigned, and are filed when someone gets to it", asy
   page,
 }) => {
   // ── A sale with two lots, through the ordinary path ──────────────────────
-  await page.goto("/");
-  await page.getByLabel("Event name").fill(EVENT);
-  await page.getByRole("button", { name: "Create event" }).click();
-  await expect(page.getByRole("heading", { name: EVENT })).toBeVisible();
-  eventUrl = page.url();
+  ({ eventUrl } = await createEvent(page, EVENT));
 
   await page.getByRole("link", { name: "Import lots" }).first().click();
   await page

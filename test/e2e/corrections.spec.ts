@@ -16,6 +16,8 @@ import { join } from "node:path";
 import { expect, test, type FrameLocator, type Page } from "@playwright/test";
 import pg from "pg";
 
+import { createEvent } from "./sale";
+
 const SHOTS = join("test", "e2e", "screens");
 mkdirSync(SHOTS, { recursive: true });
 const shot = (name: string): string => join(SHOTS, `${name}.png`);
@@ -51,13 +53,10 @@ test.describe.configure({ timeout: 180_000 });
 
 test("a correction survives the density change it was never keyed to", async ({ page }) => {
   // ── A sale, through the ordinary path ────────────────────────────────────
-  await page.goto("/");
-  await page.getByLabel("Event name").fill(EVENT);
-  await page.getByRole("button", { name: "Create event" }).click();
-  await expect(page.getByRole("heading", { name: EVENT })).toBeVisible();
-  const eventUrl = page.url();
+  const { eventUrl } = await createEvent(page, EVENT);
   const eventId = eventUrl.split("/").pop()!;
 
+  // From the blank editor's canvas, where quick-add lands.
   await page.getByRole("link", { name: "Import lots" }).first().click();
   await page
     .locator("textarea")

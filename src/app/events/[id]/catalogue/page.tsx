@@ -2,8 +2,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { CatalogueControls } from "@/components/catalogue-controls";
+import { CatalogueWorkspace } from "@/components/catalogue-workspace";
 import { PinPanel, type PinPanelLot, type PinPanelPin } from "@/components/pin-panel";
-import { ensureCatalogue, listPins } from "@/lib/data/catalogues";
+import { ensureCatalogue, getCatalogue, listPins } from "@/lib/data/catalogues";
 import { getEvent } from "@/lib/data/events";
 import { listLotsWithImages } from "@/lib/data/lots";
 import { currentOrgId } from "@/lib/data/org";
@@ -13,6 +14,33 @@ import { BUILT_IN_TEMPLATES, templateChoice } from "@/lib/engine/templates";
 
 export const dynamic = "force-dynamic";
 
+/**
+ * The editor.
+ *
+ * ── A BLANK PAGE, NOT A CARD ABOUT ONE ───────────────────────────────────────
+ *
+ * M1.md §1 step 2: create an event → an empty editor. Quick-add lands here now,
+ * and with no lots this screen used to show a centred panel saying there was
+ * nothing to lay out. A new Canva design shows an artboard and a new Docs file
+ * shows a page; a card is an advertisement for the thing in place of the thing.
+ * So the frame always holds a page — the renderer paints a blank sheet on the
+ * template's geometry when the document has none (src/lib/render/html.ts) —
+ * the controls are live, and the one way to fill it sits on the canvas at the
+ * foot of the sheet. That bar is not a dismissible hint: it is the action, and
+ * it leaves with the first lot.
+ *
+ * ── THE CATALOGUE ROW WAITS FOR LOTS ─────────────────────────────────────────
+ *
+ * `ensureCatalogue` used to run on every open — opening the catalogue was the
+ * request for one. Now that quick-add opens it, every sale would be born with a
+ * catalogue row, and the workflow reads that row as a FACT: a new sale would go
+ * from Photographed straight to Catalogued without anyone having laid it out,
+ * and the "Open catalogue" call to action would never show (src/lib/workflow.ts).
+ * So the row is made when this screen opens on a sale WITH lots — there is
+ * something to catalogue — and only read before that. Changing a parameter on
+ * the blank page still makes it (catalogue/actions.ts): choosing a template is
+ * laying out. The preview route never makes one; it is a GET.
+ */
 export default async function CataloguePage({
   params,
 }: {
@@ -23,14 +51,18 @@ export default async function CataloguePage({
   const event = await getEvent(orgId, id);
   if (!event) notFound();
 
-  const catalogue = await ensureCatalogue(orgId, id, `${event.name} catalogue`);
-  const [lots, pins, overrides] = await Promise.all([
-    listLotsWithImages(orgId, id),
-    listPins(orgId, catalogue.id),
-    listOverrides(orgId, catalogue.id),
-  ]);
+  const lots = await listLotsWithImages(orgId, id);
+  const catalogue =
+    lots.length > 0
+      ? await ensureCatalogue(orgId, id, `${event.name} catalogue`)
+      : await getCatalogue(orgId, id);
+  const [pins, overrides] = catalogue
+    ? await Promise.all([listPins(orgId, catalogue.id), listOverrides(orgId, catalogue.id)])
+    : [[], []];
 
-  const layoutParams = normaliseParams(catalogue.params);
+  const layoutParams = normaliseParams(catalogue?.params);
+  // Zero for a sale with no catalogue row yet: nothing about it can have changed.
+  const version = catalogue?.updatedAt.getTime() ?? 0;
   const previewKey = [
     // The template first: a price list and a catalogue at the same density
     // are different documents.
@@ -47,12 +79,13 @@ export default async function CataloguePage({
     Math.max(0, ...lots.map((l) => l.updatedAt.getTime())),
     // Pins and overrides touch the catalogue row when they change, so this one
     // number carries all of them.
-    catalogue.updatedAt.getTime(),
+    version,
   ].join("-");
   // Derived here only to say how many pages it came to, and which page each lot
   // landed on for the list beside the preview. The frame derives it again from
   // the same inputs — one engine, so the two cannot disagree.
   const document = derive(lots, layoutParams, pins, overrides);
+  const empty = lots.length === 0;
 
   const pageOf = new Map<string, number>();
   for (const page of document.pages) {
@@ -79,123 +112,132 @@ export default async function CataloguePage({
   }));
 
   return (
-    <div className="flex h-screen min-h-0 flex-col">
-      <header className="shrink-0 border-b border-rule bg-paper px-8 py-4">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="min-w-0">
-            <Link
-              href={`/events/${event.id}`}
-              className="text-[12px] text-muted hover:text-seal hover:underline"
-            >
-              {event.name}
-            </Link>
-            <h1 className="mt-1 text-[19px] font-semibold tracking-tight">
-              Catalogue
-            </h1>
-          </div>
-          <div className="flex items-center gap-4">
-            <a
-              href={`/events/${event.id}/catalogue/pdf`}
-              className="bg-seal px-3 py-1.5 text-[13px] font-medium text-white hover:bg-[#8d241f]"
-            >
-              Download PDF
-            </a>
-          </div>
+    <CatalogueWorkspace
+      catalogueId={catalogue?.id ?? null}
+      heading={
+        <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5 text-[13px]">
+          <Link
+            href={`/events/${event.id}`}
+            className="max-w-[20rem] truncate text-muted hover:text-seal hover:underline"
+          >
+            {event.name}
+          </Link>
+          <span className="text-faint">/</span>
+          <h1 className="font-semibold tracking-tight">Catalogue</h1>
         </div>
-        <div className="mt-2 flex flex-wrap items-baseline justify-between gap-2">
-          <p className="text-[12px] text-muted" data-numeric>
-            <span className="text-ink">{document.template.name.en}</span> ·{" "}
-            {document.pages.length} pages · {document.lotCount} lots
-            {document.unphotographed > 0 && (
-              <span className="text-seal">
-                {" "}
-                · {document.unphotographed} without a photograph
-              </span>
-            )}
-            {pins.length > 0 && (
+      }
+      meta={
+        <p className="text-[12px] text-muted" data-numeric>
+          <span className="text-ink">{document.template.name.en}</span>
+            {empty ? (
+              " · no lots yet"
+            ) : (
               <>
-                {" "}
-                · {pins.length} {pins.length === 1 ? "pin" : "pins"}
+                {" · "}
+                {document.pages.length} pages · {document.lotCount} lots
+                {document.unphotographed > 0 && (
+                  <span className="text-seal">
+                    {" · "}
+                    {document.unphotographed} without a photograph
+                  </span>
+                )}
+                {pins.length > 0 && (
+                  <>
+                    {" · "}
+                    {pins.length} {pins.length === 1 ? "pin" : "pins"}
+                  </>
+                )}
+                {overrides.length > 0 && (
+                  <>
+                    {" · "}
+                    {overrides.length} {overrides.length === 1 ? "override" : "overrides"}
+                  </>
+                )}
               </>
             )}
-            {overrides.length > 0 && (
-              <>
-                {" "}
-                · {overrides.length} {overrides.length === 1 ? "override" : "overrides"}
-              </>
-            )}
-          </p>
-          <p className="text-[12px] text-faint">
-            The PDF is this same document, printed. It takes a moment on a long
-            sale.
-          </p>
-        </div>
-      </header>
-
-      <div className="shrink-0 px-8 pt-4">
-        {/* KEYED ON THE STORED PARAMETERS. The controls hold local state so
-            they respond in the same frame the pointer moves; this is what hands
-            authority back to the server once the action lands, by making the
-            component new rather than by syncing a prop into state. */}
+        </p>
+      }
+      // Nothing prints from a blank page: the exports ledger offers no PDF for a
+      // sale without lots, and neither does its editor.
+      actions={
+        empty ? undefined : (
+          <a
+            href={`/events/${event.id}/catalogue/pdf`}
+            title="The PDF is this same document, printed. It takes a moment on a long sale."
+            className="bg-seal px-3 py-1 text-[12px] font-medium text-white hover:bg-[#8d241f]"
+          >
+            Download PDF
+          </a>
+        )
+      }
+      controls={
+        /* KEYED ON THE STORED PARAMETERS. The controls hold local state so they
+           respond in the same frame the pointer moves; this is what hands
+           authority back to the server once the action lands, by making the
+           component new rather than by syncing a prop into state. */
         <CatalogueControls
           key={previewKey}
           eventId={event.id}
-          catalogueId={catalogue.id}
+          catalogueId={catalogue?.id ?? null}
           params={layoutParams}
           // The built-ins, reduced to what a control needs. A house-authored
           // template joins this list from the data layer the day one exists.
           templates={BUILT_IN_TEMPLATES.map(templateChoice)}
         />
-      </div>
-
-      <div className="min-h-0 flex-1 px-8 pb-8 pt-4">
-        {lots.length === 0 ? (
-          <div className="flex h-full items-center justify-center border border-rule bg-paper">
-            <div className="max-w-sm text-center">
-              <p className="text-[14px] font-medium">Nothing to lay out yet.</p>
-              <p className="mt-2 text-[13px] leading-relaxed text-muted">
-                The engine places every lot for you; it needs the lots first.
-              </p>
-              <Link
-                href={`/events/${event.id}/import`}
-                className="mt-5 inline-block bg-seal px-4 py-2 text-[13px] font-medium text-white hover:bg-[#8d241f]"
-              >
-                Import lots
-              </Link>
+      }
+      canvas={
+        <>
+          {/* NO `sandbox` ATTRIBUTE. The document is inert because of its
+              Content-Security-Policy, which carries no script-src. A sandbox
+              without allow-scripts stops WebKit dispatching DOM events into the
+              frame at all — ARCHITECTURE.md principle 8, and the reason the
+              predecessor's editing layer was dead in Safari for a year while
+              Chromium-only testing reported everything green. */}
+          <iframe
+            title="Catalogue preview"
+            // THE PARAMETERS ARE IN THE URL, and not because the route reads
+            // them — it reads the catalogue row, which is the source of truth.
+            // They are here because the frame reloads when its `src` changes and
+            // at no other time: re-rendering the page around an unchanged `src`
+            // leaves the previous document sitting in the frame, so changing the
+            // density appeared to do nothing at all. Found by driving the
+            // application; no unit test could have seen it.
+            src={`/events/${event.id}/catalogue/preview?v=${previewKey}`}
+            className="absolute inset-0 h-full w-full"
+          />
+          {empty && (
+            /* ON THE CANVAS, at the foot of the blank sheet: one line and the one
+               action, the way a new document says where to start. The container
+               lets the pointer through to the frame everywhere but the bar. */
+            <div className="pointer-events-none absolute inset-x-0 bottom-6 flex justify-center">
+              <div className="pointer-events-auto flex items-center gap-4 border border-rule bg-paper py-2 pl-4 pr-2 shadow-[0_1px_2px_rgba(0,0,0,.08),0_6px_20px_rgba(0,0,0,.06)]">
+                <p className="text-[13px] text-muted">
+                  No lots yet. Import them and the engine lays out the pages.
+                </p>
+                <Link
+                  href={`/events/${event.id}/import`}
+                  className="bg-seal px-3 py-1.5 text-[13px] font-medium text-white hover:bg-[#8d241f]"
+                >
+                  Import lots
+                </Link>
+              </div>
             </div>
-          </div>
-        ) : (
-          <div className="grid h-full min-h-0 grid-cols-[minmax(0,1fr)_340px] gap-4">
-            {/* NO `sandbox` ATTRIBUTE. The document is inert because of its
-                Content-Security-Policy, which carries no script-src. A sandbox
-                without allow-scripts stops WebKit dispatching DOM events into the
-                frame at all — ARCHITECTURE.md principle 8, and the reason the
-                predecessor's editing layer was dead in Safari for a year while
-                Chromium-only testing reported everything green. */}
-            <iframe
-              title="Catalogue preview"
-              // THE PARAMETERS ARE IN THE URL, and not because the route reads
-              // them — it reads the catalogue row, which is the source of truth.
-              // They are here because the frame reloads when its `src` changes and
-              // at no other time: re-rendering the page around an unchanged `src`
-              // leaves the previous document sitting in the frame, so changing the
-              // density appeared to do nothing at all. Found by driving the
-              // application; no unit test could have seen it.
-              src={`/events/${event.id}/catalogue/preview?v=${previewKey}`}
-              className="h-full w-full border border-rule bg-paper"
-            />
-            {/* Keyed on the catalogue's version: a pin that lands gives a fresh
-                panel, a refusal — which changes nothing — keeps its message. */}
-            <PinPanel
-              key={catalogue.updatedAt.getTime()}
-              eventId={event.id}
-              catalogueId={catalogue.id}
-              lots={panelLots}
-              pins={panelPins}
-            />
-          </div>
-        )}
-      </div>
-    </div>
+          )}
+        </>
+      }
+      panel={
+        catalogue && !empty ? (
+          /* Keyed on the catalogue's version: a pin that lands gives a fresh
+             panel, a refusal — which changes nothing — keeps its message. */
+          <PinPanel
+            key={version}
+            eventId={event.id}
+            catalogueId={catalogue.id}
+            lots={panelLots}
+            pins={panelPins}
+          />
+        ) : null
+      }
+    />
   );
 }

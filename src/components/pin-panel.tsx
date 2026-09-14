@@ -62,7 +62,9 @@ export function PinPanel({
   return (
     <aside
       aria-label="Lots in this catalogue"
-      className="flex min-h-0 flex-col border border-rule bg-paper"
+      // The workspace draws the rule between canvas and panel, and can put the
+      // whole panel away (catalogue-workspace.tsx); this fills what it is given.
+      className="flex min-h-0 flex-1 flex-col bg-paper"
     >
       <div className="shrink-0 border-b border-rule px-4 py-2.5">
         <h2 className="text-[13px] font-medium">Lots</h2>

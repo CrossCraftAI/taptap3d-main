@@ -18,6 +18,7 @@ import { join } from "node:path";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
 import { writePlate } from "./plate";
+import { createEvent } from "./sale";
 
 const SHOTS = join("test", "e2e", "screens");
 const TEMP = join("test-results", "fixtures");
@@ -46,14 +47,14 @@ test("the ledger says where a sale is, and its button says what to do next", asy
   page,
 }) => {
   // ── NEW: a name and nothing else ─────────────────────────────────────────
-  await page.goto("/");
-  await page.getByLabel("Event name").fill(EVENT);
-  await page.getByRole("button", { name: "Create event" }).click();
-  await expect(page.getByRole("heading", { name: EVENT })).toBeVisible();
-  eventUrl = page.url();
+  ({ eventUrl } = await createEvent(page, EVENT));
   eventPath = new URL(eventUrl).pathname;
 
-  // The event page reads the same stage, and says where it came from.
+  // Quick-add lands on the blank editor, and opening it must NOT have made a
+  // catalogue row: the ledger below reads that row as the sale having been
+  // catalogued, and a sale that has only been named has not. The event page
+  // reads the same stage, and says where it came from.
+  await page.goto(eventUrl);
   await expect(page.getByLabel("Stage")).toHaveValue("");
   await expect(page.getByLabel("Stage").locator("option:checked")).toHaveText(
     "New · from the data",

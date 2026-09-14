@@ -11,8 +11,12 @@ import type { EnginePin } from "@/lib/engine/derive";
  *
  * An event may produce none, one or several (DFD.md §3) — a re-issue and a
  * two-session sale are both real. What an event may not do is produce one
- * SILENTLY at a moment nobody asked for it, so this is called from the catalogue
- * screen and nowhere else: opening the catalogue is the request.
+ * SILENTLY at a moment nobody asked for it. So this is called from the editor
+ * when it opens on a sale WITH lots, from the actions that change a catalogue,
+ * and from the print route — each a request for one. Not from the blank editor
+ * quick-add lands on, and not from the preview GET: the workflow reads this row
+ * as the fact that a sale has been catalogued (src/lib/workflow.ts), and a row
+ * made at the moment a sale is named would say so of every sale.
  */
 export async function ensureCatalogue(
   orgId: string,

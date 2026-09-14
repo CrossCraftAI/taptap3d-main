@@ -12,9 +12,11 @@ import { NAV } from "@/lib/nav";
  * means, and the ledger's Next column answers that per sale. An object's own
  * header keeps its own buttons; nothing is hoisted up here.
  *
- * No categories, no carets, no remembered state. The reasoning is in
- * src/lib/nav.ts; the short version is that four items do not need a filing
- * system, and the one they had implied an order that misled.
+ * No categories, no carets, nothing in the list that opens or closes. The
+ * reasoning is in src/lib/nav.ts; the short version is that four items do not
+ * need a filing system, and the one they had implied an order that misled. The
+ * whole rail can be put away — that is the shell's (src/components/shell.tsx),
+ * and its button lives outside this list.
  */
 export function Nav({
   counts,

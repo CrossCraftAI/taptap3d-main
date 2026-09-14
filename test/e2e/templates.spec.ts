@@ -17,6 +17,7 @@ import { join } from "node:path";
 import { expect, test, type FrameLocator, type Page } from "@playwright/test";
 
 import { writePlate } from "./plate";
+import { createEvent } from "./sale";
 
 const SHOTS = join("test", "e2e", "screens");
 const TEMP = join("test-results", "fixtures");
@@ -70,12 +71,9 @@ test("a template changes the shape of the page, and a correction survives it", a
   page,
 }) => {
   // ── A sale, through the ordinary path ────────────────────────────────────
-  await page.goto("/");
-  await page.getByLabel("Event name").fill(EVENT);
-  await page.getByRole("button", { name: "Create event" }).click();
-  await expect(page.getByRole("heading", { name: EVENT })).toBeVisible();
-  const eventUrl = page.url();
+  const { eventUrl } = await createEvent(page, EVENT);
 
+  // From the blank editor's canvas, where quick-add lands.
   await page.getByRole("link", { name: "Import lots" }).first().click();
   await page
     .locator("textarea")

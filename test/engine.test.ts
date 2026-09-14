@@ -439,4 +439,29 @@ describe("renderCatalogue", () => {
       expect(width).toContain("width: 100%");
     }
   });
+
+  it("paints one blank sheet for a document with no pages, and nothing on it", () => {
+    // The engine says zero pages, truthfully — that is the number the editor's
+    // counts, the PDF header and the exports ledger read. The renderer still
+    // shows paper: a new event lands on the editor (M1.md §1 step 2), and an
+    // editor is a page, not a card about the absence of one.
+    const blank = derive([], DEFAULT_PARAMS);
+    expect(blank.pages).toHaveLength(0);
+    expect(blank.lotCount).toBe(0);
+
+    const html = renderCatalogue(blank);
+    const body = html.slice(html.indexOf("<body>"), html.indexOf("</body>"));
+    expect(body.match(/<section class="page /g)).toHaveLength(1);
+    expect(body).toContain('class="page page--empty"');
+    // A sheet on the desk, not page one: no folio, no page number, no slot.
+    expect(body).not.toContain("data-page");
+    expect(body).not.toContain('class="folio"');
+    expect(body).not.toContain('class="slot');
+    // Sized as a PAGE — the template's aspect, fitted by height — and not as a
+    // box around a sentence: the rule that once made .page--empty auto-sized is
+    // gone, and the .page rule carries the geometry.
+    expect(html).not.toMatch(/\.page--empty\s*\{/);
+    expect(html).toContain("aspect-ratio: 210 / 297;");
+    expect(html).toContain("height: calc(100vh - 32px)");
+  });
 });

@@ -34,11 +34,24 @@ test("the pitch, end to end", async ({ page }) => {
   await page.getByLabel("Date held, if known").fill("2026-04-12");
   await page.getByRole("button", { name: "Create event" }).click();
 
-  await expect(page.getByRole("heading", { name: EVENT })).toBeVisible();
-  await expect(page.getByText("This event has no lots.")).toBeVisible();
-  await page.screenshot({ path: shot("02-event-empty"), fullPage: true });
+  // THE EDITOR, not a list. M1.md §1 step 2 says an empty editor, and for a
+  // while this landed on the event's empty lot table — a screen about the
+  // absence of a thing. Now it is the thing: a blank A4 sheet in the frame,
+  // the controls live, the rail put away, and one action on the canvas.
+  await page.waitForURL(/\/events\/[0-9a-f-]+\/catalogue$/);
+  await expect(page.getByRole("heading", { name: "Catalogue" })).toBeVisible();
+  await expect(page.getByRole("link", { name: EVENT })).toBeVisible();
+  const frame = page.frameLocator('iframe[title="Catalogue preview"]');
+  await expect(frame.locator(".page--empty")).toHaveCount(1);
+  await expect(frame.locator(".slot")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Navigation" })).toHaveAttribute(
+    "aria-expanded",
+    "false",
+  );
+  await page.screenshot({ path: shot("02-editor-empty"), fullPage: true });
 
-  const eventUrl = page.url();
+  // The import lands back on the event, one segment up.
+  const eventUrl = page.url().replace(/\/catalogue$/, "");
 
   // ── 3. Import whatever the client brought ───────────────────────────────
   await page.getByRole("link", { name: "Import lots" }).first().click();
@@ -92,7 +105,6 @@ test("the pitch, end to end", async ({ page }) => {
   await page.locator("main").getByRole("link", { name: "Catalogue" }).click();
   await expect(page.getByRole("heading", { name: "Catalogue" })).toBeVisible();
 
-  const frame = page.frameLocator('iframe[title="Catalogue preview"]');
   await expect(frame.locator(".page")).toHaveCount(3); // 10 lots at 4-up
   await expect(frame.locator(".slot")).toHaveCount(10);
   await expect(frame.locator(".line--title").first()).toContainText("青花纏枝蓮紋梅瓶");

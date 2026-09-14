@@ -16,7 +16,7 @@
 
 import { notFound } from "next/navigation";
 
-import { ensureCatalogue, listPins } from "@/lib/data/catalogues";
+import { getCatalogue, listPins } from "@/lib/data/catalogues";
 import { getEvent } from "@/lib/data/events";
 import { listLotsWithImages } from "@/lib/data/lots";
 import { currentOrgId } from "@/lib/data/org";
@@ -36,16 +36,21 @@ export async function GET(
   const event = await getEvent(orgId, id);
   if (!event) notFound();
 
-  const catalogue = await ensureCatalogue(orgId, id, `${event.name} catalogue`);
+  // READ, NEVER MADE. This is a GET, and the frame asks for it on every version
+  // of the editor including the blank one; the catalogue row is the editor
+  // page's to create, when there are lots to lay out (see ../page.tsx — a row
+  // made here would be read by the workflow as a sale already catalogued).
+  // Absent a row, the document is the defaults over no lots: one blank sheet.
+  const catalogue = await getCatalogue(orgId, id);
   // Lots, pins AND overrides: the same three inputs the PDF route reads, so the
   // two consumers cannot disagree about what a correction did.
   const [lots, pins, overrides] = await Promise.all([
     listLotsWithImages(orgId, id),
-    listPins(orgId, catalogue.id),
-    listOverrides(orgId, catalogue.id),
+    catalogue ? listPins(orgId, catalogue.id) : [],
+    catalogue ? listOverrides(orgId, catalogue.id) : [],
   ]);
 
-  const document = derive(lots, normaliseParams(catalogue.params), pins, overrides);
+  const document = derive(lots, normaliseParams(catalogue?.params), pins, overrides);
 
   return new Response(renderCatalogue(document), {
     headers: {

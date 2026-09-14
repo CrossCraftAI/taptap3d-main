@@ -29,5 +29,12 @@ export async function createEventAction(formData: FormData): Promise<void> {
   const event = await createEvent(orgId, { name, heldOn });
 
   revalidatePath("/");
-  redirect(`/events/${event.id}`);
+  // THE EDITOR, not the event's list. M1.md §1 step 2 says "create an event →
+  // an empty editor", and for a while this landed on the event's empty lot
+  // table — a screen about the absence of a thing, with a card offering the
+  // thing. Docs and Canva put a person on the blank page with the tools; so
+  // does this. The editor with no lots is a blank sheet on the template's
+  // geometry with the one way to fill it on the canvas, and it makes no
+  // catalogue row until there is something to catalogue (catalogue/page.tsx).
+  redirect(`/events/${event.id}/catalogue`);
 }
