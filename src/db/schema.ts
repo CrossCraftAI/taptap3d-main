@@ -225,6 +225,14 @@ export const overrides = pgTable(
     // Who said so. Null means the machine proposed it and nobody has confirmed.
     // A proposal is not an edit (principle 9), and provenance is derived by
     // comparison rather than by a flag that a restore could make lie.
+    //
+    // BEFORE SIGN-IN EXISTS, a human decision is written as the org's GATE
+    // IDENTITY — one `users` row per org, `gate@<slug>.taptap3d.invalid`, made
+    // on first use by src/lib/data/actor.ts. Writing null "because there is no
+    // user yet" would have made every human decision read as an unconfirmed
+    // proposal the day the vision model starts proposing, which is the one
+    // thing this column exists to prevent. The engine applies rows with a
+    // decider and skips the rest.
     decidedBy: uuid("decided_by").references(() => users.id, {
       onDelete: "set null",
     }),

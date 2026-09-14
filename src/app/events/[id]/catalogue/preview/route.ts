@@ -20,6 +20,7 @@ import { ensureCatalogue, listPins } from "@/lib/data/catalogues";
 import { getEvent } from "@/lib/data/events";
 import { listLotsWithImages } from "@/lib/data/lots";
 import { currentOrgId } from "@/lib/data/org";
+import { listOverrides } from "@/lib/data/overrides";
 import { derive, normaliseParams } from "@/lib/engine/derive";
 import { PREVIEW_CSP, renderCatalogue } from "@/lib/render/html";
 
@@ -36,12 +37,15 @@ export async function GET(
   if (!event) notFound();
 
   const catalogue = await ensureCatalogue(orgId, id, `${event.name} catalogue`);
-  const [lots, pins] = await Promise.all([
+  // Lots, pins AND overrides: the same three inputs the PDF route reads, so the
+  // two consumers cannot disagree about what a correction did.
+  const [lots, pins, overrides] = await Promise.all([
     listLotsWithImages(orgId, id),
     listPins(orgId, catalogue.id),
+    listOverrides(orgId, catalogue.id),
   ]);
 
-  const document = derive(lots, normaliseParams(catalogue.params), pins);
+  const document = derive(lots, normaliseParams(catalogue.params), pins, overrides);
 
   return new Response(renderCatalogue(document), {
     headers: {

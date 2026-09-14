@@ -2,11 +2,13 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { CatalogueControls } from "@/components/catalogue-controls";
+import { PinPanel, type PinPanelLot, type PinPanelPin } from "@/components/pin-panel";
 import { ensureCatalogue, listPins } from "@/lib/data/catalogues";
 import { getEvent } from "@/lib/data/events";
 import { listLotsWithImages } from "@/lib/data/lots";
 import { currentOrgId } from "@/lib/data/org";
-import { derive, normaliseParams } from "@/lib/engine/derive";
+import { listOverrides } from "@/lib/data/overrides";
+import { asText, derive, normaliseParams } from "@/lib/engine/derive";
 
 export const dynamic = "force-dynamic";
 
@@ -21,9 +23,10 @@ export default async function CataloguePage({
   if (!event) notFound();
 
   const catalogue = await ensureCatalogue(orgId, id, `${event.name} catalogue`);
-  const [lots, pins] = await Promise.all([
+  const [lots, pins, overrides] = await Promise.all([
     listLotsWithImages(orgId, id),
     listPins(orgId, catalogue.id),
+    listOverrides(orgId, catalogue.id),
   ]);
 
   const layoutParams = normaliseParams(catalogue.params);
@@ -33,13 +36,43 @@ export default async function CataloguePage({
     layoutParams.showRef ? "ref" : "noref",
     layoutParams.fit,
     // The lots too: an import that adds rows must move the preview, and the
-    // parameters alone would not have changed.
+    // parameters alone would not have changed. And the newest EDIT to a lot,
+    // because a corrected title changes the document without changing the
+    // count.
     lots.length,
+    Math.max(0, ...lots.map((l) => l.updatedAt.getTime())),
+    // Pins and overrides touch the catalogue row when they change, so this one
+    // number carries all of them.
     catalogue.updatedAt.getTime(),
   ].join("-");
-  // Derived here only to say how many pages it came to. The frame derives it
-  // again from the same inputs — one engine, so the two cannot disagree.
-  const document = derive(lots, layoutParams, pins);
+  // Derived here only to say how many pages it came to, and which page each lot
+  // landed on for the list beside the preview. The frame derives it again from
+  // the same inputs — one engine, so the two cannot disagree.
+  const document = derive(lots, layoutParams, pins, overrides);
+
+  const pageOf = new Map<string, number>();
+  for (const page of document.pages) {
+    for (const slot of page.slots) pageOf.set(slot.lotId, page.number);
+  }
+  const overridesOf = new Map<string, number>();
+  for (const o of overrides) overridesOf.set(o.lotId, (overridesOf.get(o.lotId) ?? 0) + 1);
+  const pinnedLots = new Set(pins.flatMap((p) => p.lotIds));
+  const refOf = new Map(
+    lots.map((l) => [l.id, l.ref ?? (asText(l.fields.title) || "untitled")]),
+  );
+
+  const panelLots: PinPanelLot[] = lots.map((lot) => ({
+    id: lot.id,
+    ref: lot.ref,
+    title: asText(lot.fields.title),
+    page: pageOf.get(lot.id) ?? null,
+    overrides: overridesOf.get(lot.id) ?? 0,
+    pinned: pinnedLots.has(lot.id),
+  }));
+  const panelPins: PinPanelPin[] = pins.map((pin) => ({
+    id: pin.id,
+    refs: pin.lotIds.map((lotId) => refOf.get(lotId) ?? "?"),
+  }));
 
   return (
     <div className="flex h-screen min-h-0 flex-col">
@@ -74,6 +107,18 @@ export default async function CataloguePage({
                 · {document.unphotographed} without a photograph
               </span>
             )}
+            {pins.length > 0 && (
+              <>
+                {" "}
+                · {pins.length} {pins.length === 1 ? "pin" : "pins"}
+              </>
+            )}
+            {overrides.length > 0 && (
+              <>
+                {" "}
+                · {overrides.length} {overrides.length === 1 ? "override" : "overrides"}
+              </>
+            )}
           </p>
           <p className="text-[12px] text-faint">
             The PDF is this same document, printed. It takes a moment on a long
@@ -90,6 +135,7 @@ export default async function CataloguePage({
         <CatalogueControls
           key={previewKey}
           eventId={event.id}
+          catalogueId={catalogue.id}
           params={layoutParams}
         />
       </div>
@@ -111,24 +157,35 @@ export default async function CataloguePage({
             </div>
           </div>
         ) : (
-          /* NO `sandbox` ATTRIBUTE. The document is inert because of its
-             Content-Security-Policy, which carries no script-src. A sandbox
-             without allow-scripts stops WebKit dispatching DOM events into the
-             frame at all — ARCHITECTURE.md principle 8, and the reason the
-             predecessor's editing layer was dead in Safari for a year while
-             Chromium-only testing reported everything green. */
-          <iframe
-            title="Catalogue preview"
-            // THE PARAMETERS ARE IN THE URL, and not because the route reads
-            // them — it reads the catalogue row, which is the source of truth.
-            // They are here because the frame reloads when its `src` changes and
-            // at no other time: re-rendering the page around an unchanged `src`
-            // leaves the previous document sitting in the frame, so changing the
-            // density appeared to do nothing at all. Found by driving the
-            // application; no unit test could have seen it.
-            src={`/events/${event.id}/catalogue/preview?v=${previewKey}`}
-            className="h-full w-full border border-rule bg-paper"
-          />
+          <div className="grid h-full min-h-0 grid-cols-[minmax(0,1fr)_340px] gap-4">
+            {/* NO `sandbox` ATTRIBUTE. The document is inert because of its
+                Content-Security-Policy, which carries no script-src. A sandbox
+                without allow-scripts stops WebKit dispatching DOM events into the
+                frame at all — ARCHITECTURE.md principle 8, and the reason the
+                predecessor's editing layer was dead in Safari for a year while
+                Chromium-only testing reported everything green. */}
+            <iframe
+              title="Catalogue preview"
+              // THE PARAMETERS ARE IN THE URL, and not because the route reads
+              // them — it reads the catalogue row, which is the source of truth.
+              // They are here because the frame reloads when its `src` changes and
+              // at no other time: re-rendering the page around an unchanged `src`
+              // leaves the previous document sitting in the frame, so changing the
+              // density appeared to do nothing at all. Found by driving the
+              // application; no unit test could have seen it.
+              src={`/events/${event.id}/catalogue/preview?v=${previewKey}`}
+              className="h-full w-full border border-rule bg-paper"
+            />
+            {/* Keyed on the catalogue's version: a pin that lands gives a fresh
+                panel, a refusal — which changes nothing — keeps its message. */}
+            <PinPanel
+              key={catalogue.updatedAt.getTime()}
+              eventId={event.id}
+              catalogueId={catalogue.id}
+              lots={panelLots}
+              pins={panelPins}
+            />
+          </div>
         )}
       </div>
     </div>

@@ -82,6 +82,32 @@ export interface EnginePin {
   lotIds: string[];
 }
 
+/**
+ * An override, as the engine sees it: one judgement about one field of one lot
+ * IN THIS CATALOGUE.
+ *
+ * Keyed `(lot, field)` — never to a slot, a page or an element id (principle 1).
+ * It is a VALUE the engine re-applies on every derivation (principle 2): change
+ * the density and the same override lands on the same lot, because nothing
+ * about it described where the lot was.
+ *
+ * Two kinds, because these are the two things a specialist asks for that are
+ * not "the record is wrong": leave a field off THIS catalogue, or print something
+ * different in THIS catalogue. A typo in a title is neither — it is wrong in
+ * every catalogue, and is fixed on the lot, not here.
+ *
+ * The record is never touched. Remove the override and the record's own value
+ * prints again (principle 9: a default, not a lock).
+ */
+export interface EngineOverride {
+  lotId: string;
+  field: string;
+  /** Do not print this field in this catalogue. Wins over `text`. */
+  hidden?: boolean;
+  /** Print this instead of the record's value, in this catalogue only. */
+  text?: string;
+}
+
 export interface CaptionLine {
   key: string;
   label: string;
@@ -288,6 +314,36 @@ function captionFor(lot: EngineLot, budget: number, lineBudget: number): Caption
 }
 
 /**
+ * The lot as THIS catalogue prints it: the record with its overrides applied.
+ *
+ * Returns a new object and never writes into the lot it was given — the record
+ * is the caller's and is the same record every other catalogue derives from.
+ *
+ * `ref` and `images` are not entries in `fields`, so they are handled by name:
+ * a house that wants one lot's reference off the page, or one lot printed
+ * without its plate in this catalogue, is asking the same (lot, field) question
+ * and gets the same answer. A `text` on `images` is ignored, because a plate is
+ * a content hash and not a thing anybody types.
+ */
+function applyOverrides(lot: EngineLot, own: EngineOverride[]): EngineLot {
+  const fields = { ...lot.fields };
+  let ref = lot.ref;
+  let images = lot.images;
+  for (const override of own) {
+    if (override.hidden) {
+      if (override.field === "ref") ref = null;
+      else if (override.field === "images") images = [];
+      else delete fields[override.field];
+      continue;
+    }
+    if (override.text === undefined) continue;
+    if (override.field === "ref") ref = override.text;
+    else if (override.field !== "images") fields[override.field] = override.text;
+  }
+  return { id: lot.id, ref, fields, images };
+}
+
+/**
  * Derive a document.
  *
  * Pagination is file order, chunked by density, with one exception: a pin that
@@ -295,13 +351,27 @@ function captionFor(lot: EngineLot, budget: number, lineBudget: number): Caption
  * in what is left of a page, the whole group moves to the next one and the gap
  * is left visible rather than back-filled — back-filling would reorder the
  * house's own sequence, which they set deliberately.
+ *
+ * Overrides are applied HERE, on every derivation, and not by the caller before
+ * the lots arrive. The alternative — a data layer that hands the engine
+ * already-corrected lots — would make the engine unable to say which values are
+ * the record's and which are this catalogue's, and would put the one place a
+ * correction is interpreted outside the one function every output shares.
  */
 export function derive(
   lots: EngineLot[],
   params: CatalogueParams = DEFAULT_PARAMS,
   pins: EnginePin[] = [],
+  overrides: EngineOverride[] = [],
 ): CatalogueDocument {
   const perPage = Math.max(1, params.perPage);
+
+  const overridesByLot = new Map<string, EngineOverride[]>();
+  for (const override of overrides) {
+    const own = overridesByLot.get(override.lotId);
+    if (own) own.push(override);
+    else overridesByLot.set(override.lotId, [override]);
+  }
 
   // Which pin, if any, holds each lot. A lot in two keeping-together pins is a
   // contradiction the data layer should prevent; here the first one wins, so the
@@ -339,12 +409,14 @@ export function derive(
     // group that spans a spread.
     if (run.length <= perPage && current.length + run.length > perPage) flush();
     for (const lot of run) {
+      const own = overridesByLot.get(lot.id);
+      const printed = own ? applyOverrides(lot, own) : lot;
       current.push({
         lotId: lot.id,
-        ref: params.showRef ? lot.ref : null,
-        image: lot.images[0] ?? null,
+        ref: params.showRef ? printed.ref : null,
+        image: printed.images[0] ?? null,
         caption: captionFor(
-          lot,
+          printed,
           CAPTION_BUDGET[perPage] ?? 8,
           LINE_BUDGET[perPage] ?? 170,
         ),

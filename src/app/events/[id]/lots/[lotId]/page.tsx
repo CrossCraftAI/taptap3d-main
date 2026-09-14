@@ -1,12 +1,17 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { Dropzone } from "@/components/dropzone";
+import { LotCatalogueForm, type OverrideRowSpec } from "@/components/lot-catalogue-form";
+import { LotFieldsForm, type FieldRow } from "@/components/lot-fields-form";
 import { LotPhotographs } from "@/components/lot-photographs";
 import { PageHeader } from "@/components/page-header";
 import { listAssetsForLot } from "@/lib/data/assets";
+import { getCatalogue } from "@/lib/data/catalogues";
 import { getEvent } from "@/lib/data/events";
 import { getLot } from "@/lib/data/lots";
 import { currentOrgId } from "@/lib/data/org";
+import { listOverridesForLot } from "@/lib/data/overrides";
 import { asText } from "@/lib/engine/derive";
 import { CORE_FIELDS } from "@/lib/import/fields";
 
@@ -14,6 +19,11 @@ export const dynamic = "force-dynamic";
 
 const CORE_ORDER = CORE_FIELDS.map((f) => f.key);
 const LABEL = new Map(CORE_FIELDS.map((f) => [f.key as string, f.label]));
+const isCore = (key: string): boolean =>
+  CORE_ORDER.includes(key as (typeof CORE_ORDER)[number]);
+
+/** Long by shape: the value is long, whatever the column is called. */
+const long = (value: string): boolean => value.length > 80 || value.includes("\n");
 
 export default async function LotPage({
   params,
@@ -28,24 +38,82 @@ export default async function LotPage({
   ]);
   if (!event || !lot || lot.eventId !== event.id) notFound();
 
-  const photographs = await listAssetsForLot(orgId, lot.id);
-  const entries = Object.entries(lot.fields ?? {});
+  // READ, not ensured: a lot page is not a request for a catalogue. Until the
+  // catalogue screen has been opened once there is nothing to override in.
+  const [photographs, catalogue] = await Promise.all([
+    listAssetsForLot(orgId, lot.id),
+    getCatalogue(orgId, event.id),
+  ]);
+  const overrides = catalogue
+    ? await listOverridesForLot(orgId, catalogue.id, lot.id)
+    : [];
 
-  // Three groups, in the order a person cares about them: the fields the
-  // catalogue prints, the customer's own columns, and the values carried across
-  // from the predecessor that exist so nothing was thrown away.
-  const core = CORE_ORDER.filter((key) => key !== "images")
-    .map((key) => [key, lot.fields?.[key]] as const)
-    .filter(([, value]) => asText(value) !== "");
-  const custom = entries.filter(
-    ([key]) =>
-      !CORE_ORDER.includes(key as (typeof CORE_ORDER)[number]) &&
-      !key.startsWith("_") &&
-      asText(entries.find(([k]) => k === key)?.[1]) !== "",
+  const fields = lot.fields ?? {};
+  const customKeys = Object.keys(fields).filter(
+    (key) => !isCore(key) && !key.startsWith("_"),
   );
-  const carried = entries.filter(([key]) => key.startsWith("_"));
+  const carried = Object.entries(fields).filter(([key]) => key.startsWith("_"));
 
-  const title = asText(lot.fields?.title) || "Untitled lot";
+  // ── The record ────────────────────────────────────────────────────────────
+  // Every core field, present or not, so a missing maker can be typed in; then
+  // the house's own columns. `ref` reads the column, because that is what the
+  // ledger and the pins read — the copy in `fields` follows it on save.
+  const recordRows: FieldRow[] = [
+    ...CORE_ORDER.filter((key) => key !== "images").map((key): FieldRow => {
+      const value = key === "ref" ? (lot.ref ?? asText(fields.ref)) : asText(fields[key]);
+      const label = LABEL.get(key)!;
+      return { key, label: label.zh, hint: label.en, value, long: long(value) };
+    }),
+    ...customKeys.map((key): FieldRow => {
+      const value = asText(fields[key]);
+      return { key, label: key, hint: "the house's column", value, long: long(value) };
+    }),
+  ];
+
+  // ── This catalogue ────────────────────────────────────────────────────────
+  const byField = new Map(overrides.map((o) => [o.field, o]));
+  const overrideRow = (
+    key: string,
+    label: string,
+    record: string,
+    hint?: string,
+    hideOnly = false,
+  ): OverrideRowSpec => {
+    const own = byField.get(key);
+    return {
+      key,
+      label,
+      hint,
+      record,
+      hidden: own?.hidden === true,
+      text: own?.text ?? "",
+      hideOnly,
+    };
+  };
+  const catalogueRows: OverrideRowSpec[] = [
+    ...CORE_ORDER.filter((key) => key !== "images").map((key) => {
+      const label = LABEL.get(key)!;
+      const record = key === "ref" ? (lot.ref ?? "") : asText(fields[key]);
+      return overrideRow(key, label.zh, record, label.en);
+    }),
+    ...customKeys.map((key) => overrideRow(key, key, asText(fields[key]), "the house's column")),
+    overrideRow(
+      "images",
+      "plate",
+      photographs.length === 0
+        ? ""
+        : `${photographs.length} ${photographs.length === 1 ? "photograph" : "photographs"}`,
+      "the photograph",
+      true,
+    ),
+    // An override on a field the record no longer has still prints, so it is
+    // still shown — otherwise it could be neither seen nor removed.
+    ...overrides
+      .filter((o) => o.field !== "images" && !isCore(o.field) && !customKeys.includes(o.field))
+      .map((o) => overrideRow(o.field, o.field, "", "no longer in the record")),
+  ];
+
+  const title = asText(fields.title) || "Untitled lot";
 
   return (
     <div className="px-8 py-8">
@@ -53,54 +121,42 @@ export default async function LotPage({
         parent={{ href: `/events/${event.id}`, label: event.name }}
         title={lot.ref ? `${lot.ref} · ${title}` : title}
         meta={
-          photographs.length === 0
-            ? "no photographs"
-            : `${photographs.length} ${photographs.length === 1 ? "photograph" : "photographs"}`
+          <>
+            {photographs.length === 0
+              ? "no photographs"
+              : `${photographs.length} ${photographs.length === 1 ? "photograph" : "photographs"}`}
+            {overrides.length > 0 && (
+              <span className="text-seal">
+                {" "}
+                · {overrides.length} {overrides.length === 1 ? "field" : "fields"} overridden in the
+                catalogue
+              </span>
+            )}
+          </>
+        }
+        actions={
+          <Link
+            href={`/events/${event.id}/catalogue`}
+            className="border border-ruleStrong bg-paper px-3 py-1.5 text-[13px] font-medium hover:bg-field"
+          >
+            Open catalogue
+          </Link>
         }
       />
 
-      <div className="mt-6 grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
+      <div className="mt-6 grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         <section>
           <h2 className="text-[14px] font-medium">Fields</h2>
-          <dl className="mt-3 border border-rule bg-paper">
-            {core.map(([key, value]) => (
-              <div
-                key={key}
-                className="flex gap-4 border-b border-rule px-4 py-2 last:border-b-0"
-              >
-                <dt className="w-28 shrink-0 text-[12px] text-muted">
-                  {LABEL.get(key)?.zh ?? key}
-                </dt>
-                <dd className="min-w-0 flex-1 text-[13px]">{asText(value)}</dd>
-              </div>
-            ))}
-            {core.length === 0 && (
-              <p className="px-4 py-6 text-center text-[13px] text-muted">
-                This lot arrived with no values in the catalogue fields.
-              </p>
-            )}
-          </dl>
-
-          {custom.length > 0 && (
-            <>
-              <h2 className="mt-6 text-[14px] font-medium">
-                The house&rsquo;s own columns
-              </h2>
-              <dl className="mt-3 border border-rule bg-paper">
-                {custom.map(([key, value]) => (
-                  <div
-                    key={key}
-                    className="flex gap-4 border-b border-rule px-4 py-2 last:border-b-0"
-                  >
-                    <dt className="w-28 shrink-0 truncate text-[12px] text-muted">
-                      {key}
-                    </dt>
-                    <dd className="min-w-0 flex-1 text-[13px]">{asText(value)}</dd>
-                  </div>
-                ))}
-              </dl>
-            </>
-          )}
+          <p className="mt-1 text-[12px] leading-relaxed text-muted">
+            The record. A change here prints in every catalogue of this sale — a typo
+            is wrong everywhere.
+          </p>
+          <LotFieldsForm
+            eventId={event.id}
+            lotId={lot.id}
+            rows={recordRows}
+            version={lot.updatedAt.getTime()}
+          />
 
           {carried.length > 0 && (
             <details className="mt-6">
@@ -140,6 +196,34 @@ export default async function LotPage({
           </Dropzone>
         </section>
       </div>
+
+      <section className="mt-10">
+        <h2 className="text-[14px] font-medium">In the catalogue</h2>
+        {catalogue ? (
+          <LotCatalogueForm
+            eventId={event.id}
+            lotId={lot.id}
+            catalogueId={catalogue.id}
+            catalogueName={catalogue.name}
+            rows={catalogueRows}
+            version={catalogue.updatedAt.getTime()}
+          />
+        ) : (
+          <div className="mt-3 border border-dashed border-rule bg-paper px-6 py-8 text-center">
+            <p className="text-[13px] font-medium">This sale has no catalogue yet.</p>
+            <p className="mx-auto mt-1 max-w-md text-[12px] leading-relaxed text-muted">
+              Open it once and it exists. Then this is where a field can be left off, or
+              printed differently, in that catalogue only.
+            </p>
+            <Link
+              href={`/events/${event.id}/catalogue`}
+              className="mt-4 inline-block border border-ruleStrong bg-paper px-3 py-1.5 text-[13px] font-medium hover:bg-field"
+            >
+              Open the catalogue
+            </Link>
+          </div>
+        )}
+      </section>
     </div>
   );
 }

@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 
 import { setCatalogueParamsAction } from "@/app/events/[id]/catalogue/actions";
 import { DENSITIES, type CatalogueParams } from "@/lib/engine/derive";
+import { logAction } from "@/lib/log/client";
 
 /**
  * Density, placement, fit, reference.
@@ -31,9 +32,11 @@ import { DENSITIES, type CatalogueParams } from "@/lib/engine/derive";
  */
 export function CatalogueControls({
   eventId,
+  catalogueId,
   params,
 }: {
   eventId: string;
+  catalogueId: string;
   params: CatalogueParams;
 }): React.ReactElement {
   const form = useRef<HTMLFormElement>(null);
@@ -42,6 +45,9 @@ export function CatalogueControls({
   const submit = (): void => form.current?.requestSubmit();
   const change = (patch: Partial<CatalogueParams>): void => {
     setLocal((previous) => ({ ...previous, ...patch }));
+    // Counted: a density change is a gesture D9 has to weigh against the
+    // corrections it causes or saves.
+    logAction("catalogue.params", patch, catalogueId);
     // After the state update is committed, so the form posts the new value
     // rather than the one being replaced.
     queueMicrotask(submit);

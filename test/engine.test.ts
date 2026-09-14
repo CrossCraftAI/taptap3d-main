@@ -220,6 +220,164 @@ describe("derive", () => {
   });
 });
 
+describe("overrides — this catalogue's judgement, re-applied on every derivation", () => {
+  const record = (): EngineLot =>
+    lot("a", {
+      fields: { title: "青花瓶", maker: "張大千", price: "1,000 HKD" },
+      images: ["plate-hash"],
+    });
+  const captionKeys = (doc: ReturnType<typeof derive>): string[] =>
+    doc.pages[0]!.slots[0]!.caption.map((l) => l.key);
+  const lineValue = (doc: ReturnType<typeof derive>, key: string): string | undefined =>
+    doc.pages[0]!.slots[0]!.caption.find((l) => l.key === key)?.value;
+
+  it("hides a field in this catalogue and leaves the record alone", () => {
+    const input = record();
+    const doc = derive([input], DEFAULT_PARAMS, [], [
+      { lotId: "a", field: "maker", hidden: true },
+    ]);
+    expect(captionKeys(doc)).not.toContain("maker");
+    expect(captionKeys(doc)).toContain("title");
+    // A correction is a VALUE the engine applies, never a write into the lot.
+    expect(input.fields.maker).toBe("張大千");
+  });
+
+  it("prints a different value in this catalogue only", () => {
+    const input = record();
+    const doc = derive([input], DEFAULT_PARAMS, [], [
+      { lotId: "a", field: "title", text: "青花纏枝蓮紋梅瓶" },
+    ]);
+    expect(lineValue(doc, "title")).toBe("青花纏枝蓮紋梅瓶");
+    expect(input.fields.title).toBe("青花瓶");
+  });
+
+  it("supplies a value the record does not have", () => {
+    // "Print a maker in this catalogue" for a lot whose record has none is the
+    // same gesture as replacing one, and it must not need the record edited.
+    const doc = derive([lot("a", { fields: { title: "青花瓶" } })], DEFAULT_PARAMS, [], [
+      { lotId: "a", field: "maker", text: "佚名" },
+    ]);
+    expect(lineValue(doc, "maker")).toBe("佚名");
+  });
+
+  it("lets hidden win over text", () => {
+    const doc = derive([record()], DEFAULT_PARAMS, [], [
+      { lotId: "a", field: "maker", hidden: true, text: "somebody" },
+    ]);
+    expect(captionKeys(doc)).not.toContain("maker");
+  });
+
+  it("reaches the reference and the plate by the same (lot, field) key", () => {
+    const doc = derive([record()], DEFAULT_PARAMS, [], [
+      { lotId: "a", field: "ref", hidden: true },
+      { lotId: "a", field: "images", hidden: true },
+    ]);
+    const slot = doc.pages[0]!.slots[0]!;
+    expect(slot.ref).toBeNull();
+    expect(slot.image).toBeNull();
+    // Hidden is a decision, not an absence: the lot still HAS a photograph.
+    expect(doc.unphotographed).toBe(0);
+  });
+
+  it("retypes the reference but never the plate", () => {
+    const doc = derive([record()], DEFAULT_PARAMS, [], [
+      { lotId: "a", field: "ref", text: "P04a" },
+      { lotId: "a", field: "images", text: "not-a-hash" },
+    ]);
+    expect(doc.pages[0]!.slots[0]!.ref).toBe("P04a");
+    expect(doc.pages[0]!.slots[0]!.image).toBe("plate-hash");
+  });
+
+  it("ignores an override for a lot that is not in the document", () => {
+    const plain = derive([record()], DEFAULT_PARAMS);
+    const withStray = derive([record()], DEFAULT_PARAMS, [], [
+      { lotId: "nobody", field: "title", hidden: true },
+    ]);
+    expect(JSON.stringify(withStray)).toBe(JSON.stringify(plain));
+  });
+
+  it("does not charge a hidden field against the caption budget", () => {
+    // Nine-up carries four lines. With the maker hidden, the fourth line goes
+    // to the next field by priority instead of being left blank.
+    const busy = lot("a", {
+      fields: {
+        title: "t",
+        maker: "m",
+        date: "d",
+        material: "mat",
+        dimensions: "dim",
+        price: "p",
+      },
+    });
+    const doc = derive([busy], { ...DEFAULT_PARAMS, perPage: 9 }, [], [
+      { lotId: "a", field: "maker", hidden: true },
+    ]);
+    expect(captionKeys(doc)).toEqual(["title", "date", "dimensions", "price"]);
+  });
+
+  it("SURVIVES EVERY DENSITY — the thesis of the architecture", () => {
+    // The same lot is the fifth slot of page one at nine-up and the first slot
+    // of page three at two-up. Nothing about these overrides says where the lot
+    // is, so nothing about them is destroyed when it moves.
+    const input = [lots(5), record(), lots(4).map((l) => lot(`q${l.id}`))].flat();
+    const overrides = [
+      { lotId: "a", field: "maker", hidden: true },
+      { lotId: "a", field: "price", text: "估價待詢" },
+    ];
+    for (const perPage of [1, 2, 4, 6, 9]) {
+      const doc = derive(input, { ...DEFAULT_PARAMS, perPage }, [], overrides);
+      const slot = doc.pages.flatMap((p) => p.slots).find((s) => s.lotId === "a")!;
+      expect(slot, `lot a is placed at ${perPage}-up`).toBeDefined();
+      const keys = slot.caption.map((l) => l.key);
+      expect(keys, `maker hidden at ${perPage}-up`).not.toContain("maker");
+      expect(
+        slot.caption.find((l) => l.key === "price")?.value,
+        `price overridden at ${perPage}-up`,
+      ).toBe("估價待詢");
+    }
+  });
+});
+
+describe("pins — keyed by members, so a density change cannot orphan them", () => {
+  const pageOf = (doc: ReturnType<typeof derive>, id: string): number =>
+    doc.pages.find((p) => p.slots.some((s) => s.lotId === id))!.number;
+
+  it("keeps its members on one page at every density they fit", () => {
+    const input = lots(10);
+    const pins = [{ keepsTogether: true, lotIds: ["p4", "p5"] }];
+    const landed: number[] = [];
+    for (const perPage of [2, 4, 6, 9]) {
+      const doc = derive(input, { ...DEFAULT_PARAMS, perPage }, pins);
+      expect(pageOf(doc, "p4"), `together at ${perPage}-up`).toBe(pageOf(doc, "p5"));
+      landed.push(pageOf(doc, "p4"));
+    }
+    // And the page they share is DIFFERENT at different densities — which is
+    // exactly why the pin could not have been keyed to it.
+    expect(new Set(landed).size).toBeGreaterThan(1);
+  });
+
+  it("changes nothing when it does not keep together", () => {
+    const input = lots(6);
+    const plain = derive(input, { ...DEFAULT_PARAMS, perPage: 4 });
+    const loose = derive(input, { ...DEFAULT_PARAMS, perPage: 4 }, [
+      { keepsTogether: false, lotIds: ["p4", "p5"] },
+    ]);
+    expect(JSON.stringify(loose)).toBe(JSON.stringify(plain));
+  });
+
+  it("places every lot exactly once whatever is pinned", () => {
+    const input = lots(11);
+    const doc = derive(input, { ...DEFAULT_PARAMS, perPage: 4 }, [
+      { keepsTogether: true, lotIds: ["p2", "p3", "p4"] },
+      { keepsTogether: true, lotIds: ["p10", "p11"] },
+    ]);
+    const placed = doc.pages.flatMap((p) => p.slots.map((s) => s.lotId));
+    expect(placed).toHaveLength(11);
+    expect(new Set(placed).size).toBe(11);
+    expect(pageOf(doc, "p10")).toBe(pageOf(doc, "p11"));
+  });
+});
+
 describe("asText", () => {
   it("flattens the predecessor's bilingual shape rather than printing [object Object]", () => {
     expect(asText({ zh: "青花瓶", en: "Blue and white vase" })).toBe("青花瓶");
