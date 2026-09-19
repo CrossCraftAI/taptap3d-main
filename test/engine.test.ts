@@ -378,6 +378,86 @@ describe("pins — keyed by members, so a density change cannot orphan them", ()
   });
 });
 
+describe("derive — where a person put things", () => {
+  const F = { x: 0.1, y: 0.2, w: 0.3, h: 0.4 };
+  const slotOf = (doc: ReturnType<typeof derive>, id: string) =>
+    doc.pages.flatMap((p) => p.slots).find((s) => s.lotId === id)!;
+
+  it("carries a frame to the slot's field, keyed by field and not by position", () => {
+    const doc = derive(lots(3), DEFAULT_PARAMS, [], [
+      { lotId: "p2", field: "title", frame: F },
+    ]);
+    expect(slotOf(doc, "p2").frames).toEqual({ title: F });
+    // Nobody else gains one, and a document with no placements carries none —
+    // which keeps every catalogue derived before this existed identical.
+    expect(slotOf(doc, "p1").frames).toBeUndefined();
+    expect(derive(lots(3)).pages[0]!.slots[0]!.frames).toBeUndefined();
+  });
+
+  it("puts the same frame on the same lot at every density", () => {
+    // The whole reason a frame is stored against (lot, field) in page
+    // fractions. Change the density and the LOT moves; where on its page the
+    // title sits is the same sentence on the new page as on the old one.
+    const overrides = [{ lotId: "p7", field: "title", frame: F }];
+    for (const perPage of [1, 2, 4, 9]) {
+      const doc = derive(lots(10), { ...DEFAULT_PARAMS, perPage }, [], overrides);
+      expect(slotOf(doc, "p7").frames).toEqual({ title: F });
+    }
+  });
+
+  it("frames the two things that are not entries in `fields`", () => {
+    const doc = derive([lot("a", { images: ["hash"] })], DEFAULT_PARAMS, [], [
+      { lotId: "a", field: "ref", frame: F },
+      { lotId: "a", field: "images", frame: { x: 0.5, y: 0.5, w: 0.4, h: 0.4 } },
+    ]);
+    expect(Object.keys(slotOf(doc, "a").frames ?? {}).sort()).toEqual(["images", "ref"]);
+  });
+
+  it("does not apply a frame that has left the paper", () => {
+    // Kept in the database and not applied, which is the rule for an override
+    // whose target is gone: never deleted behind the person's back, never
+    // silently believed. An edit nobody can see is an edit nobody can undo.
+    const gone = [
+      { x: 2, y: 0.1, w: 0.3, h: 0.3 },
+      { x: 0.1, y: -0.5, w: 0.3, h: 0.3 },
+      { x: Number.NaN, y: 0.1, w: 0.3, h: 0.3 },
+    ];
+    for (const frame of gone) {
+      const doc = derive(lots(2), DEFAULT_PARAMS, [], [{ lotId: "p1", field: "title", frame }]);
+      expect(slotOf(doc, "p1").frames).toBeUndefined();
+    }
+  });
+
+  it("applies a frame beside a hiding and a correction on other fields", () => {
+    const doc = derive([lot("a", { fields: { title: "青花瓶", maker: "佚名" } })], DEFAULT_PARAMS, [], [
+      { lotId: "a", field: "title", frame: F, text: "青花纏枝蓮紋梅瓶" },
+      { lotId: "a", field: "maker", hidden: true },
+    ]);
+    const slot = slotOf(doc, "a");
+    expect(slot.frames).toEqual({ title: F });
+    expect(slot.caption.find((l) => l.key === "title")?.value).toBe("青花纏枝蓮紋梅瓶");
+    expect(slot.caption.find((l) => l.key === "maker")).toBeUndefined();
+  });
+
+  it("leaves a named page unapplied — see derive's note on why", () => {
+    // STORED, ROUND-TRIPPED, NOT HONOURED. A page number is positional, the key
+    // names a page for a FIELD rather than for a lot, and a page already full
+    // cannot take another slot without breaking the grid it declares. This
+    // guards the decision: nothing about pagination may start depending on it
+    // by accident.
+    const plain = derive(lots(10), { ...DEFAULT_PARAMS, perPage: 4 });
+    for (const pageIndex of [0, 1, 99]) {
+      const doc = derive(lots(10), { ...DEFAULT_PARAMS, perPage: 4 }, [], [
+        { lotId: "p6", field: "title", pageIndex },
+        { lotId: "p1", field: "images", pageIndex },
+      ]);
+      expect(doc.pages.map((p) => p.slots.map((s) => s.lotId))).toEqual(
+        plain.pages.map((p) => p.slots.map((s) => s.lotId)),
+      );
+    }
+  });
+});
+
 describe("asText", () => {
   it("flattens the predecessor's bilingual shape rather than printing [object Object]", () => {
     expect(asText({ zh: "青花瓶", en: "Blue and white vase" })).toBe("青花瓶");
@@ -438,6 +518,98 @@ describe("renderCatalogue", () => {
       expect(page).toContain("height: calc(100vh - 32px)");
       expect(width).toContain("width: 100%");
     }
+  });
+
+  it("publishes the identity of every part, and of no structural box", () => {
+    // The vocabulary a later overlay hit-tests against. `data-lot` +
+    // `data-field` IS the key an override is written under, so a selection is
+    // expressible as the thing that will be saved (principle 1) — and the
+    // entry carries only half of it on purpose, because half an identity reads
+    // as "not selectable" rather than as an edit that silently cannot be kept.
+    const html = renderCatalogue(
+      derive([lot("a", { fields: { title: "青花瓶" }, images: ["hash-a"] })], DEFAULT_PARAMS),
+    );
+    expect(html).toContain('<section class="page page--grid" data-page="1">');
+    expect(html).toMatch(/<article class="slot" data-lot="a">/);
+    expect(html).not.toMatch(/<article class="slot"[^>]*data-field=/);
+    expect(html).toContain('data-lot="a" data-field="images"');
+    expect(html).toContain('data-lot="a" data-field="title"');
+    expect(html).toContain('data-lot="a" data-field="ref"');
+    // Nothing a person did not place says a person placed it.
+    const body = html.slice(html.indexOf("<body>"), html.indexOf("</body>"));
+    expect(body).not.toContain("data-frame-source");
+    expect(body).not.toContain("data-page-frame");
+    expect(body).not.toContain("placed");
+  });
+
+  it("paints a placed part against the page, once, and says who placed it", () => {
+    const doc = derive([lot("a", { fields: { title: "青花瓶" } })], DEFAULT_PARAMS, [], [
+      { lotId: "a", field: "title", frame: { x: 0.1, y: 0.2, w: 0.3, h: 0.4 } },
+    ]);
+    const html = renderCatalogue(doc);
+    const page = html.slice(html.indexOf("<body>"), html.indexOf("</body>"));
+
+    // ONCE. The part is LIFTED out of the caption, not positioned inside it —
+    // a caption is a clipped box, so a part positioned within it would be cut
+    // at the slot's edge and "a part may go anywhere on the paper" would be
+    // nearly true, which is the predecessor's escapesSlot problem.
+    expect(page.match(/data-field="title"/g)).toHaveLength(1);
+    expect(page).toContain('class="line line--title placed"');
+    expect(page).toContain('data-frame-source="override"');
+    expect(page).toContain('data-page-frame="0.100000,0.200000,0.300000,0.400000"');
+    // Page fractions, straight through, at the resolution CSS carries.
+    expect(page).toContain("left: 10.0000%; top: 20.0000%; width: 30.0000%; height: 40.0000%");
+    // Inside its page and after the live area, so it is above what it was
+    // dragged off without a z-index anywhere.
+    const live = page.indexOf('<div class="live">');
+    const placed = page.indexOf("data-frame-source");
+    expect(live).toBeLessThan(placed);
+    expect(placed).toBeLessThan(page.indexOf("</section>"));
+  });
+
+  it("positions a placed part against the PAGE, which means the margin is not the page's", () => {
+    // An absolutely positioned child is laid out against its ancestor's
+    // PADDING box. With the margin on .page, "0.5 of the page" would land at
+    // half of the page-minus-margins — a placement that drifts with the
+    // template. The margin lives on .live so .page's padding box is the sheet.
+    const html = renderCatalogue(derive([lot("a")], DEFAULT_PARAMS));
+    expect(html).toMatch(/\.live \{[^}]*padding: [\d.]+%/);
+    expect(html).toMatch(/\.page \{[^}]*position: relative/);
+    expect(html).not.toMatch(/\.page \{[^}]*padding:/);
+    // And the paper is where a bleed stops being visible, in the preview as at
+    // the press: without this a bled part lands on the next page's sheet.
+    expect(html).toMatch(/\.page \{[^}]*overflow: hidden/);
+  });
+
+  it("keeps a placed cell's column, because a table's flow is load-bearing", () => {
+    // The colgroup declares the widths, so a row with one fewer cell shifts
+    // every column after it. The content moves; the cell stays, empty.
+    const doc = derive([lot("a", { fields: { title: "青花瓶" } })], {
+      ...DEFAULT_PARAMS,
+      template: "price-list",
+    }, [], [{ lotId: "a", field: "title", frame: { x: 0.1, y: 0.1, w: 0.2, h: 0.1 } }]);
+    const html = renderCatalogue(doc);
+    const row = html.match(/<tr class="slot"[^>]*>.*?<\/tr>/)![0];
+    expect(row.match(/<td /g)).toHaveLength(doc.columns.length);
+    expect(row).toMatch(/<td class="line line--title"[^>]*><\/td>/);
+    expect(html).toContain('<div class="line line--title placed"');
+  });
+
+  it("prints a placed part inside the sheet it belongs to", () => {
+    // Print safety. The part is a child of its own .page, which @page sizes to
+    // exactly one sheet and breaks after — so a placement cannot push a page,
+    // and the fade that would read as a smear on paper is still suppressed.
+    const html = renderCatalogue(
+      derive([lot("a")], DEFAULT_PARAMS, [], [
+        { lotId: "a", field: "title", frame: { x: 0.1, y: 0.1, w: 0.2, h: 0.1 } },
+      ]),
+    );
+    const print = html.slice(html.indexOf("@media print"));
+    expect(print).toContain("@page { size: A4; margin: 0; }");
+    expect(print).toContain("break-after: page");
+    expect(print).toContain(".caption::after { display: none; }");
+    const section = html.match(/<section class="page[^]*?<\/section>/)![0];
+    expect(section).toContain("data-frame-source");
   });
 
   it("paints one blank sheet for a document with no pages, and nothing on it", () => {

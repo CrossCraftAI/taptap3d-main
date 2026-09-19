@@ -41,6 +41,7 @@ import {
   clearOverride,
   listOverrides,
   listOverridesForLot,
+  mergeOverride,
   overrideFromValue,
   setOverride,
 } from "@/lib/data/overrides";
@@ -245,12 +246,82 @@ describe("overrides — per-catalogue judgement", () => {
     expect(overrideFromValue({ hidden: true })).toEqual({ hidden: true });
     expect(overrideFromValue({ text: "x" })).toEqual({ text: "x" });
     expect(overrideFromValue({ hidden: true, text: "x" })).toEqual({ hidden: true, text: "x" });
-    // The migration's proposal shape, and the editor's future frames.
+    // A KEY THE SHAPE HAS SINCE GROWN. This value used to read as null and the
+    // test said so; the editor's placements and treatments are the row's now,
+    // and a straighten alone is a row asserting one thing.
+    expect(overrideFromValue({ straightenDeg: -1.37 })).toEqual({ straightenDeg: -1.37 });
+    // The migration's proposal shape — no key here is one this layer knows.
     expect(overrideFromValue({ proposal: true, kind: "straighten", state: "rejected" })).toBeNull();
-    expect(overrideFromValue({ straightenDeg: -1.37 })).toBeNull();
+    // AND A PROPOSAL THAT CARRIES THE KEY IT IS PROPOSING. The one above would
+    // be refused by the general rule anyway; this one would not, and the
+    // machine proposing a frame is on the roadmap. A proposal is not an edit
+    // (principle 9) however well-formed its payload is.
+    expect(
+      overrideFromValue({
+        proposal: true,
+        kind: "frame",
+        state: "pending",
+        frame: { x: 0.1, y: 0.1, w: 0.2, h: 0.2 },
+      }),
+    ).toBeNull();
     expect(overrideFromValue({ hidden: false, text: "   " })).toBeNull();
     expect(overrideFromValue(null)).toBeNull();
     expect(overrideFromValue("nonsense")).toBeNull();
+  });
+
+  it("reads every key of the widened shape, and refuses the corrupt ones", () => {
+    // ALL FOUR OR NOTHING on a rectangle, both or neither on a ground's tone:
+    // a half-written value is not a smaller value, it is a corrupt one.
+    expect(overrideFromValue({ frame: { x: 0, y: 0, w: 0.5 } })).toBeNull();
+    expect(overrideFromValue({ frame: { x: 0, y: 0, w: 0, h: 0.5 } })).toBeNull();
+    expect(overrideFromValue({ ground: "keyline", groundSpec: { level: "dim" } })).toEqual({
+      ground: "keyline",
+    });
+    // A GROUND'S PARAMETERS CANNOT OUTLIVE ITS GROUND, and mount takes none.
+    expect(
+      overrideFromValue({ ground: "mount", groundSpec: { level: "dim", tint: "warm" } }),
+    ).toEqual({ ground: "mount" });
+    expect(overrideFromValue({ groundSpec: { level: "dim", tint: "warm" } })).toBeNull();
+    // Vocabularies are closed; a value outside one is nobody's decision.
+    expect(overrideFromValue({ picture: "sepia", ground: "hologram" })).toBeNull();
+    // Clamped rather than refused: a coarse value is still a value, and a read
+    // that could refuse a stored row is a catalogue nobody can open.
+    expect(overrideFromValue({ straightenDeg: 400 })).toEqual({ straightenDeg: 15 });
+    expect(overrideFromValue({ straightenDeg: 0 })).toBeNull();
+    expect(overrideFromValue({ straightenDeg: Number.NaN })).toBeNull();
+    expect(
+      overrideFromValue({ ground: "keyline", groundSpec: { level: "dim", tint: "cool", widthMm: 99 } }),
+    ).toEqual({ ground: "keyline", groundSpec: { level: "dim", tint: "cool", widthMm: 2 } });
+    // Counts are counts: 1 is a value, 0 and 10_000 are not.
+    expect(overrideFromValue({ bands: 1 })).toEqual({ bands: 1 });
+    expect(overrideFromValue({ bands: 0 })).toBeNull();
+    expect(overrideFromValue({ bands: 10_000 })).toBeNull();
+    expect(overrideFromValue({ pageIndex: 0 })).toEqual({ pageIndex: 0 });
+    expect(overrideFromValue({ pageIndex: -1 })).toBeNull();
+    expect(overrideFromValue({ pageIndex: 1.5 })).toBeNull();
+  });
+
+  it("merges a patch and never destroys work the patch did not mention", () => {
+    // The pure half of the rule the database test below proves end to end.
+    const frame = { x: 0.1, y: 0.2, w: 0.3, h: 0.4 };
+    expect(mergeOverride({ text: "估價待詢" }, { frame })).toEqual({ text: "估價待詢", frame });
+    expect(mergeOverride({ frame }, { text: "估價待詢" })).toEqual({ text: "估價待詢", frame });
+    // `hidden: false` is an un-hide, not a clear: the frame survives it.
+    expect(mergeOverride({ hidden: true, frame }, { hidden: false })).toEqual({ frame });
+    // An explicit null clears one key; an absent key says nothing at all.
+    expect(mergeOverride({ text: "x", frame }, { frame: null })).toEqual({ text: "x" });
+    expect(mergeOverride({ text: "x", frame }, {})).toEqual({ text: "x", frame });
+    // An empty box on the lot form is a clear, because that is all it can mean.
+    expect(mergeOverride({ text: "x", frame }, { text: "" })).toEqual({ frame });
+    // Nothing left to assert is null — the caller's signal to delete the row.
+    expect(mergeOverride({ text: "x" }, { text: "", hidden: false })).toBeNull();
+    // Changing the ground takes its parameters with it, and only those.
+    expect(
+      mergeOverride(
+        { frame, ground: "keyline", groundSpec: { level: "dim", tint: "neutral", widthMm: 0.5 } },
+        { ground: "mount" },
+      ),
+    ).toEqual({ frame, ground: "mount" });
   });
 
   it("clears, and the record's own value prints again", async () => {
@@ -306,6 +377,122 @@ describe("overrides — per-catalogue judgement", () => {
     const after = (await getCatalogue(orgA, eventA))!.updatedAt.getTime();
     expect(after).toBeGreaterThan(before);
     await clearOverride(orgA, catalogueA, lotIds[2]!, "maker");
+  });
+});
+
+// ── One row, several kinds of judgement ─────────────────────────────────────
+
+describe("the widened override — a row holds every kind of edit at once", () => {
+  const FRAME = { x: 0.12, y: 0.34, w: 0.5, h: 0.25 };
+  const CONTENT = { x: 0.05, y: 0.05, w: 0.9, h: 0.9 };
+  // C06, which nothing else in this file touches.
+  const lot = (): string => lotIds[5]!;
+  const one = async (field: string) =>
+    (await listOverridesForLot(orgA, catalogueA, lot())).find((o) => o.field === field);
+
+  it("a frame written afterwards keeps the text, and a text keeps the frame", async () => {
+    // THE FAILURE THIS WHOLE SHAPE IS WRITTEN AGAINST. Until the write merged,
+    // a fresh value replaced the row, so committing a drag erased a correction
+    // typed a minute earlier and saving the lot form erased the drag. Neither
+    // is an error anybody sees: the work is simply gone.
+    await setOverride(orgA, catalogueA, lot(), "title", { text: "紫砂大壺" }, actorA);
+    await setOverride(orgA, catalogueA, lot(), "title", { frame: FRAME }, actorA);
+    expect(await one("title")).toMatchObject({ text: "紫砂大壺", frame: FRAME });
+
+    await setOverride(orgA, catalogueA, lot(), "title", { text: "紫砂壺（改）" }, actorA);
+    expect(await one("title")).toMatchObject({ text: "紫砂壺（改）", frame: FRAME });
+
+    // And the lot form, which knows about two keys and states both every time,
+    // leaves the third alone.
+    await setOverride(orgA, catalogueA, lot(), "title", { hidden: false, text: "" }, actorA);
+    const after = await one("title");
+    expect(after?.frame).toEqual(FRAME);
+    expect(after?.text).toBeUndefined();
+    await clearOverride(orgA, catalogueA, lot(), "title");
+  });
+
+  it("round-trips every key of the shape through the database", async () => {
+    // The point of adopting the predecessor's storage whole today: the day the
+    // editor learns to cut a plate out there is no migration of human
+    // judgement to verify, because the column already held it faithfully.
+    const whole = {
+      hidden: true,
+      text: "價格另議",
+      pageIndex: 2,
+      frame: FRAME,
+      content: CONTENT,
+      picture: "cutout" as const,
+      ground: "keyline" as const,
+      groundSpec: { level: "dim" as const, tint: "warm" as const, widthMm: 0.75 },
+      bands: 4,
+      straightenDeg: -1.37,
+    };
+    expect(await setOverride(orgA, catalogueA, lot(), "images", whole, actorA)).toBe(true);
+    expect(await one("images")).toMatchObject(whole);
+
+    // Stored as it is read — the writer normalises through the reader, so there
+    // is no second shape in the column for a later version to disagree with.
+    const [stored] = await db
+      .select({ value: overrides.value })
+      .from(overrides)
+      .where(and(eq(overrides.lotId, lot()), eq(overrides.field, "images")));
+    expect(stored!.value).toEqual(whole);
+  });
+
+  it("clears one key at a time with an explicit null, and the row with the last one", async () => {
+    // The row from the test above is still standing, whole.
+    await setOverride(orgA, catalogueA, lot(), "images", { frame: null }, actorA);
+    const unframed = await one("images");
+    expect(unframed?.frame).toBeUndefined();
+    expect(unframed?.picture).toBe("cutout");
+    expect(unframed?.straightenDeg).toBe(-1.37);
+
+    // Everything else off in one patch: the row goes rather than surviving as
+    // an assertion of nothing, which is what the "N corrections" count reads.
+    expect(
+      await setOverride(
+        orgA,
+        catalogueA,
+        lot(),
+        "images",
+        {
+          hidden: false,
+          text: null,
+          pageIndex: null,
+          content: null,
+          picture: null,
+          ground: null,
+          bands: null,
+          straightenDeg: null,
+        },
+        actorA,
+      ),
+    ).toBe(true);
+    expect(await one("images")).toBeUndefined();
+    const rows = await db
+      .select()
+      .from(overrides)
+      .where(and(eq(overrides.lotId, lot()), eq(overrides.field, "images")));
+    expect(rows).toHaveLength(0);
+  });
+
+  it("carries a frame to the engine, and leaves a named page unapplied", async () => {
+    await setOverride(orgA, catalogueA, lot(), "title", { frame: FRAME, pageIndex: 5 }, actorA);
+    const applied = await listOverrides(orgA, catalogueA);
+    const doc = derive(
+      (await listLots(orgA, eventA)).map((l) => ({ ...l, images: [] })),
+      DEFAULT_PARAMS,
+      [],
+      applied,
+    );
+    const page = doc.pages.find((p) => p.slots.some((s) => s.lotId === lot()))!;
+    const slot = page.slots.find((s) => s.lotId === lot())!;
+    expect(slot.frames?.title).toEqual(FRAME);
+    // Six lots at four-up: C06 is on page two by file order, and the stored
+    // page five has not moved it. See derive's note on why.
+    expect(page.number).toBe(2);
+    expect(doc.pages).toHaveLength(2);
+    await clearOverride(orgA, catalogueA, lot(), "title");
   });
 });
 

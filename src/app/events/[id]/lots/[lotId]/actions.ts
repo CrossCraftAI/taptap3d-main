@@ -94,6 +94,14 @@ export async function saveLotFieldsAction(
  * truth about the lot in this catalogue, and un-ticking a box is how a decision
  * is reversed (principle 9: a default, not a lock).
  *
+ * THE WHOLE TRUTH ABOUT THESE TWO KEYS, AND ONLY THESE TWO. A write is now a
+ * patch (src/lib/data/overrides.ts), so the form states both of them on every
+ * submit — an empty box is sent as an empty string, which clears, rather than
+ * omitted, which would leave the old text standing. Everything the form does
+ * not know about, a dragged frame above all, is left exactly as it was: saving
+ * this form must not undo work done in the editor, which is the failure the
+ * patch exists to prevent and would be reintroduced here by omitting a key.
+ *
  * The catalogue is resolved from the event, never taken from the form, and it
  * is READ, not ensured: a lot page is not a request for a catalogue.
  *
@@ -137,7 +145,7 @@ export async function setLotOverridesAction(
       lotId,
       key,
       // The plate is a content hash, not text; only hiding it makes sense.
-      key === "images" ? { hidden } : { hidden, text: text || undefined },
+      key === "images" ? { hidden } : { hidden, text },
       decidedBy,
     );
     if (done) changed += 1;

@@ -40,6 +40,7 @@
 // — already org-scoped by the route that serves it.
 
 import type { CaptionLine, CatalogueDocument, DocPage, DocSlot } from "@/lib/engine/derive";
+import type { OverrideFrame } from "@/lib/engine/frame";
 
 /**
  * How a plate's content hash becomes something the document can load.
@@ -76,11 +77,122 @@ export const PREVIEW_CSP =
 const pct = (share: number | undefined): string =>
   share === undefined ? "0%" : `${Math.round(share * 1000) / 10}%`;
 
-function plate(slot: DocSlot, asset: AssetResolver): string {
-  if (!slot.image) {
-    return '<div class="plate plate--empty"><span>no photograph</span></div>';
-  }
-  return `<div class="plate"><img src="${escapeHtml(asset(slot.image))}" alt=""></div>`;
+/**
+ * ── WHAT AN OVERLAY NEEDS TO KNOW, PUBLISHED RATHER THAN INFERRED ───────────
+ *
+ * Every part of an entry carries the two attributes that ARE its identity:
+ * `data-lot` and `data-field`. Not an element id — the predecessor gave each
+ * element a positional one (`p5-s1-f-title`) and the lot a specialist called
+ * P22 therefore had a different id at 4-up and at 9-up, which is the failure
+ * principle 1 exists to prevent. The pair here is exactly the key an override
+ * is written under, so a selection is expressible as the thing that will be
+ * saved, and `identityFrom` (src/lib/editor/selection-geometry.ts) reads
+ * nothing else.
+ *
+ * On the ENTRY as well as on the part, because the lot is a real target — a
+ * click that lands between two lines is on the entry, not on nothing — and
+ * because an audit asking "which lot is this row?" should not have to guess
+ * from a class.
+ *
+ * `data-field` is the field key, with two names for the things that are not
+ * entries in `fields`: `ref` and `images`. The same two names `setOverride`
+ * takes, deliberately, so a drag on a plate writes a row the engine can find.
+ */
+function ids(lotId: string, field: string): string {
+  return `${lot(lotId)} data-field="${escapeHtml(field)}"`;
+}
+
+/**
+ * The entry itself carries `data-lot` AND NO `data-field`, deliberately.
+ *
+ * `identityFrom` returns null for a half-identity, and null means "not
+ * selectable" — which is the honest answer for the box around an entry. A
+ * sentinel field would make the whole entry look draggable and then write a row
+ * against a field key no renderer emits, which is the one outcome worse than an
+ * unselectable box. What the attribute IS for is the question "which lot is
+ * this?", asked by an overlay that has hit-tested a part and by anything
+ * auditing a page.
+ */
+function lot(lotId: string): string {
+  return ` data-lot="${escapeHtml(lotId)}"`;
+}
+
+/**
+ * A part a person placed: where it goes, and the fact that a person put it
+ * there rather than the engine.
+ *
+ * POSITIONED AGAINST THE PAGE, with no slot arithmetic anywhere — the frame is
+ * already in page fractions and the `.page` element is the containing block
+ * (see the stylesheet's note on why the margin moved off it). That is the whole
+ * of what src/lib/engine/frame.ts's header means when it says this renderer
+ * needs no slot-relative conversion.
+ *
+ *   data-frame-source="override"  — a person put this here, not the engine.
+ *   data-page-frame="x,y,w,h"     — where, in page fractions.
+ *
+ * ABSENCE IS THE ENGINE, and neither attribute is emitted for a part the
+ * engine placed. The painted box IS the engine's answer, so publishing it
+ * would be a few kilobytes of duplicated arithmetic per page and would change
+ * the bytes of every catalogue for no gain. For a hand-placed part the
+ * opposite holds, which is what the two attributes are for.
+ *
+ * The second is not the first one's duplicate. A check that wants "does the
+ * painted box agree with the stored placement?" can compare a measured rect
+ * against this and the `.page` box with no knowledge of the layout at all,
+ * whereas parsing it back out of the style attribute is re-deriving the very
+ * arithmetic it is meant to be auditing — which is how three of the
+ * predecessor's audits measured the wrong box and confidently accused a
+ * correct fix. Six decimals because that is the stored resolution
+ * (FRAME_PRECISION); four in the percentage because that is all CSS carries.
+ */
+function placedAt(frame: OverrideFrame): string {
+  const p = (v: number): string => `${(v * 100).toFixed(4)}%`;
+  const f = (v: number): string => v.toFixed(6);
+  return (
+    ` style="left: ${p(frame.x)}; top: ${p(frame.y)};` +
+    ` width: ${p(frame.w)}; height: ${p(frame.h)}"` +
+    ` data-frame-source="override"` +
+    ` data-page-frame="${f(frame.x)},${f(frame.y)},${f(frame.w)},${f(frame.h)}"`
+  );
+}
+
+/**
+ * A part of an entry, emitted where it belongs — inside the entry, or, when a
+ * person has placed it, onto `placed` and out of the entry's flow.
+ *
+ * LIFTED RATHER THAN POSITIONED IN SITU, and that is the load-bearing half. A
+ * caption is a clipped box inside a slot, so an absolutely positioned child of
+ * it would be positioned against the caption and then cut off at its edge. The
+ * predecessor met this as `escapesSlot` and answered it by un-clipping
+ * ancestors; taking the part out of the slot altogether is the same answer
+ * without the exceptions, and it is what makes "a part may go anywhere on the
+ * paper" true rather than nearly true.
+ */
+function part(
+  // ONE TEMPLATE FOR BOTH PLACES, taking the extra class and the extra
+  // attributes as holes. Two templates — one for the entry, one for the page —
+  // is two things to keep in step, and the thing that would drift is the pair
+  // of attributes an overlay identifies the part by.
+  html: (cls: string, attrs: string) => string,
+  frame: OverrideFrame | undefined,
+  placed: string[],
+): string {
+  if (!frame) return html("", "");
+  placed.push(html(" placed", placedAt(frame)));
+  return "";
+}
+
+function plate(slot: DocSlot, asset: AssetResolver, placed: string[]): string {
+  const inner = slot.image
+    ? `<img src="${escapeHtml(asset(slot.image))}" alt="">`
+    : "<span>no photograph</span>";
+  const empty = slot.image ? "" : " plate--empty";
+  return part(
+    (cls, attrs) =>
+      `<div class="plate${empty}${cls}"${ids(slot.lotId, "images")}${attrs}>${inner}</div>`,
+    slot.frames?.images,
+    placed,
+  );
 }
 
 /**
@@ -95,6 +207,14 @@ interface CaptionKit {
 }
 const PARAGRAPHS: CaptionKit = { line: "p", label: "span", value: "span" };
 const DESCRIPTION_LIST: CaptionKit = { line: "div", label: "dt", value: "dd" };
+/**
+ * A part that has left its caption takes neutral tags, whatever the
+ * arrangement. A `<dt>` outside a `<dl>` is not a description term, it is
+ * invalid markup that a screen reader reads as neither — and the styling does
+ * not care, because every rule that matters is keyed to `.line`, `.label` and
+ * `.value` rather than to the element.
+ */
+const PLACED: CaptionKit = { line: "div", label: "span", value: "span" };
 
 /**
  * A caption's inside: the lines in print order, with the reference where the
@@ -110,7 +230,12 @@ const DESCRIPTION_LIST: CaptionKit = { line: "div", label: "dt", value: "dd" };
  * either way and the stylesheet decides — so a template change is a class
  * change and never a re-derivation.
  */
-function captionInner(doc: CatalogueDocument, slot: DocSlot, kit: CaptionKit): string {
+function captionInner(
+  doc: CatalogueDocument,
+  slot: DocSlot,
+  kit: CaptionKit,
+  placed: string[],
+): string {
   const fields = doc.template.fields;
   const refAt = fields.findIndex((f) => f.key === "ref");
   const starAt = fields.findIndex((f) => f.key === "*");
@@ -120,14 +245,48 @@ function captionInner(doc: CatalogueDocument, slot: DocSlot, kit: CaptionKit): s
   };
   const labelled = (key: string): boolean =>
     fields[placeOf(key)]?.label ?? false;
+  const kitFor = (key: string): CaptionKit => (slot.frames?.[key] ? PLACED : kit);
 
-  const ref = slot.ref === null ? "" : `<${kit.line} class="ref">${escapeHtml(slot.ref)}</${kit.line}>`;
+  // Built only when it will be shown. `part` has the side effect of putting a
+  // placed element on the page, so a reference this template never prints must
+  // not be built at all, or dragging one would paint it on a catalogue that
+  // had chosen to leave it off.
+  const refShows = refAt >= 0 && slot.ref !== null;
+  const ref = !refShows
+    ? ""
+    : part(
+        (cls, attrs) => {
+          const k = kitFor("ref");
+          return (
+            `<${k.line} class="ref${cls}"${ids(slot.lotId, "ref")}${attrs}>` +
+            `${escapeHtml(slot.ref ?? "")}</${k.line}>`
+          );
+        },
+        slot.frames?.ref,
+        placed,
+      );
   const line = (l: CaptionLine): string =>
-    `<${kit.line} class="line line--${escapeHtml(l.key)}${labelled(l.key) ? " labelled" : ""}">` +
-    `<${kit.label} class="label">${escapeHtml(l.label)}</${kit.label}>` +
-    `<${kit.value} class="value">${escapeHtml(l.value)}</${kit.value}></${kit.line}>`;
+    part(
+      (cls, attrs) => {
+        const k = kitFor(l.key);
+        return (
+          `<${k.line} class="line line--${escapeHtml(l.key)}` +
+          `${labelled(l.key) ? " labelled" : ""}${cls}"${ids(slot.lotId, l.key)}${attrs}>` +
+          `<${k.label} class="label">${escapeHtml(l.label)}</${k.label}>` +
+          `<${k.value} class="value">${escapeHtml(l.value)}</${k.value}></${k.line}>`
+        );
+      },
+      slot.frames?.[l.key],
+      placed,
+    );
 
-  let refPending = ref !== "" && refAt >= 0;
+  // A PLACED PART STILL HOLDS ITS PLACE IN THE ORDER, and there is nothing to
+  // decide about that: `part` returns the empty string for it, so the reference
+  // is still handed over at the same point in the sequence and the lines that
+  // remain are still in print order. The alternative — skipping the key before
+  // the loop — would move the reference when the line it sits above is dragged
+  // away, which is a second edit nobody made.
+  let refPending = refShows;
   const parts: string[] = [];
   for (const l of slot.caption) {
     if (refPending && placeOf(l.key) > refAt) {
@@ -140,22 +299,35 @@ function captionInner(doc: CatalogueDocument, slot: DocSlot, kit: CaptionKit): s
   return parts.join("");
 }
 
-/** One entry — a lot on a page — arranged as the template says. */
-function entry(doc: CatalogueDocument, slot: DocSlot, asset: AssetResolver): string {
+/**
+ * One entry — a lot on a page — arranged as the template says.
+ *
+ * `placed` collects the parts a person took out of it. A TABLE keeps the empty
+ * cell behind a placed one rather than dropping it: the columns are declared in
+ * a colgroup and every row must still have every cell, or the eye running down
+ * the estimate column lands on a maker.
+ */
+function entry(
+  doc: CatalogueDocument,
+  slot: DocSlot,
+  asset: AssetResolver,
+  placed: string[],
+): string {
   const beside = doc.params.imagePlacement === "beside";
   switch (doc.template.arrangement) {
     case "grid":
       return (
-        `<article class="slot${beside ? " slot--beside" : ""}">` +
-        plate(slot, asset) +
-        `<div class="caption">${captionInner(doc, slot, PARAGRAPHS)}</div>` +
+        `<article class="slot${beside ? " slot--beside" : ""}"${lot(slot.lotId)}>` +
+        plate(slot, asset, placed) +
+        `<div class="caption">${captionInner(doc, slot, PARAGRAPHS, placed)}</div>` +
         `</article>`
       );
     case "sheet":
       return (
-        `<article class="slot slot--sheet${beside ? " slot--beside" : ""}">` +
-        plate(slot, asset) +
-        `<dl class="caption">${captionInner(doc, slot, DESCRIPTION_LIST)}</dl>` +
+        `<article class="slot slot--sheet${beside ? " slot--beside" : ""}"` +
+        `${lot(slot.lotId)}>` +
+        plate(slot, asset, placed) +
+        `<dl class="caption">${captionInner(doc, slot, DESCRIPTION_LIST, placed)}</dl>` +
         `</article>`
       );
     case "table": {
@@ -163,30 +335,48 @@ function entry(doc: CatalogueDocument, slot: DocSlot, asset: AssetResolver): str
       // cell, or the eye running down the estimate column lands on a maker.
       const byKey = new Map(slot.caption.map((l) => [l.key, l]));
       const cells = doc.columns.map((column) => {
+        // A LIFTED CELL LEAVES ITS `<td>` BEHIND, EMPTY. `part` cannot express
+        // that — it takes the element out of the flow — and a table's flow is
+        // load-bearing: the colgroup declares the widths, so a row with one
+        // fewer cell shifts every column after it by one. So the content moves
+        // and the cell stays.
+        const cell = (cls: string, inner: string): string => {
+          const frame = slot.frames?.[column.key];
+          const id = ids(slot.lotId, column.key);
+          if (!frame) return `<td class="${cls}"${id}>${inner}</td>`;
+          placed.push(`<div class="${cls} placed"${id}${placedAt(frame)}>${inner}</div>`);
+          return `<td class="${cls}"${id}></td>`;
+        };
         if (column.key === "ref") {
-          return `<td class="ref">${slot.ref === null ? "" : escapeHtml(slot.ref)}</td>`;
+          return cell("ref", slot.ref === null ? "" : escapeHtml(slot.ref));
         }
         if (column.key === "images") {
           const img = slot.image
             ? `<img src="${escapeHtml(asset(slot.image))}" alt="">`
             : "";
-          return `<td class="plate"><div class="cell">${img}</div></td>`;
+          return cell("plate", `<div class="cell">${img}</div>`);
         }
         const l = byKey.get(column.key);
-        return (
-          `<td class="line line--${escapeHtml(column.key)}"><div class="cell">` +
-          (l ? `<span class="value">${escapeHtml(l.value)}</span>` : "") +
-          `</div></td>`
+        return cell(
+          `line line--${escapeHtml(column.key)}`,
+          `<div class="cell">` +
+            (l ? `<span class="value">${escapeHtml(l.value)}</span>` : "") +
+            `</div>`,
         );
       });
-      return `<tr class="slot">${cells.join("")}</tr>`;
+      return `<tr class="slot"${lot(slot.lotId)}>${cells.join("")}</tr>`;
     }
   }
 }
 
 /** A page's body: its entries, wrapped as the arrangement needs. */
-function pageBody(doc: CatalogueDocument, page: DocPage, asset: AssetResolver): string {
-  const entries = page.slots.map((slot) => entry(doc, slot, asset)).join("");
+function pageBody(
+  doc: CatalogueDocument,
+  page: DocPage,
+  asset: AssetResolver,
+  placed: string[],
+): string {
+  const entries = page.slots.map((slot) => entry(doc, slot, asset, placed)).join("");
   switch (doc.template.arrangement) {
     case "grid":
       return `<div class="grid">${entries}</div>`;
@@ -261,13 +451,21 @@ export function renderCatalogue(
   const rows = Math.max(1, Math.ceil(density.perPage / columns));
 
   const pages = doc.pages
-    .map(
-      (page) =>
+    .map((page) => {
+      // The placed parts of every entry on this page, gathered while the
+      // entries are built and emitted AFTER the live area — later in the
+      // document means above it, with no z-index anywhere. A hand-placed part
+      // is the most recent decision about the paper and should not be behind
+      // the thing it was dragged off.
+      const placed: string[] = [];
+      const body = pageBody(doc, page, asset, placed);
+      return (
         `<section class="page page--${template.arrangement}" data-page="${page.number}">` +
-        pageBody(doc, page, asset) +
-        `<footer class="folio">${page.number}</footer>` +
-        `</section>`,
-    )
+        `<div class="live">${body}<footer class="folio">${page.number}</footer></div>` +
+        placed.join("") +
+        `</section>`
+      );
+    })
     .join("");
 
   // NO LOTS, ONE BLANK SHEET. The document truthfully has no pages — the
@@ -321,9 +519,44 @@ export function renderCatalogue(
      The margin is the template's, as a share of the page's width. */
   .page {
     background: #fff; aspect-ratio: ${aspect}; ${pageSize}
-    max-width: 100%; margin: 0 auto 16px; padding: ${template.page.margin}%;
+    max-width: 100%; margin: 0 auto 16px; position: relative; overflow: hidden;
     box-shadow: 0 1px 2px rgba(0,0,0,.10), 0 6px 20px rgba(0,0,0,.06);
     display: flex; flex-direction: column;
+  }
+  /* ── THE MARGIN IS THE LIVE AREA'S, NOT THE PAGE'S ────────────────────────
+     It was the page's padding, and it moved for a reason that is not cosmetic:
+     an absolutely positioned child is laid out against its ancestor's PADDING
+     box, so a part placed at "0.5 of the page" inside a padded .page would land
+     at half of the page-minus-margins and drift with the template's margin.
+     Frames are page fractions (src/lib/engine/frame.ts) and nothing between the
+     drag and the paint may quietly mean something else. With the padding on an
+     inner box, .page's padding box IS the sheet and left/top/width/height are
+     the stored numbers with a percent sign.
+
+     It also fixes a margin that was wrong on screen. Percentage padding
+     resolves against the CONTAINING BLOCK's width, and .page's containing block
+     is the body — so at fit:page, where the page is narrower than the body, the
+     margin was a share of the window rather than of the paper and grew with the
+     viewport. On .live the containing block is .page, which is the paper.
+
+     .page CLIPS, and that is the trim. A frame may legitimately bleed past the
+     edge — a full-bleed plate does it by design — and the paper is where that
+     stops being visible, in the preview as at the press. Without it a bled part
+     would be painted over the next page in the scrolling preview, which is a
+     spread nobody will print. */
+  .live {
+    flex: 1; min-height: 0; display: flex; flex-direction: column;
+    padding: ${template.page.margin}%;
+  }
+  /* ── A PART A PERSON PLACED ───────────────────────────────────────────────
+     Positioned against the page, which is what it is a fraction of. It is out
+     of the entry's flow and therefore out of the caption's font size too, so
+     the type is restated here rather than inherited from a box it has left.
+     CLIPPED for the caption's reason: the box is the size the person drew, and
+     text running out of it would run across the lot beneath. */
+  .placed {
+    position: absolute; margin: 0; overflow: hidden;
+    font-size: ${bodyType}; line-height: 1.45;
   }
   /* THE BLANK SHEET IS A .page AND NOTHING MORE: the same aspect, the same
      fit, the same shadow. A rule stood here that made .page--empty an
@@ -457,6 +690,24 @@ export function renderCatalogue(
   .page--table th.line--price, .page--table td.line--price { text-align: right; }
   .page--table td.line--price .value { font-variant-numeric: tabular-nums; letter-spacing: .01em; }
   .page--table tr.filler td { border-bottom: 0; padding: 0; }
+  /* A PLACED CELL IS NO LONGER A CELL. Almost every rule above is keyed to a
+     td element — deliberately, because it describes the TABLE — so the handful
+     that describe the INK rather than the grid are restated here for a part
+     that has left it. It keeps no border and no cell padding: those belong to
+     the ledger it was taken out of. (And no backticks: see the note further
+     up. This comment cost the third debugging session.) */
+  .page--table .placed { line-height: 1.35; }
+  .page--table .placed .cell { max-height: none; height: 100%; }
+  .page--table .placed.plate { display: flex; align-items: center; }
+  .page--table .placed.plate img { max-width: 100%; max-height: 100%; object-fit: contain; display: block; }
+  .page--table .placed.ref {
+    font-family: system-ui, sans-serif; font-weight: 600; font-size: .82em;
+    letter-spacing: .1em; color: #8a8a8a;
+  }
+  .page--table .placed.line--title .value { font-weight: 600; }
+  .page--table .placed.line--maker .value { color: #3a3a3a; }
+  .page--table .placed.line--price { text-align: right; }
+  .page--table .placed.line--price .value { font-variant-numeric: tabular-nums; letter-spacing: .01em; }
 
   /* ── SHEET: a page ───────────────────────────────────────────────────────
      One entry, the plate dominant, the caption a description list with the
@@ -501,6 +752,10 @@ export function renderCatalogue(
   .page--sheet .line--price .value { font-variant-numeric: tabular-nums; }
   .page--sheet .line--description { margin-top: 1em; }
   .page--sheet .line--description .value { color: #3a3a3a; }
+  /* The sheet's own leading on a part that has left its description list. Its
+     type rules are keyed to .line, .label and .value rather than to dt and dd,
+     which is why a placed part can take neutral tags and still look the same. */
+  .page--sheet .placed { line-height: 1.5; }
 
   @media print {
     /* MARGIN ZERO, and the page's own padding is the margin. Without this the

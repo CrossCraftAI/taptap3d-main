@@ -28,6 +28,7 @@
 
 import { CORE_FIELDS } from "@/lib/import/fields";
 
+import { intersectsPage, type OverrideFrame } from "./frame";
 import {
   BUILT_IN_TEMPLATES,
   densityFor,
@@ -131,13 +132,18 @@ export interface EnginePin {
  * override lands too — a hidden maker is an empty cell in a price list and a
  * missing line in a catalogue, and nothing about it said which.
  *
- * Two kinds, because these are the two things a specialist asks for that are
- * not "the record is wrong": leave a field off THIS catalogue, or print something
- * different in THIS catalogue. A typo in a title is neither — it is wrong in
- * every catalogue, and is fixed on the lot, not here.
+ * Four kinds now, and the first two are the things a specialist asks for that
+ * are not "the record is wrong": leave a field off THIS catalogue, or print
+ * something different in THIS catalogue. A typo in a title is neither — it is
+ * wrong in every catalogue, and is fixed on the lot, not here.
  *
  * The record is never touched. Remove the override and the record's own value
  * prints again (principle 9: a default, not a lock).
+ *
+ * The STORED shape carries more than this — plate treatments, a subject box, a
+ * straighten (src/lib/data/overrides.ts). None of it is here, because the
+ * engine renders no plate treatment and a field in this interface that no
+ * output consumes is noise in the one module that has to stay readable.
  */
 export interface EngineOverride {
   lotId: string;
@@ -146,6 +152,21 @@ export interface EngineOverride {
   hidden?: boolean;
   /** Print this instead of the record's value, in this catalogue only. */
   text?: string;
+  /**
+   * Where a person PUT this part, in fractions of the page.
+   *
+   * Not a correction to the value — the same words, somewhere else on the
+   * paper. It survives a density change for the reason every other key here
+   * does: it says where on ITS page this lot's part sits, and that sentence is
+   * as true on the new page as on the old one (src/lib/engine/frame.ts).
+   */
+  frame?: OverrideFrame;
+  /**
+   * Which page a person moved this part to. ZERO-BASED. CARRIED AND NOT
+   * APPLIED — see `derive`'s note on why, and do not reach for it here without
+   * reading it.
+   */
+  pageIndex?: number;
 }
 
 export interface CaptionLine {
@@ -167,6 +188,21 @@ export interface DocSlot {
    * empty.
    */
   caption: CaptionLine[];
+  /**
+   * The parts of this entry a PERSON placed, by field key — `ref` and `images`
+   * included, because those are the same (lot, field) question asked about the
+   * two things that are not entries in `fields`.
+   *
+   * KEYED BY FIELD, not by a position in `caption`, so the renderer asks about
+   * the part it is painting rather than counting. Absent when nobody has moved
+   * anything, which is every document this system has derived so far and keeps
+   * them byte-identical.
+   *
+   * A frame here has already been checked against the paper; one that has
+   * wandered off the page entirely stays in the database and is not applied
+   * (src/lib/engine/frame.ts, intersectsPage).
+   */
+  frames?: Record<string, OverrideFrame>;
 }
 
 export interface DocPage {
@@ -541,6 +577,43 @@ function applyOverrides(lot: EngineLot, own: EngineOverride[]): EngineLot {
  * the record's and which are this catalogue's, and would put the one place a
  * correction is interpreted outside the one function every output shares.
  *
+ * ── WHY `pageIndex` IS CARRIED AND NOT HONOURED ─────────────────────────────
+ *
+ * An override may name a page. This engine does not put anything on it, and
+ * that is a conclusion rather than an omission. Three reasons, any one of which
+ * is enough:
+ *
+ * IT NAMES A PAGE FOR A FIELD, NOT FOR A LOT. The key is (lot, field), so the
+ * honest reading is "the title of P22 is on page three" while P22's plate is on
+ * page one. A `DocPage` holds `DocSlot`s and a slot is one lot whole; there is
+ * nowhere in this document for a field that has left its entry. Inventing a
+ * page-level element list here would be inventing a document shape ahead of the
+ * renderer that has to paint it, and ahead of the drag that would produce it.
+ *
+ * REINTERPRETING IT AS "MOVE THE LOT" CONTRADICTS THE STORAGE. Two fields of
+ * one lot may name two different pages, and every tiebreak is arbitrary. It
+ * also breaks the pagination invariants in both directions at once: a named
+ * page already holding `perPage` lots would gain an extra slot the grid cannot
+ * hold — rows and columns are declared so that every slot on a page is the same
+ * box — and the page the lot left keeps a hole, because back-filling would
+ * reorder the house's own sequence, which is the rule the pin below already
+ * refuses to break. A keeping-together pin whose members are sent to different
+ * pages is the same contradiction with a name.
+ *
+ * A PAGE NUMBER IS POSITIONAL, WHICH IS THE ONE THING AN OVERRIDE MAY NOT BE.
+ * Page five at 4-up is not page five at 9-up (principle 1, and this file's own
+ * header). A stored 5 means somewhere different after every density change, so
+ * the one thing an override exists to survive is the thing it cannot. The
+ * predecessor could carry it because its pages were PERSISTED objects a person
+ * had made, and re-deriving there was a deliberate "regenerate" that counted
+ * the edits it was about to break. Here derivation is continuous.
+ *
+ * So it is stored, it round-trips, it reaches this interface, and nothing reads
+ * it. The day a person can add a page and put a part on it, the page they mean
+ * will be identified by something that survives repagination, and this key will
+ * be read then or replaced by that one. What must not happen in the meantime is
+ * a guess that moves a client's artwork somewhere nobody asked for.
+ *
  * `library` is the templates that exist. The built-ins by default; the day a
  * house authors one, the data layer appends it here and nothing else changes.
  */
@@ -574,6 +647,19 @@ export function derive(
     printedOf.set(lot.id, own ? applyOverrides(lot, own) : lot);
   }
   const printedLots = lots.map((lot) => printedOf.get(lot.id)!);
+
+  // Where a person put things, gathered per lot before anything is paginated —
+  // a placement is a property of the LOT's parts and says nothing about which
+  // page the lot lands on. A frame that has left the paper entirely is dropped
+  // here rather than in the renderer: it is the engine that decides what
+  // applies, and an edit nobody can see is an edit nobody can drag back.
+  const framesOf = new Map<string, Record<string, OverrideFrame>>();
+  for (const override of overrides) {
+    if (!override.frame || !intersectsPage(override.frame)) continue;
+    const own = framesOf.get(override.lotId) ?? {};
+    own[override.field] = override.frame;
+    framesOf.set(override.lotId, own);
+  }
 
   const columns =
     template.arrangement === "table"
@@ -621,11 +707,13 @@ export function derive(
     if (run.length <= perPage && current.length + run.length > perPage) flush();
     for (const lot of run) {
       const printed = printedOf.get(lot.id)!;
+      const frames = framesOf.get(lot.id);
       current.push({
         lotId: lot.id,
         ref: showRef ? printed.ref : null,
         image: printed.images[0] ?? null,
         caption: linesFor(printed),
+        ...(frames ? { frames } : {}),
       });
       if (current.length === perPage) flush();
     }

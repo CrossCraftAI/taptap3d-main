@@ -173,7 +173,7 @@ describe("three templates, three shapes", () => {
     const html = body(renderCatalogue(grid));
     expect(html).toContain('<section class="page page--grid"');
     expect(html).toContain('<div class="grid">');
-    expect(html).toContain('<article class="slot">');
+    expect(html).toMatch(/<article class="slot" data-lot="a">/);
     expect(html).not.toContain("<table");
     expect(html).not.toContain("<dl");
     // A lot without a maker has no maker line: the grid decides per lot.
@@ -198,16 +198,18 @@ describe("three templates, three shapes", () => {
     expect(html).not.toContain("<dl");
 
     // Every row has the same five cells, whatever the lot has.
-    const rows = html.match(/<tr class="slot">.*?<\/tr>/g) ?? [];
+    const rows = html.match(/<tr class="slot"[^>]*>.*?<\/tr>/g) ?? [];
     expect(rows).toHaveLength(5);
     for (const row of rows) expect(row.match(/<td /g)).toHaveLength(5);
     // The lot with no maker: a maker cell, empty. The eye running down the
     // estimate column must not land on a maker.
     const c = rows.find((r) => r.includes(">C<"))!;
-    expect(c).toContain('<td class="line line--maker"><div class="cell"></div></td>');
+    expect(c).toMatch(/<td class="line line--maker"[^>]*><div class="cell"><\/div><\/td>/);
     // The lot with a plate has a thumbnail in its plate cell; the others have the cell.
-    expect(rows.find((r) => r.includes(">A<"))).toContain('<td class="plate"><div class="cell"><img');
-    expect(c).toContain('<td class="plate"><div class="cell"></div></td>');
+    expect(rows.find((r) => r.includes(">A<"))).toMatch(
+      /<td class="plate"[^>]*><div class="cell"><img/,
+    );
+    expect(c).toMatch(/<td class="plate"[^>]*><div class="cell"><\/div><\/td>/);
     // The house's own column does not become a fifth column: the template has no `*`.
     expect(table.columns.map((c) => c.key)).not.toContain("品相");
   });
@@ -224,14 +226,14 @@ describe("three templates, three shapes", () => {
 
     const html = body(renderCatalogue(sheet));
     expect(html).toContain('<section class="page page--sheet"');
-    expect(html).toContain('<article class="slot slot--sheet">');
+    expect(html).toMatch(/<article class="slot slot--sheet" data-lot="[^"]+">/);
     expect(html).toContain('<dl class="caption">');
     expect(html).toContain('<dt class="label">尺寸</dt>');
     // The specifications carry their labels; the title does not.
     expect(html).toContain('class="line line--dimensions labelled"');
-    expect(html).toContain('class="line line--title">');
+    expect(html).toContain('class="line line--title"');
     // The house's own column prints, labelled, where `*` sits.
-    expect(html).toContain('class="line line--來源 labelled"><dt class="label">來源</dt>');
+    expect(html).toMatch(/class="line line--來源 labelled"[^>]*><dt class="label">來源<\/dt>/);
     expect(html).not.toContain("<table");
     expect(html).not.toContain('class="grid"');
   });
@@ -282,12 +284,12 @@ describe("what the template says, the page does", () => {
   });
 
   it("the reference prints where the fields put it — last, on a museum label", () => {
-    const cell = body(html).match(/<article class="slot">.*?<\/article>/)![0];
+    const cell = body(html).match(/<article class="slot"[^>]*>.*?<\/article>/)![0];
     const refAt = cell.indexOf('class="ref"');
     const lastLine = cell.lastIndexOf('class="line ');
     expect(refAt).toBeGreaterThan(lastLine);
     // Whereas the catalogue names it first, so it leads — as it always has.
-    const catalogueCell = body(renderCatalogue(derive(SALE, on(CATALOGUE)))).match(/<article class="slot">.*?<\/article>/)![0];
+    const catalogueCell = body(renderCatalogue(derive(SALE, on(CATALOGUE)))).match(/<article class="slot"[^>]*>.*?<\/article>/)![0];
     expect(catalogueCell.indexOf('class="ref"')).toBeLessThan(catalogueCell.indexOf('class="line '));
   });
 
@@ -333,9 +335,9 @@ describe("what the template says, the page does", () => {
     ]);
     // A row has cells for both and a value for one.
     const rendered = body(renderCatalogue(rows));
-    const c = (rendered.match(/<tr class="slot">.*?<\/tr>/g) ?? []).find((r) => r.includes(">C<"))!;
-    expect(c).toContain('<td class="line line--品相"><div class="cell"></div></td>');
-    expect(c).toContain('<td class="line line--來源"><div class="cell"><span class="value">香港私人收藏</span></div></td>');
+    const c = (rendered.match(/<tr class="slot"[^>]*>.*?<\/tr>/g) ?? []).find((r) => r.includes(">C<"))!;
+    expect(c).toMatch(/<td class="line line--品相"[^>]*><div class="cell"><\/div><\/td>/);
+    expect(c).toMatch(/<td class="line line--來源"[^>]*><div class="cell"><span class="value">香港私人收藏<\/span><\/div><\/td>/);
   });
 
   it("drops the reference column when this catalogue does not print one", () => {
@@ -387,9 +389,9 @@ describe("corrections survive a change of template", () => {
   it("a hidden maker is an empty cell in a table, not a missing one", () => {
     const doc = derive(SALE, on(PRICE_LIST), [], overrides);
     expect(doc.columns.map((c) => c.key)).toContain("maker");
-    const rows = body(renderCatalogue(doc)).match(/<tr class="slot">.*?<\/tr>/g) ?? [];
+    const rows = body(renderCatalogue(doc)).match(/<tr class="slot"[^>]*>.*?<\/tr>/g) ?? [];
     const b = rows.find((r) => r.includes(">B<"))!;
-    expect(b).toContain('<td class="line line--maker"><div class="cell"></div></td>');
+    expect(b).toMatch(/<td class="line line--maker"[^>]*><div class="cell"><\/div><\/td>/);
     // THE CONTROL: the lot beside it still has its maker.
     expect(rows.find((r) => r.includes(">D<"))).toContain("齊白石");
   });
