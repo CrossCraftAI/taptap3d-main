@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { CatalogueControls } from "@/components/catalogue-controls";
 import { CatalogueWorkspace } from "@/components/catalogue-workspace";
 import { PinPanel, type PinPanelLot, type PinPanelPin } from "@/components/pin-panel";
+import { PreviewCanvas } from "@/components/preview-canvas";
 import { ensureCatalogue, getCatalogue, listPins } from "@/lib/data/catalogues";
 import { getEvent } from "@/lib/data/events";
 import { listLotsWithImages } from "@/lib/data/lots";
@@ -187,23 +188,23 @@ export default async function CataloguePage({
       }
       canvas={
         <>
-          {/* NO `sandbox` ATTRIBUTE. The document is inert because of its
-              Content-Security-Policy, which carries no script-src. A sandbox
-              without allow-scripts stops WebKit dispatching DOM events into the
-              frame at all — ARCHITECTURE.md principle 8, and the reason the
-              predecessor's editing layer was dead in Safari for a year while
-              Chromium-only testing reported everything green. */}
-          <iframe
-            title="Catalogue preview"
+          {/* NOT KEYED, deliberately. Everything else on this screen is keyed
+              on the stored parameters so the server takes authority back by
+              remounting the control; the canvas is the one thing that must
+              NOT be remounted, because a remount throws away both frames and
+              with them the scroll position the second frame exists to keep.
+              It takes the version as a prop and swaps buffers itself. */}
+          <PreviewCanvas
+            eventId={event.id}
+            catalogueId={catalogue?.id ?? null}
             // THE PARAMETERS ARE IN THE URL, and not because the route reads
             // them — it reads the catalogue row, which is the source of truth.
-            // They are here because the frame reloads when its `src` changes and
+            // They are here because a frame reloads when its `src` changes and
             // at no other time: re-rendering the page around an unchanged `src`
             // leaves the previous document sitting in the frame, so changing the
             // density appeared to do nothing at all. Found by driving the
             // application; no unit test could have seen it.
             src={`/events/${event.id}/catalogue/preview?v=${previewKey}`}
-            className="absolute inset-0 h-full w-full"
           />
           {empty && (
             /* ON THE CANVAS, at the foot of the blank sheet: one line and the one

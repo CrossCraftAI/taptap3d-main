@@ -23,3 +23,15 @@ export interface PinFormState {
 }
 
 export const NO_PIN_MESSAGE: PinFormState = { message: null, at: 0 };
+
+/**
+ * What a drag hears back.
+ *
+ * NOT `LotFormState`, although it is the same three fields minus one. A form
+ * says something on success — "Saved. Every catalogue of this sale prints it
+ * this way now." — because the person pressed a button and is owed an
+ * acknowledgement. A drag acknowledges itself: the part is where they let go
+ * of it. So the only message here is a refusal, and `ok` with a message is a
+ * shape this one cannot express.
+ */
+export type PlaceResult = { ok: true } | { ok: false; message: string };
