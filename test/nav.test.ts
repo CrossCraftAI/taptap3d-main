@@ -11,36 +11,66 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { NAV, activeItem } from "@/lib/nav";
+import {
+  NAV,
+  activeItem,
+  currentItem,
+  navGroups,
+  openEventId,
+  saleNav,
+  switchEvent,
+} from "@/lib/nav";
 
 const ROOT = path.resolve(import.meta.dirname, "..");
+
+/** An id shaped like a real one, so a path is exercised rather than a stub. */
+const EVENT = "11111111-2222-3333-4444-555555555555";
+
+/** Every item the rail can ever draw, both groups, with an event open. */
+const EVERY = navGroups(EVENT).flatMap((group) => [...group.items]);
 
 describe("the rail points at pages that exist", () => {
   // A dead menu item is the worst outcome of a reorganisation: it makes a
   // working product look broken, in front of a customer, at the exact moment
   // someone is exploring. The e2e suite clicks every one of these; this fails
   // in a second instead of in a browser.
-  it.each(NAV.map((item) => item.href))("%s has a page", (href) => {
-    const segment = href === "/" ? "" : href;
+  //
+  // The ROUTE PATTERN is what is checked, not the filled-in href: "/events/
+  // [id]/catalogue" is a directory on disk, and a path built from an id is a
+  // plain string that `typedRoutes` cannot check at all.
+  it.each(EVERY.map((item) => item.route))("%s has a page", (route) => {
+    const segment = route === "/" ? "" : route;
     expect(existsSync(path.join(ROOT, "src", "app", segment, "page.tsx"))).toBe(
       true,
     );
   });
 
+  it("fills every dynamic segment of the href it hands the link", () => {
+    // A bracket left in an href is a 404 that looks like a working link, and
+    // it is the exact failure mode of building paths by string.
+    for (const item of EVERY) {
+      expect(item.href, item.label).not.toContain("[");
+      expect(item.href.startsWith("/"), item.label).toBe(true);
+    }
+  });
+
   it("names every place exactly once", () => {
-    const hrefs = NAV.map((item) => item.href);
+    const hrefs = EVERY.map((item) => item.href);
     expect(new Set(hrefs).size).toBe(hrefs.length);
   });
 });
 
-describe("the rail is a flat list of what is built", () => {
+describe("the rail is two groups of what is built", () => {
   // THE OWNER'S DECISION, held as a test. The rail was seven categories — a
   // sequence of four and three "not yet" labels — and was rejected for filing
-  // a pipeline as a menu. It is now these four places and nothing else: no
-  // category, no label without a page, no roadmap entry pretending to be a
-  // feature. Changing this list is a product decision; change it here and in
+  // a pipeline as a menu. It was then four places and no categories, because
+  // four items about one subject do not need a filing system.
+  //
+  // It is now SIX places in two groups, and what changed is the list rather
+  // than the taste: two of the six are about the one event you have open.
+  // Changing this is a product decision; change it here and in
   // test/e2e/rail.spec.ts together, on purpose.
-  it("names the four places, in this order", () => {
+  it("names the house's four places, in this order", () => {
     expect(NAV.map((item) => item.label)).toEqual([
       "Events",
       "Photographs",
@@ -49,13 +79,44 @@ describe("the rail is a flat list of what is built", () => {
     ]);
   });
 
+  it("names the event's two places, in this order", () => {
+    expect(saleNav(EVENT).map((item) => item.label)).toEqual(["Editor", "Lots"]);
+  });
+
+  it("has no event group at all when no event is open", () => {
+    expect(navGroups(null).map((group) => group.key)).toEqual(["house"]);
+    // A category that would draw two rows pointing at no event is worse than
+    // no category: the rows cannot be built, so the group is not there.
+    expect(navGroups(EVENT).map((group) => group.key)).toEqual(["sale", "house"]);
+  });
+
   it("carries a count only where there is something to count", () => {
     // Events and photographs are the two things a house accumulates; a count
-    // on Catalogues would be a count of rows nobody chose to create.
-    expect(NAV.filter((item) => item.count).map((item) => item.label)).toEqual([
+    // on Catalogues would be a count of rows nobody chose to create. The
+    // event's own places carry none — the shell does not know that sale's lot
+    // count, and a number the chrome cannot read is not a number it may show.
+    expect(EVERY.filter((item) => item.count).map((item) => item.label)).toEqual([
       "Events",
       "Photographs",
     ]);
+  });
+});
+
+describe("which event a path is inside", () => {
+  it.each([
+    ["/", null],
+    ["/photographs", null],
+    ["/exports", null],
+    ["/events/abc", "abc"],
+    ["/events/abc/", "abc"],
+    ["/events/abc/import", "abc"],
+    ["/events/abc/catalogue", "abc"],
+    ["/events/abc/lots/def", "abc"],
+    // Not an event, and answering "" would make the chrome build /events//…
+    ["/events", null],
+    ["/events/", null],
+  ])("%s → %j", (pathname, id) => {
+    expect(openEventId(pathname)).toBe(id);
   });
 });
 
@@ -101,5 +162,65 @@ describe("which place a screen belongs to", () => {
     // rail that lit a row up for /api/health would be guessing.
     expect(activeItem("/api/health")).toBeNull();
     expect(activeItem("/api/assets/abc")).toBeNull();
+  });
+});
+
+describe("exactly one mark, and it is the innermost true one", () => {
+  // An editor path is honestly both the event's Editor and the house's
+  // Catalogues. Both marked leaves a person unable to read their position off
+  // the rail, which is the rail's only job.
+  it.each([
+    [`/events/${EVENT}/catalogue`, "Editor"],
+    [`/events/${EVENT}/catalogue/preview`, "Editor"],
+    [`/events/${EVENT}`, "Lots"],
+    [`/events/${EVENT}/import`, "Lots"],
+    [`/events/${EVENT}/lots/xyz`, "Lots"],
+    // A path inside ANOTHER event: the open event's group does not claim it,
+    // and the house's Events does.
+    ["/events/other", "Events"],
+    ["/photographs", "Photographs"],
+    ["/catalogues", "Catalogues"],
+    ["/exports", "Exports"],
+    ["/", "Events"],
+  ])("%s is marked %s", (pathname, label) => {
+    const groups = navGroups(EVENT);
+    expect(currentItem(groups, pathname)?.label).toBe(label);
+    const marked = groups.flatMap((group) =>
+      group.items.filter((item) => item === currentItem(groups, pathname)),
+    );
+    expect(marked).toHaveLength(1);
+  });
+
+  it("marks nothing for a path no group claims", () => {
+    expect(currentItem(navGroups(EVENT), "/api/health")).toBeNull();
+  });
+});
+
+describe("switching event keeps the screen where it can", () => {
+  const A = "aaa";
+  const B = "bbb";
+
+  it("stays in the editor, which is the screen the switcher exists for", () => {
+    expect(switchEvent(`/events/${A}/catalogue`, B)).toBe(`/events/${B}/catalogue`);
+  });
+
+  it.each([
+    // A lot belongs to ONE event; carrying the tail across would build a 404
+    // by hand, which is worse than landing somewhere real.
+    [`/events/${A}/lots/xyz`],
+    // A half-finished import is a task in progress, not a place.
+    [`/events/${A}/import`],
+    [`/events/${A}/catalogue/preview`],
+    [`/events/${A}`],
+    ["/photographs"],
+    ["/"],
+  ])("lands on the event itself from %s", (pathname) => {
+    expect(switchEvent(pathname, B)).toBe(`/events/${B}`);
+  });
+
+  it("only ever names the event it was asked for", () => {
+    for (const pathname of [`/events/${A}/catalogue`, `/events/${A}/lots/x`, "/"]) {
+      expect(switchEvent(pathname, B)).not.toContain(A);
+    }
   });
 });

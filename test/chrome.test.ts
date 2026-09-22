@@ -12,12 +12,19 @@ import { describe, expect, it } from "vitest";
 
 import {
   LOTS_PANEL,
+  NAV_HOUSE,
+  NAV_SALE,
+  PALETTE,
   RAIL,
+  TOP_BAR,
   applyBeforePaint,
   isOpen,
   railDefault,
   type Collapsible,
 } from "@/lib/chrome";
+
+/** Every part of the chrome a viewer can put away. */
+const PARTS: Collapsible[] = [RAIL, TOP_BAR, NAV_SALE, NAV_HOUSE, PALETTE, LOTS_PANEL];
 
 describe("where the rail is by default", () => {
   it.each([
@@ -32,6 +39,32 @@ describe("where the rail is by default", () => {
     ["/events/abc/catalogue", false],
   ])("%s → open: %s", (pathname, open) => {
     expect(railDefault(pathname)).toBe(open);
+  });
+});
+
+describe("the parts of the chrome are told apart", () => {
+  it("gives each part its own element and its own toggle", () => {
+    // Two parts sharing an id is a before-paint script that hides the wrong
+    // thing, and the symptom is a panel that will not open with no error
+    // anywhere.
+    const ids = PARTS.map((part) => part.id);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it("gives each INDEPENDENT part its own key", () => {
+    const independent = PARTS.filter((part) => part !== TOP_BAR);
+    const keys = independent.map((part) => part.key);
+    expect(new Set(keys).size).toBe(keys.length);
+  });
+
+  it("puts the top bar on the rail's key on purpose", () => {
+    // One control is labelled "Navigation" and both of these ARE the
+    // navigation; a second key is a second thing to get out of step, and a
+    // viewer who hid the navigation and got half of it back on the next page
+    // would rightly call it a bug. Two elements, one decision.
+    expect(TOP_BAR.key).toBe(RAIL.key);
+    expect(TOP_BAR.toggle).toBe(RAIL.toggle);
+    expect(TOP_BAR.id).not.toBe(RAIL.id);
   });
 });
 
@@ -126,7 +159,7 @@ describe("the before-paint script does exactly what the component does", () => {
   });
 
   it("reads each part's own key and nobody else's", () => {
-    for (const part of [RAIL, LOTS_PANEL]) {
+    for (const part of PARTS) {
       const seen: string[] = [];
       run(part, true, {
         getItem(key) {
@@ -137,5 +170,17 @@ describe("the before-paint script does exactly what the component does", () => {
       expect(seen).toEqual([part.key]);
     }
     expect(RAIL.key).not.toBe(LOTS_PANEL.key);
+  });
+
+  it("applies the same choice to the rail and the top bar", () => {
+    // They are two elements on one key, so one stored answer has to leave both
+    // in the same state — including the state the server did NOT render,
+    // which is the whole reason the script exists.
+    for (const stored of ["open", "closed", null] as const) {
+      const rail = run(RAIL, false, storing(stored));
+      const bar = run(TOP_BAR, false, storing(stored));
+      expect(bar.hidden, String(stored)).toBe(rail.hidden);
+      expect(bar.expanded, String(stored)).toBe(rail.expanded);
+    }
   });
 });

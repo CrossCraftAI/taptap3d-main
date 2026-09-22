@@ -196,6 +196,49 @@ export async function createEvent(
   return row!;
 }
 
+export interface EventChoice {
+  id: string;
+  name: string;
+  heldOn: Date | null;
+  lotCount: number;
+}
+
+/**
+ * Every event in the org, as little of it as a switcher needs.
+ *
+ * NOT `listEvents`. The shell renders on every request, and the ledger's
+ * summary costs four correlated subqueries an event to answer questions — how
+ * many are photographed, whether a catalogue exists, whether it has been
+ * exported — that a menu of names has no use for. This carries the one count
+ * that changes what the chrome OFFERS rather than what it says: nothing prints
+ * from a sale with no lots, so the palette's PDF row is not there for one
+ * (src/lib/palette.ts, and src/app/exports/page.tsx made the same call).
+ *
+ * It also replaces `countEvents` for the rail's number — the rail's count is
+ * this list's length, so naming the whole set costs no extra query.
+ *
+ * ONE QUERY AND THE WHOLE SET, as `listLotChoices` does: a house has tens of
+ * sales, the menu filters nothing, and a switcher that paged would be a
+ * switcher nobody could switch with.
+ */
+export async function listEventChoices(orgId: string): Promise<EventChoice[]> {
+  const db = getDb();
+  const rows = await db
+    .select({
+      id: events.id,
+      name: events.name,
+      heldOn: events.heldOn,
+      // Written out, unqualified names avoided — see the note above SUMMARY.
+      lotCount: sql<number>`(
+        select count(*)::int from lots where lots.event_id = events.id
+      )`,
+    })
+    .from(events)
+    .where(eq(events.orgId, orgId))
+    .orderBy(desc(events.createdAt));
+  return rows.map((r) => ({ ...r, lotCount: Number(r.lotCount) }));
+}
+
 /** How many events the org has. For the rail, which must not load them all. */
 export async function countEvents(orgId: string): Promise<number> {
   const db = getDb();

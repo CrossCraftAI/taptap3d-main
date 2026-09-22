@@ -1,16 +1,20 @@
-// The chrome a viewer can put away — the rail, the editor's lots panel — and
-// how the choice is kept.
+// The chrome a viewer can put away — the top bar, the rail and its groups, the
+// palette, the editor's lots panel — and how each choice is kept.
 //
-// ── THE WHOLE RAIL, NOT ITS CATEGORIES ──────────────────────────────────────
+// ── THE WHOLE RAIL FIRST, ITS CATEGORIES SECOND ─────────────────────────────
 //
-// The per-category collapse was deleted with the categories (src/lib/nav.ts)
-// and it stays deleted: four items do not need a filing system. What a
-// specialist laying out pages needs is not a smaller menu but THE WINDOW.
-// Measured on production in a 1440×900 window, the A4 page — the entire point
-// of the product — had 450×637 of it, 22.1%; a rail, a header, a controls bar
-// and a lots panel had the other 78%. So one control puts the entire rail
-// away, and the editor arrives with it away. Every screen can take the window;
-// the editor does so by default. test/e2e/editor.spec.ts holds the number.
+// What a specialist laying out pages needs is not a smaller menu but THE
+// WINDOW. Measured on production in a 1440×900 window, the A4 page — the
+// entire point of the product — had 450×637 of it, 22.1%; a rail, a header, a
+// controls bar and a lots panel had the other 78%. So one control puts the
+// entire navigation away, and the editor arrives with it away. Every screen
+// can take the window; the editor does so by default. test/e2e/editor.spec.ts
+// holds the number.
+//
+// The per-category collapse was deleted once, with the seven categories, and
+// it is back for a list that earns it — src/lib/nav.ts says what changed. It
+// is back as ANOTHER `Collapsible`, not as the store-and-effect machinery that
+// was deleted: one mechanism, one shape, one place to read.
 //
 // ── REMEMBERED IN THE BROWSER, NEVER ON A REQUEST ───────────────────────────
 //
@@ -68,6 +72,73 @@ export const RAIL: Collapsible = {
   key: "taptap3d.rail",
   id: "rail",
   toggle: "rail-toggle",
+};
+
+/**
+ * The top bar: the SAME choice as the rail, a second element.
+ *
+ * The toggle is labelled "Navigation" and the top bar holds navigation — the
+ * event switcher and the house's name. Putting half the navigation away and
+ * leaving the other half on screen is not a state anyone asked for, so the two
+ * hide together and there is one control, not two.
+ *
+ * It also has to be this way on the editor, and that half is arithmetic rather
+ * than preference. At fit-page the preview sizes the page by HEIGHT — `height:
+ * calc(100vh - 32px)` in src/lib/render/html.ts — and the page is A4, so its
+ * AREA falls with the square of whatever a bar takes off the top, while the
+ * editor's own header already spends two rows of the window.
+ * test/e2e/editor.spec.ts measures that area as a share of the window and
+ * holds a floor under it; put those two together and the headroom between the
+ * share the editor has today and the floor it must keep is a fraction of the
+ * height a wordmark, a house name and a switcher need. So on the editor the
+ * whole navigation starts away — as the rail already did — and one keystroke
+ * brings it back. The mockup's "the one strip that never collapses" does not
+ * survive that sum. It is a sum and not a reading: driving the editor with the
+ * bar forced on is what would turn it into one.
+ *
+ * A separate key was rejected: two keys is two things to get out of step, and
+ * a viewer who hid "the navigation" and got a top bar back on the next page
+ * would rightly call it a bug.
+ */
+export const TOP_BAR: Collapsible = {
+  key: "taptap3d.rail",
+  id: "topbar",
+  toggle: "rail-toggle",
+};
+
+/**
+ * The rail's two groups. Separate keys, because they are separate decisions:
+ * a person who never leaves one event shuts the house group and keeps it shut.
+ */
+export const NAV_SALE: Collapsible = {
+  key: "taptap3d.nav.sale",
+  id: "nav-sale",
+  toggle: "nav-sale-toggle",
+};
+
+export const NAV_HOUSE: Collapsible = {
+  key: "taptap3d.nav.house",
+  id: "nav-house",
+  toggle: "nav-house-toggle",
+};
+
+/**
+ * The palette's body. The SPINE never hides — it is how the body comes back —
+ * so only the 300px body carries this.
+ *
+ * Shut by default, everywhere. The mockup opens it on its two canvases; the
+ * one canvas that exists here is height-bound, so an open panel costs the page
+ * nothing and would still be a panel nobody asked for sitting over the work on
+ * every load. Which panel is open is not remembered, only whether one is: the
+ * spine has two buttons and re-picking is one click, where a remembered panel
+ * key is a second thing to keep valid as panels come and go by route.
+ */
+export const PALETTE: Collapsible = {
+  key: "taptap3d.palette",
+  id: "palette-body",
+  // Replaced per render with the first panel's spine button: which button
+  // carries `aria-expanded` depends on which panels the route has.
+  toggle: "palette-pick",
 };
 
 export const LOTS_PANEL: Collapsible = {

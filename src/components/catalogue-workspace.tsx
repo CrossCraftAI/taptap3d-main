@@ -72,7 +72,15 @@ export function CatalogueWorkspace({
   };
 
   return (
-    <div className="flex h-screen min-h-0 flex-col">
+    // THE BOX THE SHELL HANDS OVER, not 100vh. The shell is one viewport tall
+    // and `main` is a flex column inside it (src/components/shell.tsx), so
+    // `h-screen` here would be the whole window inside a box that is the
+    // window minus the top bar: the editor would grow a scrollbar and put the
+    // foot of the page underneath the bar. `flex-1` is that box exactly, and
+    // it is the same height as before whenever the bar is away — which on this
+    // screen is the default, so the page's measured share of the window
+    // (test/e2e/editor.spec.ts) is unchanged.
+    <div className="flex min-h-0 flex-1 flex-col">
       <header className="shrink-0 border-b border-rule bg-paper">
         {/* pl-11 clears the rail toggle fixed in the window's corner. */}
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 py-1.5 pl-11 pr-3">

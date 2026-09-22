@@ -110,8 +110,12 @@ test("a new event lands on a blank page with the tools live, and the rail put aw
   // ── THE RAIL IS AWAY, and the way back is in the corner ──────────────────
   await expect(toggle(page)).toBeVisible();
   await expect(toggle(page)).toHaveAttribute("aria-expanded", "false");
-  await expect(toggle(page)).toHaveAttribute("aria-controls", "rail");
+  // BOTH, because the one control puts the whole navigation away: the rail at
+  // the side and the top bar above it are two elements on one stored choice
+  // (src/lib/chrome.ts TOP_BAR says why, and what it costs the page not to).
+  await expect(toggle(page)).toHaveAttribute("aria-controls", "rail topbar");
   await expect(rail(page)).toBeHidden();
+  await expect(page.locator("#topbar")).toBeHidden();
 
   // ── A REAL PAGE, not a card about one ────────────────────────────────────
   const frame = frameOf(page);
@@ -148,10 +152,15 @@ test("a new event lands on a blank page with the tools live, and the rail put aw
   await toggle(page).click();
   await expect(toggle(page)).toHaveAttribute("aria-expanded", "true");
   await expect(rail(page)).toBeVisible();
-  await expect(rail(page).getByRole("link", { name: /^Catalogues/ })).toHaveAttribute(
+  await expect(page.locator("#topbar")).toBeVisible();
+  // THE INNERMOST CLAIM. An editor path is honestly both this event's Editor
+  // and the house's Catalogues; the rail marks the more specific one so a
+  // person can read their position off it (src/lib/nav.ts `currentItem`).
+  await expect(rail(page).getByRole("link", { name: "Editor" })).toHaveAttribute(
     "aria-current",
     "page",
   );
+  await expect(rail(page).locator("[aria-current]")).toHaveCount(1);
   await expect(toggle(page)).toBeFocused();
   await page.screenshot({ path: shot("71-editor-rail-back") });
 
