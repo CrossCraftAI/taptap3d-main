@@ -43,28 +43,29 @@ const read = (file: string): string => readFileSync(path.join(ROOT, file), "utf8
  * delete the entry — which is the only kind of exception that does not
  * outlive its reason. An entry that is merely a name would be a hole somebody
  * widens next month.
+ *
+ * IT IS EMPTY, AND THE MECHANISM IS WHY. Three tranches were built in parallel
+ * worktrees and none could touch another's files, so this list held what the
+ * scale and the token sweep could not reach: two `text-[11px]` in the shell's
+ * rail, and two seal buttons on the editor's header still carrying a raw hex.
+ * They are the whole of what fell between the three, and they were found by a
+ * taste scan reporting SIX sizes on a page whose source had five — because a
+ * census over class names cannot see a file its author did not own. The
+ * entries went red when the files were fixed, exactly as designed, and were
+ * deleted. Add one only for a file another cycle genuinely owns, and delete
+ * it the day it goes red.
  */
-const NOT_OURS: { file: string; carries: string; why: string }[] = [
-  {
-    file: "src/components/shell.tsx",
-    carries: "text-[11px]",
-    why: "the rail's footnote; the shell is owned elsewhere this cycle",
-  },
-  {
-    file: "src/components/nav.tsx",
-    carries: "text-[11px]",
-    why: "the count beside a rail item; same owner as the shell",
-  },
-  {
-    file: "src/app/events/[id]/catalogue/page.tsx",
-    carries: "hover:bg-[#8d241f]",
-    why: "two seal buttons on the editor's header; the editor is owned elsewhere",
-  },
-];
+const NOT_OURS: { file: string; carries: string; why: string }[] = [];
 
 const EXCUSED = new Set(NOT_OURS.map((e) => e.file));
 
 describe("the exceptions are still needed", () => {
+  it("has none outstanding", () => {
+    // An empty list is the goal state, and saying so out loud is what stops
+    // the next person reading the empty array as "this check is off".
+    expect(NOT_OURS).toEqual([]);
+  });
+
   it.each(NOT_OURS.map((e) => [e.file, e] as const))("%s", (file, entry) => {
     expect(SOURCES, `${file} is gone; delete its entry`).toContain(file);
     expect(
@@ -144,14 +145,46 @@ describe("the type scale is five sizes", () => {
  *
  * Scoped to the class names components write, not to globals.css, which is
  * where the values are SUPPOSED to be — that file is the one edit.
+ *
+ * AND NOT TO COMMENTS, which is not a loophole but the point. This repository
+ * records the number it measured beside the decision it drove — "`--color-faint`
+ * is #9a9a9a on #ffffff, which is 2.8:1" is the evidence for a choice — and a
+ * census that forbade that would teach people to delete the evidence and keep
+ * the choice. A hex in prose paints nothing. A hex in a class name paints
+ * something and will not move when the token moves; that is the whole
+ * distinction. So the comments come out before the search, rather than a whole
+ * file being excused for having explained itself.
  */
 const HEX = /#[0-9a-fA-F]{3,8}\b/g;
+
+/** The file with its comments removed, so prose is not mistaken for paint. */
+const code = (file: string): string =>
+  read(file)
+    .replace(/\/\*[\s\S]*?\*\//g, " ")
+    .replace(/(^|[^:])\/\/[^\n]*/g, "$1");
 
 it("no component names a colour the theme does not", () => {
   const hits = SOURCES.filter(
     (f) => !EXCUSED.has(f) && (f.startsWith("src/app/") || f.startsWith("src/components/")),
   ).flatMap((file) =>
-    [...read(file).matchAll(HEX)].map((m) => `${file}: ${m[0]}`),
+    [...code(file).matchAll(HEX)].map((m) => `${file}: ${m[0]}`),
   );
   expect(hits).toEqual([]);
+});
+
+it("still catches a hex in a class name, comments or no comments", () => {
+  // THE CONTROL. Stripping comments is how a census stops crying wolf, and it
+  // is also how one quietly stops working — the strip is one regex away from
+  // eating the file. So the stripper is asked, here, whether it can still see
+  // the thing it exists to find, with the two comment forms around it.
+  const sample = [
+    "// a note about #123456",
+    "/* and #abcdef, over",
+    "   two lines */",
+    'const a = "hover:bg-[#8d241f]";',
+  ].join("\n");
+  const stripped = sample
+    .replace(/\/\*[\s\S]*?\*\//g, " ")
+    .replace(/(^|[^:])\/\/[^\n]*/g, "$1");
+  expect([...stripped.matchAll(HEX)].map((m) => m[0])).toEqual(["#8d241f"]);
 });

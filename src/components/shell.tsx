@@ -166,7 +166,7 @@ export function Shell({
         >
           <div className="flex min-h-full flex-col py-2">
             <Nav counts={counts} />
-            <p className="mt-auto px-3 pt-4 text-[11px] leading-relaxed text-faint">
+            <p className="mt-auto px-3 pt-4 text-[12px] leading-relaxed text-faint">
               M1 — the pitch. Catalogue production; no money path.
             </p>
           </div>

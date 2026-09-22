@@ -157,7 +157,12 @@ export function Ledger({ view }: { view: LedgerView }): React.ReactElement {
           things on this screen are. A sale's name is typed into the line below,
           and a person may overrule the stage, in which case the row says so.
           A sentence that is nearly true is worse here than a longer one. */}
-      <p id="ledger-note" className="mt-4 text-[12px] leading-relaxed text-faint">
+      {/* MEASURED AT 185 CHARACTERS A LINE on a wide window, which is two and a
+          half times the width at which an eye reliably finds the start of the
+          next one. A sentence nobody finishes is not a shorter sentence, it is
+          no sentence — so the line length is capped rather than the words cut,
+          because the length is what was wrong. */}
+      <p id="ledger-note" className="mt-4 max-w-prose text-[12px] leading-relaxed text-faint">
         Where a sale has got to is read from its lots, photographs, catalogues
         and exports. Nobody files a status, so nobody can forget to — and where
         a person has overruled the reading, the row says so.

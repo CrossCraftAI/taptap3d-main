@@ -49,11 +49,16 @@ import { currentItem, navGroups, openEventId, type NavGroup, type NavItem } from
  * ── A GROUP HEADING IS `--muted`, NOT `--faint` ─────────────────────────────
  *
  * Small caps at 10px are what `--faint` is for, and that is what the drawing
- * uses. Here `--color-faint` is `#9a9a9a` on `#ffffff`, which is 2.8:1 —
- * failing at any size and worst at this one. The drawing's own value for the
- * same token, `#58707e`, passes; changing it belongs to whoever owns the
- * palette, and until they do, new text is not painted in a colour that cannot
- * be read. `--muted` (`#6e6e6e`, 5.1:1) is the nearest one that can.
+ * uses. It was written `--muted` because at the time `--color-faint` was
+ * `#9a9a9a` on `#ffffff` — 2.8:1, failing at any size and worst at this one —
+ * and new text is not painted in a colour that cannot be read. The token has
+ * since been fixed to the drawing's own `#58707e` (5.2:1 on paper), so the
+ * original objection is gone and a heading COULD move back.
+ *
+ * It stays `--muted` anyway, for the reason that outlived the contrast one: a
+ * group heading and the count beside a row are different jobs, and giving the
+ * quietest colour to the thing that organises the list puts the label below
+ * the number it is labelling. Proximity and weight should agree.
  */
 export function Nav({
   counts,
@@ -167,7 +172,7 @@ function Row({
         </span>
       )}
       {total !== null && (
-        <span className="text-[11px] text-faint" data-numeric>
+        <span className="text-[10px] text-faint" data-numeric>
           {total}
         </span>
       )}

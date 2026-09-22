@@ -180,8 +180,19 @@ export function CatalogueControls({
       </label>
 
       {/* What the chosen template is FOR, in the template's own words, so the
-          choice is made on purpose rather than by trying each. */}
-      <p className="min-w-0 flex-1 truncate text-[12px] text-faint" title={template.purpose}>
+          choice is made on purpose rather than by trying each.
+
+          IT GOES RATHER THAN TRUNCATES, below the width where it can be read.
+          Measured on the editor at 1280: forty pixels of a three-hundred-and-
+          ninety-nine-pixel sentence were showing, which is four or five
+          characters and an ellipsis — present, unreadable, and taking the room
+          the controls beside it wanted. A label that cannot be read is not a
+          smaller label. The `title` carries it at every width, and the same
+          sentence is on each option of the Template select. */}
+      <p
+        className="hidden min-w-0 flex-1 truncate text-[12px] text-faint xl:block"
+        title={template.purpose}
+      >
         {template.purpose}
       </p>
 

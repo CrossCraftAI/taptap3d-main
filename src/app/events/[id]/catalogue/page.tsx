@@ -165,7 +165,7 @@ export default async function CataloguePage({
           <a
             href={`/events/${event.id}/catalogue/pdf`}
             title="The PDF is this same document, printed. It takes a moment on a long sale."
-            className="bg-seal px-3 py-1 text-[12px] font-medium text-white hover:bg-[#8d241f]"
+            className="bg-seal px-3 py-1 text-[12px] font-medium text-white hover:bg-sealPress"
           >
             Download PDF
           </a>
@@ -217,7 +217,7 @@ export default async function CataloguePage({
                 </p>
                 <Link
                   href={`/events/${event.id}/import`}
-                  className="bg-seal px-3 py-1.5 text-[13px] font-medium text-white hover:bg-[#8d241f]"
+                  className="bg-seal px-3 py-1.5 text-[13px] font-medium text-white hover:bg-sealPress"
                 >
                   Import lots
                 </Link>
