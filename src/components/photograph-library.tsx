@@ -106,7 +106,7 @@ export function PhotographLibrary({
   if (assets.length === 0) {
     return (
       <div className="mt-6 border border-rule bg-paper px-8 py-16 text-center">
-        <p className="text-[14px] font-medium">
+        <p className="text-[15px] font-medium">
           {filter === "unassigned"
             ? "Every photograph is on a lot."
             : filter === "assigned"
@@ -142,7 +142,7 @@ export function PhotographLibrary({
               onClick={(e) => toggle(index, asset.id, e.shiftKey)}
               className={`group border bg-paper text-left transition-shadow ${
                 isSelected
-                  ? "border-seal shadow-[0_0_0_1px_#a32a24]"
+                  ? "border-seal shadow-[0_0_0_1px_var(--color-seal)]"
                   : "border-rule hover:border-ruleStrong"
               }`}
             >
@@ -175,7 +175,7 @@ export function PhotographLibrary({
                 <p className="truncate text-[12px]" title={asset.originalName ?? ""}>
                   {asset.originalName ?? "untitled"}
                 </p>
-                <p className="mt-0.5 text-[11px] text-faint" data-numeric>
+                <p className="mt-0.5 text-[10px] text-faint" data-numeric>
                   {geometry?.width && geometry?.height
                     ? `${geometry.width} × ${geometry.height} · `
                     : "unmeasured · "}
@@ -229,7 +229,7 @@ export function PhotographLibrary({
                         type="button"
                         disabled={busy}
                         onClick={() => void assignTo(lot)}
-                        className="flex w-full items-baseline gap-2 px-3 py-1.5 text-left text-[13px] hover:bg-field"
+                        className="flex w-full items-baseline gap-2 px-3 py-1.5 text-left text-[13px] hover:bg-sunk"
                       >
                         <span className="w-16 shrink-0 font-medium" data-numeric>
                           {lot.ref ?? "—"}
@@ -237,7 +237,7 @@ export function PhotographLibrary({
                         <span className="min-w-0 flex-1 truncate">
                           {lot.title || <span className="text-faint">untitled</span>}
                         </span>
-                        <span className="shrink-0 text-[11px] text-faint">
+                        <span className="shrink-0 text-[10px] text-faint">
                           {lot.eventName}
                           {lot.photoCount > 0 ? ` · ${lot.photoCount}` : ""}
                         </span>

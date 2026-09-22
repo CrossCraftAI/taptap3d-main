@@ -74,7 +74,7 @@ export function LotPhotographs({
             <p className="truncate text-[12px]" title={asset.originalName ?? ""}>
               {asset.originalName ?? "untitled"}
             </p>
-            <div className="mt-1 flex gap-2 text-[11px]">
+            <div className="mt-1 flex gap-2 text-[12px]">
               {!asset.isPrimary && (
                 <button
                   type="button"

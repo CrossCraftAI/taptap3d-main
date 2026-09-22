@@ -147,7 +147,11 @@ test("the pitch, end to end", async ({ page }) => {
 // first would pass on a sandboxed frame, which is the configuration this exists
 // to prevent.
 test("the preview frame is inert by policy, not by sandbox", async ({ page }) => {
-  await page.goto("/");
+  // EVERY sale, not the ledger's default. This test wants any event at all to
+  // open a catalogue from, and the front page now shows only the ones still in
+  // production — on a database where every sale has been printed it would be
+  // empty, and the failure would name a missing link rather than a filter.
+  await page.goto("/?stage=all");
   const firstEvent = page.locator("tbody tr a").first();
   await expect(firstEvent).toBeVisible();
   await firstEvent.click();

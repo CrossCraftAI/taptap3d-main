@@ -24,7 +24,7 @@ export default async function PhotographsPage({
   if (!org) {
     return (
       <div className="mx-auto max-w-lg px-8 py-20">
-        <h1 className="text-lg font-semibold">No organisation yet</h1>
+        <h1 className="text-[16px] font-semibold">No organisation yet</h1>
         <p className="mt-2 text-[13px] leading-relaxed text-muted">
           Photographs belong to an organisation, so there is nowhere to put one
           until there is one.
@@ -78,7 +78,7 @@ export default async function PhotographsPage({
               }`}
             >
               {option.label}
-              <span className="ml-1.5 text-[11px] text-faint" data-numeric>
+              <span className="ml-1.5 text-[10px] text-faint" data-numeric>
                 {count}
               </span>
             </Link>

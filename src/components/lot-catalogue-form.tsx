@@ -85,7 +85,7 @@ export function LotCatalogueForm({
         <button
           type="submit"
           disabled={pending}
-          className="shrink-0 border border-ruleStrong bg-paper px-3 py-1.5 text-[13px] font-medium hover:bg-field disabled:opacity-60"
+          className="shrink-0 border border-ruleStrong bg-paper px-3 py-1.5 text-[13px] font-medium hover:bg-sunk disabled:opacity-60"
         >
           Apply to this catalogue
         </button>
@@ -99,7 +99,7 @@ function OverridesBody({ rows }: { rows: OverrideRowSpec[] }): React.ReactElemen
     <div className="overflow-x-auto">
       <table className="w-full border-collapse text-[13px]">
         <thead>
-          <tr className="border-b border-rule text-left text-[11px] tracking-wide text-muted">
+          <tr className="border-b border-rule text-left text-[10px] tracking-wide text-muted">
             <th className="w-28 px-4 py-2 font-medium">Field</th>
             <th className="px-4 py-2 font-medium">Record</th>
             <th className="px-4 py-2 font-medium">Prints as</th>
@@ -119,7 +119,7 @@ function OverridesBody({ rows }: { rows: OverrideRowSpec[] }): React.ReactElemen
                     {row.label}
                   </span>
                   {row.hint && (
-                    <span className="block truncate text-[11px] text-faint">{row.hint}</span>
+                    <span className="block truncate text-[12px] text-faint">{row.hint}</span>
                   )}
                 </td>
                 <td className="max-w-0 truncate px-4 py-1.5 align-top text-muted" title={row.record}>
@@ -143,7 +143,7 @@ function OverridesBody({ rows }: { rows: OverrideRowSpec[] }): React.ReactElemen
                     name={`hide:${row.key}`}
                     defaultChecked={row.hidden}
                     aria-label={`Hide ${row.label} in this catalogue`}
-                    className="accent-[#a32a24]"
+                    className="accent-seal"
                   />
                 </td>
                 <td className="px-4 py-1.5 align-top">

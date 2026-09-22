@@ -1,21 +1,32 @@
 @import "tailwindcss";
 
-/* ── The palette is NEUTRAL ON PURPOSE, and this is the one design decision
-   here with a reason outside taste.
+/* ── THE GROUND A PLATE IS JUDGED AGAINST IS TRUE NEUTRAL, and that is the one
+   design decision here with a reason outside taste.
 
    `photo colour proofreading` is a box in the operator's own cycle (DFD.md §1).
-   A specialist judges a plate's colour against the ground it sits on, so an
-   interface with a warm or cool cast lies to them about every photograph in it —
-   and the warm-parchment palette every piece of auction software reaches for is
-   the worst possible choice for the one job this product exists to support.
+   A specialist judges a plate's colour against the SURFACE IT SITS ON, so a
+   page whose ground has a warm or cool cast lies to them about every photograph
+   in it — and the warm-parchment palette every piece of auction software
+   reaches for is the worst possible choice for the one job this product exists
+   to support.
 
-   So the greys are true greys: equal red, green and blue, every one of them.
-   There is exactly one chromatic value in the system, and it is used the way a
-   seal is used on a document — once, where it means something.
+   The rule is therefore about GROUNDS, not about every byte in the file. Every
+   surface below — paper, field, sunk — has equal red, green and blue, and
+   `--sunk` in particular is the editor canvas and the condition viewer, which
+   are the two places a plate is actually judged. Nothing tints them.
 
-   For the same reason there is NO DARK THEME. You cannot proof a photograph on
-   a dark ground, and a theme that makes the product's central task impossible is
-   not a feature. The catalogue preview is white because paper is. */
+   The INK and the HAIRLINES carry a slight cool cast. Nobody proofs a
+   photograph against a 1px rule or against the inside of a glyph, and the cast
+   buys legibility: a cool dark reads as ink on paper where a pure grey reads as
+   a printer running low. It was a flat grey ramp first; the reason it is not
+   any more is the contrast note further down.
+
+   For the same reason as the grounds there is NO DARK THEME. You cannot proof a
+   photograph on a dark ground, and a theme that makes the product's central
+   task impossible is not a feature. The catalogue preview is white because
+   paper is — and that preview carries its OWN stylesheet (src/lib/render/
+   html.ts) which nothing here reaches. Retheming this file cannot change a
+   catalogue that has already been printed, and that separation is deliberate. */
 
 @theme {
   --font-sans:
@@ -26,20 +37,102 @@
     "Times New Roman", serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
+  /* ── THE GROUNDS. Equal channels, every one — see the header ──────────────
+     `paper` is a panel, a bar, a card, a row. `field` is the page behind them
+     and the inside of an input. `sunk` is recessed: the editor canvas, the
+     condition viewer, and — this is the part that moved — what a control on
+     paper hovers to.
+
+     It used to hover to `field`, which was #f6f6f6 against #ffffff: a four
+     percent step, quiet but readable. `field` is #f9f9f9 now, which makes the
+     same hover a two percent step, and a hover nobody can see is not feedback
+     that a thing is pressable. The rail was already hovering to `sunk`; every
+     control does now. */
   --color-paper: #ffffff;
-  --color-field: #f6f6f6;
-  --color-sunk: #eeeeee;
-  --color-rule: #e0e0e0;
-  --color-ruleStrong: #c9c9c9;
-  --color-ink: #1b1b1b;
-  --color-muted: #6e6e6e;
-  --color-faint: #9a9a9a;
+  --color-field: #f9f9f9;
+  --color-sunk: #efefef;
+
+  /* The hairlines. `rule` separates, `ruleStrong` emphasises and draws a guide. */
+  --color-rule: #dde1e3;
+  --color-ruleStrong: #b8bfc1;
+
+  /* ── THE TEXT RAMP, AND WHY IT MOVED ──────────────────────────────────────
+     `--faint` was #9a9a9a and it CARRIES TEXT — counts, hints, placeholders,
+     the "3 / 12" beside a photograph tally. Measured with the WCAG 2 relative
+     luminance formula, that was 2.81:1 on #ffffff and 2.60:1 on the page
+     ground: an accessibility defect, not a soft edge, and one nobody would
+     have found by looking because a grey that faint reads as "deliberately
+     quiet" right up until somebody cannot read it.
+
+     The fix could not be a darker grey. The ramp had --muted at #6e6e6e =
+     5.10:1, and the darkest TRUE grey that clears 4.5:1 on the page ground is
+     about #707070 — which is darker than --muted was, so a neutral tertiary
+     would have been heavier than the secondary above it. Turning the ramp cool
+     buys the room: a cool dark of the same lightness reads as further away than
+     a neutral one, so the hierarchy survives while both tiers pass.
+
+     Measured after, on the three grounds above (paper / field / sunk):
+       --ink    19.36 : 18.38 : 16.83
+       --muted   6.57 :  6.24 :  5.71
+       --faint   5.21 :  4.94 :  4.53
+     Re-measurable from the values here with the formula in WCAG 2 §1.4.3; the
+     script that produced them is arithmetic, not a browser.
+
+     `--ink` is NOT an accent. It is the colour of type and of "where you are" —
+     a current rail item, a selected row. Where you are is not an action, and
+     the day it is painted as one, the accent below stops meaning anything. */
+  --color-ink: #010736;
+  --color-muted: #4a6070;
+  --color-faint: #58707e;
+
+  /* ── THE ACCENT IS UNDECIDED, AND THAT IS WHY IT IS A TOKEN ───────────────
+     The house colour has not been chosen. #a32a24 below is what shipped and is
+     a placeholder; a candidate was proposed and declined, and the owner will
+     pick one. What this block buys is that picking it is ONE EDIT: every filled
+     button, every hover, every checkbox, every focus ring and every soft ground
+     in the application resolves through `--color-seal`, and thirteen hard-coded
+     hexes that used to sit in components (#8d241f seven times as the hover of
+     every seal button, #a32a24 five more as `accent-[…]` and a ring shadow) are
+     gone.
+
+     TO SET THE HOUSE COLOUR: change `--color-seal`, and `--color-sealSoft` to a
+     tint of it. `--color-sealPress` follows on its own. Then re-measure — a
+     filled button carries white text, so the chosen colour needs 4.5:1 against
+     #ffffff, and a colour that fails it needs a deeper twin for the fill rather
+     than a lighter one for the text.
+
+     WHAT THE ACCENT MEANS, so that whatever is chosen is spent in the right
+     places: a person is needed here, or is acting here. It is the accent AND
+     the alarm, which is only coherent while it is rare — a column of sixty
+     filled buttons is no seal at all, which is why the ledger's call to action
+     is quiet unless the sale is actually blocked. */
   --color-seal: #a32a24;
+  /* The pressed and hovered twin, DERIVED so it cannot fall out of step. oklab
+     because mixing toward black in sRGB shifts the hue of a warm red toward
+     brown; in oklab it stays the same colour, darker. */
+  --color-sealPress: color-mix(in oklab, var(--color-seal) 82%, black);
   --color-sealSoft: #f7ecec;
 }
 
 :root {
   color-scheme: light;
+
+  /* ── THE SMALLEST A CONTROL MAY BE ────────────────────────────────────────
+     A precise pointer may have small targets; a finger may not. A condition
+     check happens at every stage of the supply chain (DFD.md §1) — which means
+     on a tablet, in a warehouse, one-handed — so the floor lifts on a coarse
+     pointer rather than on a width, because it is the POINTER that is coarse
+     and not the window.
+
+     Not in `@theme`: a theme variable is emitted once, and this one has to be
+     redefined inside a media query. Read as `min-h-[var(--tap)]`. */
+  --tap: 28px;
+}
+
+@media (pointer: coarse) {
+  :root {
+    --tap: 44px;
+  }
 }
 
 html,

@@ -154,7 +154,10 @@ test("an export says plainly when there is no browser to print with", async ({
 }) => {
   // Not a hypothetical: it is every developer machine without a Chromium, and
   // the answer has to name the cause rather than surface a library's stack.
-  await page.goto("/");
+  // EVERY sale: the ledger's default is the ones still in production, and this
+  // test only needs an event to ask for a PDF of — including one that has
+  // already been printed, which is exactly what the default leaves out.
+  await page.goto("/?stage=all");
   const first = page.locator("tbody tr a").first();
   await expect(first).toBeVisible();
   await first.click();

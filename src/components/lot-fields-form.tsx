@@ -79,7 +79,7 @@ export function LotFieldsForm({
         <button
           type="submit"
           disabled={pending}
-          className="shrink-0 bg-seal px-3 py-1.5 text-[13px] font-medium text-white hover:bg-[#8d241f] disabled:opacity-60"
+          className="shrink-0 bg-seal px-3 py-1.5 text-[13px] font-medium text-white hover:bg-sealPress disabled:opacity-60"
         >
           Save fields
         </button>
@@ -103,7 +103,7 @@ function FieldsBody({ rows }: { rows: FieldRow[] }): React.ReactElement {
                 {row.label}
               </label>
               {row.hint && (
-                <span className="block truncate text-[11px] text-faint">{row.hint}</span>
+                <span className="block truncate text-[12px] text-faint">{row.hint}</span>
               )}
             </div>
             {row.long ? (

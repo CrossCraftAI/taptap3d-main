@@ -317,6 +317,44 @@ export interface StageReading {
 }
 
 /**
+ * Whether a person is MID-JOB on this sale, as against merely not finished.
+ *
+ * ── WHY THE LEDGER NEEDS THIS AND THE STAGE CANNOT GIVE IT ──────────────────
+ *
+ * Every sale short of the last stage has work outstanding, so "unfinished" is
+ * not a signal — it is most of the list. The ledger paints its call to action
+ * loud only where this is true, because an accent spent on sixty rows is no
+ * accent (src/app/globals.css says the same about the token).
+ *
+ * The one thing a stage LABEL cannot say is how far through the current step a
+ * sale is: a sale with one plate out of two hundred and a sale with a hundred
+ * and ninety-nine both read "Recorded", and only one of them has somebody
+ * standing over it. So: the next stage is reached by finishing something
+ * counted PER LOT, and that count has started and has not finished. Nobody has
+ * begun — quiet, it is a job to schedule. Somebody stopped halfway — loud, it
+ * is a job to resume, and resuming is cheaper than starting.
+ *
+ * PER LOT is the same list the schema validates `"all"` against, so a fact
+ * joins this the day it is counted per lot and not before. A condition with a
+ * plain number floor is not a part-way job: `lots >= 1` is on or off.
+ *
+ * FALSE AT THE LAST STAGE, which is what "nothing is both finished and
+ * waiting" means in code — there is no stage after it to be part-way toward.
+ *
+ * Reads the SHOWN stage, so a person who set the stage by hand moves the
+ * question with it (principle 9). PURE, for the reason everything else here is.
+ */
+export function isMidJob(reading: StageReading, facts: StageFacts): boolean {
+  const next = reading.workflow.stages[reading.index + 1];
+  if (!next) return false;
+  return (next.when ?? []).some((condition) => {
+    if (condition.atLeast !== "all" || !PER_LOT.includes(condition.fact)) return false;
+    const done = facts[condition.fact];
+    return done > 0 && done < facts.lots;
+  });
+}
+
+/**
  * Where a sale is, with a person's answer winning over the data's.
  *
  * TOTAL over anything the column can hold. An override naming a stage the

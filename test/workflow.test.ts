@@ -18,6 +18,7 @@ import {
   CATALOGUE_PRODUCTION,
   PLACES,
   deriveStageIndex,
+  isMidJob,
   placeHref,
   placeIsFile,
   readStage,
@@ -161,6 +162,58 @@ describe("where the facts put a sale", () => {
     const before = structuredClone(f);
     expect(readStage(W, f, null)).toEqual(readStage(W, f, null));
     expect(f).toEqual(before);
+  });
+});
+
+describe("whether somebody is part-way through", () => {
+  // What the ledger paints its call to action loud for. The point of it is
+  // that it says something the stage LABEL cannot: "Recorded" reads the same
+  // at 1 plate of 200 as at 199, and only one of those is a job to resume.
+  const mid = (f: StageFacts, override: string | null = null): boolean =>
+    isMidJob(readStage(W, f, override), f);
+
+  it.each<[string, StageFacts, boolean]>([
+    ["nothing at all", facts(), false],
+    // The next stage wants lots, which is a floor and not a per-lot count:
+    // there is no such thing as being half-way to having one lot.
+    ["lots in, no plates yet — a job to schedule", facts(10), false],
+    ["four plates of ten — a job to resume", facts(10, 4), true],
+    ["nine of ten", facts(10, 9), true],
+    ["all ten", facts(10, 10), false],
+    ["the one lot photographed", facts(1, 1), false],
+    // Catalogued: the next stage wants an export, which is not per lot.
+    ["a catalogue opened", facts(10, 10, 1), false],
+    ["printed — there is no stage after it", facts(10, 10, 1, 1), false],
+  ])("%s", (_what, f, expected) => {
+    expect(mid(f)).toBe(expected);
+  });
+
+  it("moves with a person's answer, not with the data", () => {
+    // The data says four of ten and would read loud. The person put the sale
+    // at Catalogued, so the question is asked of THAT stage — and nothing
+    // per-lot stands between it and the end.
+    expect(mid(facts(10, 4))).toBe(true);
+    expect(mid(facts(10, 4), "catalogued")).toBe(false);
+    // And back the other way: a sale the data has finished, sent back by hand
+    // to a stage there is per-lot work outstanding at.
+    expect(mid(facts(10, 4, 1, 1), "recorded")).toBe(true);
+  });
+
+  it("is false for a workflow with no per-lot stage at all", () => {
+    // A gallery does not photograph every work, so nothing in its cycle is
+    // counted per lot and nothing of its is ever half done. The ledger is
+    // quiet throughout, which is correct rather than a missing feature.
+    const gallery = workflowSchema.parse({
+      id: "gallery-show",
+      name: { zh: "畫廊展覽", en: "Gallery show" },
+      stages: [
+        { id: "planned", label: { zh: "籌備中", en: "Planned" }, next: { label: { zh: "匯入", en: "Import" }, to: "import" } },
+        { id: "hung", label: { zh: "已佈展", en: "Hung" }, when: [{ fact: "lots", atLeast: 1 }], next: { label: { zh: "單張", en: "Tearsheets" }, to: "catalogue" } },
+      ],
+    } satisfies WorkflowInput);
+    for (const f of [facts(), facts(10), facts(10, 4)]) {
+      expect(isMidJob(readStage(gallery, f, null), f)).toBe(false);
+    }
   });
 });
 

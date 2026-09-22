@@ -174,7 +174,7 @@ export function CatalogueControls({
           name="showRef"
           checked={local.showRef}
           onChange={(e) => change({ showRef: e.target.checked })}
-          className="accent-[#a32a24]"
+          className="accent-seal"
         />
         <span className="text-muted">Print the reference</span>
       </label>
@@ -190,7 +190,7 @@ export function CatalogueControls({
           to apply a change in one that did not. */}
       <button
         type="submit"
-        className="ml-auto border border-ruleStrong px-2.5 py-1 text-[12px] hover:bg-field"
+        className="ml-auto border border-ruleStrong px-2.5 py-1 text-[12px] hover:bg-sunk"
       >
         Apply
       </button>

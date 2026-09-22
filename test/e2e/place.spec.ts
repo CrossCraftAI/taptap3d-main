@@ -236,7 +236,15 @@ test("a click is not an edit, and Escape puts the selection away", async ({ page
   // enters the iframe, which is where all of this editor's work happens.
   await page.keyboard.press("Escape");
   await expect(overlay(page)).toHaveAttribute("data-selection", "");
-  await expect(page.locator("[data-ring-kind]")).toHaveCount(0);
+  // THE SELECTION GOES; THE HOVER DOES NOT, and asserting no ring at all was
+  // wrong. The pointer is still resting on the title it just let go of, and
+  // `ringsFor` suppresses a hover only while it agrees with the selection —
+  // "a hover is a whisper and the selection is a statement". So clearing the
+  // selection is precisely what lets the whisper be heard, and the part under
+  // the pointer goes on saying it can be picked up. What must be gone is the
+  // statement.
+  await expect(page.locator('[data-ring-kind="selected"]')).toHaveCount(0);
+  await expect(page.locator('[data-ring-kind="subject"]')).toHaveCount(0);
 });
 
 test("the overlay never takes the wheel", async ({ page }) => {

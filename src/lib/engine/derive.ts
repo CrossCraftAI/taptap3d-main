@@ -297,8 +297,15 @@ export function asText(value: unknown): string {
  * the template's density; the RULE — count, shorten, say so — is the engine's.
  */
 
-/** Latin counts one, CJK counts two. Enough to bound a line, not to lay it out. */
-function units(text: string): number {
+/**
+ * Latin counts one, CJK counts two. Enough to bound a line, not to lay it out.
+ *
+ * Exported so that the template tile (src/lib/render/template-preview.ts) can
+ * ask how long a line is IN THE UNITS THE BUDGET IS SET IN. A second character
+ * count there would be a second answer to the same question, and the tile's
+ * whole reason for existing is that it does not draw a page a second way.
+ */
+export function units(text: string): number {
   let total = 0;
   for (const character of text) {
     total += /[ᄀ-ᅟ⺀-꓏ꥠ-꥿가-힣豈-﫿︐-﹯＀-｠￠-￦]/.test(

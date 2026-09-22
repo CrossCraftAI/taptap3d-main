@@ -95,7 +95,7 @@ export function CatalogueWorkspace({
                 aria-expanded={open}
                 title={`${open ? "Hide" : "Show"} the lots panel`}
                 onClick={() => setOpen(!open)}
-                className={`border border-ruleStrong px-2.5 py-1 text-[12px] font-medium hover:bg-field ${
+                className={`border border-ruleStrong px-2.5 py-1 text-[12px] font-medium hover:bg-sunk ${
                   open ? "bg-sunk" : "bg-paper"
                 }`}
               >

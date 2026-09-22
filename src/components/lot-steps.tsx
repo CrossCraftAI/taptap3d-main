@@ -159,7 +159,7 @@ function Step({
       // The click is counted here rather than in `go`, because a Link that is
       // middle-clicked or opened in a new tab never reaches the router.
       onClick={() => logAction("lot.step", { eventId, to: to.id, by: "button" })}
-      className={`${BOX} hover:bg-field hover:text-ink`}
+      className={`${BOX} hover:bg-sunk hover:text-ink`}
     >
       <Chevron back={back} />
     </Link>

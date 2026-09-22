@@ -156,7 +156,7 @@ export function ImportFlow({
         )}
 
         <div className="border border-rule bg-paper p-6">
-          <h2 className="text-[14px] font-medium">Choose the file</h2>
+          <h2 className="text-[15px] font-medium">Choose the file</h2>
           <p className="mt-1 text-[13px] leading-relaxed text-muted">
             Spreadsheets and CSVs are read directly. A title block above the grid
             is found and reported rather than guessed past.
@@ -175,7 +175,7 @@ export function ImportFlow({
         </div>
 
         <div className="mt-4 border border-rule bg-paper p-6">
-          <h2 className="text-[14px] font-medium">
+          <h2 className="text-[15px] font-medium">
             {unreadable ? "Paste the list instead" : "Or paste the list"}
           </h2>
           <p className="mt-1 text-[13px] leading-relaxed text-muted">
@@ -194,7 +194,7 @@ export function ImportFlow({
             type="button"
             onClick={() => void parseText()}
             disabled={busy || pasted.trim() === ""}
-            className="mt-3 bg-ink px-3 py-1.5 text-[13px] font-medium text-white disabled:bg-faint"
+            className="mt-3 bg-ink px-3 py-1.5 text-[13px] font-medium text-white disabled:opacity-60"
           >
             {busy ? "Reading…" : "Read this text"}
           </button>
@@ -213,7 +213,7 @@ export function ImportFlow({
   return (
     <div className="mt-6">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h2 className="text-[14px] font-medium">
+        <h2 className="text-[15px] font-medium">
           Match {table.headers.length} columns
         </h2>
         <p className="text-[12px] text-muted" data-numeric>
@@ -235,7 +235,7 @@ export function ImportFlow({
             rows above them
           </button>
           {showSkipped && (
-            <span className="mt-1 block bg-sunk px-3 py-2 font-mono text-[11px] text-ink">
+            <span className="mt-1 block bg-sunk px-3 py-2 font-mono text-[12px] text-ink">
               {table.source.skippedRows
                 .map((r) => r.filter(Boolean).join(" · "))
                 .join("\n")}
@@ -254,7 +254,7 @@ export function ImportFlow({
       <div className="mt-4 border border-rule bg-paper">
         <table className="w-full border-collapse text-[13px]">
           <thead>
-            <tr className="border-b border-rule text-left text-[11px] tracking-wide text-muted">
+            <tr className="border-b border-rule text-left text-[10px] tracking-wide text-muted">
               <th className="w-52 px-4 py-2 font-medium">Their column</th>
               <th className="px-4 py-2 font-medium">What is in it</th>
               <th className="w-56 px-4 py-2 font-medium">Becomes</th>
@@ -302,7 +302,7 @@ export function ImportFlow({
                       <option value="skip">Do not import</option>
                     </select>
                     {target.kind === "core" && (
-                      <p className="mt-1 text-[11px] leading-snug text-faint">
+                      <p className="mt-1 text-[12px] leading-snug text-faint">
                         {FIELD_HINT.get(target.field)}
                       </p>
                     )}
@@ -330,7 +330,7 @@ export function ImportFlow({
           edit; this is the proposal made legible. */}
       {prepared && (
         <div className="mt-6">
-          <h2 className="text-[14px] font-medium">
+          <h2 className="text-[15px] font-medium">
             {prepared.lots.length} lots will be created
           </h2>
           {prepared.warnings.length > 0 && (
@@ -352,7 +352,7 @@ export function ImportFlow({
           <div className="mt-3 overflow-x-auto border border-rule bg-paper">
             <table className="w-full border-collapse text-[12px]">
               <thead>
-                <tr className="border-b border-rule text-left text-[11px] text-muted">
+                <tr className="border-b border-rule text-left text-[10px] text-muted">
                   <th className="px-3 py-1.5 font-medium">Ref</th>
                   {Object.keys(prepared.lots[0]?.fields ?? {})
                     .filter((k) => k !== "ref")
@@ -395,7 +395,7 @@ export function ImportFlow({
               type="button"
               onClick={() => void commit()}
               disabled={busy || prepared.lots.length === 0}
-              className="bg-seal px-4 py-2 text-[13px] font-medium text-white hover:bg-[#8d241f] disabled:bg-faint"
+              className="bg-seal px-4 py-2 text-[13px] font-medium text-white hover:bg-sealPress disabled:opacity-60"
             >
               {busy ? "Importing…" : `Import ${prepared.lots.length} lots`}
             </button>

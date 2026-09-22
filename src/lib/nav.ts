@@ -142,7 +142,14 @@ export const NAV: readonly NavItem[] = [
     href: "/",
     label: "Events",
     count: "events",
-    match: (p) => p === "/" || (p.startsWith("/events") && !EVENT_CATALOGUE.test(p)),
+    // EVERYTHING UNDER /events, THE CATALOGUE INCLUDED. This used to exclude
+    // the editor, because `/catalogues` claimed it — one ledger later there is
+    // no such place, and leaving the exclusion in marks no row at all while a
+    // person is in the editor, which is the one screen where "where am I" is
+    // hardest to answer from the content. `currentItem()` still resolves the
+    // overlap in favour of the innermost claim, so inside an event the sale's
+    // own Editor row is marked and this one is not.
+    match: (p) => p === "/" || p.startsWith("/events"),
   },
   {
     route: "/photographs",
@@ -151,18 +158,13 @@ export const NAV: readonly NavItem[] = [
     count: "photographs",
     match: (p) => p.startsWith("/photographs"),
   },
-  {
-    route: "/catalogues",
-    href: "/catalogues",
-    label: "Catalogues",
-    match: (p) => p === "/catalogues" || EVENT_CATALOGUE.test(p),
-  },
-  {
-    route: "/exports",
-    href: "/exports",
-    label: "Exports",
-    match: (p) => p.startsWith("/exports"),
-  },
+  // `/catalogues` and `/exports` were here and are gone. They were one
+  // component — `EventChooser` — over the same rows with a different verb, and
+  // the landing page was the same columns again with a quick-add line on top.
+  // Three doors into one table is three places to keep in step and two answers
+  // to "where do I find a sale". The ledger at `/` is the one door; the verb
+  // that used to be the screen's name is now the row's own next action, which
+  // is where this file argued it belonged before either screen existed.
 ];
 
 /**

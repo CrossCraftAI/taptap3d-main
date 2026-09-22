@@ -55,7 +55,7 @@ export default async function EventPage({
           >
             Events
           </Link>
-          <h1 className="mt-1 truncate text-[19px] font-semibold tracking-tight">
+          <h1 className="mt-1 truncate text-[16px] font-semibold tracking-tight">
             {event.name}
           </h1>
           <div
@@ -90,7 +90,7 @@ export default async function EventPage({
             <Link
               key={s.to}
               href={placeHref(s.to, event.id)}
-              className="border border-ruleStrong bg-paper px-3 py-1.5 text-[13px] font-medium hover:bg-field"
+              className="border border-ruleStrong bg-paper px-3 py-1.5 text-[13px] font-medium hover:bg-sunk"
             >
               {s.label}
             </Link>
@@ -104,7 +104,7 @@ export default async function EventPage({
            empty-lots state, not a workflow stage: whatever a house's workflow
            says, a sale with no lots needs lots. */
         <div className="mt-6 border border-rule bg-paper px-8 py-16 text-center">
-          <p className="text-[14px] font-medium">This event has no lots.</p>
+          <p className="text-[15px] font-medium">This event has no lots.</p>
           <p className="mx-auto mt-2 max-w-md text-[13px] leading-relaxed text-muted">
             Import the file the client sent. A spreadsheet or a CSV goes straight
             in; anything else, paste the list as text and the same screen reads
@@ -112,7 +112,7 @@ export default async function EventPage({
           </p>
           <Link
             href={`/events/${event.id}/import`}
-            className="mt-5 inline-block bg-seal px-4 py-2 text-[13px] font-medium text-white hover:bg-[#8d241f]"
+            className="mt-5 inline-block bg-seal px-4 py-2 text-[13px] font-medium text-white hover:bg-sealPress"
           >
             Import lots
           </Link>
@@ -121,7 +121,7 @@ export default async function EventPage({
         <div className="mt-6 border border-rule bg-paper">
           <table className="w-full border-collapse text-[13px]">
             <thead>
-              <tr className="border-b border-rule text-left text-[11px] tracking-wide text-muted">
+              <tr className="border-b border-rule text-left text-[10px] tracking-wide text-muted">
                 <th className="w-28 px-4 py-2 font-medium">Ref</th>
                 <th className="px-4 py-2 font-medium">Title</th>
                 <th className="w-44 px-4 py-2 font-medium">Maker</th>
@@ -133,7 +133,7 @@ export default async function EventPage({
               {lots.map((lot) => (
                 <tr
                   key={lot.id}
-                  className="border-b border-rule last:border-b-0 hover:bg-field"
+                  className="border-b border-rule last:border-b-0 hover:bg-sunk"
                 >
                   <td className="px-4 py-2 font-medium" data-numeric>
                     <Link

@@ -1,48 +1,62 @@
-import Link from "next/link";
-
-import { createEventAction } from "@/app/actions";
-import { NextAction, StageCell } from "@/components/stage";
-import { factsOf, listEvents } from "@/lib/data/events";
+import { Ledger } from "@/components/ledger";
+import { PageHeader } from "@/components/page-header";
+import { listEvents } from "@/lib/data/events";
 import { currentOrgOrNull } from "@/lib/data/org";
 import { workflowOf } from "@/lib/data/workflow";
-import { readStage } from "@/lib/workflow";
+import { readLedger, readQuery } from "@/lib/ledger";
 
 export const dynamic = "force-dynamic";
 
-function formatDate(value: Date | null): string {
-  if (!value) return "—";
-  return new Intl.DateTimeFormat("en-GB", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-    timeZone: "Asia/Hong_Kong",
-  }).format(value);
-}
-
 /**
- * The ledger.
+ * The ledger — one screen for every sale this house has.
  *
  * ── PROGRESS IS A COLUMN, NOT A BAR ─────────────────────────────────────────
  *
- * Where a sale is in production and what to do about it next are two more
- * columns of this table, beside the lot and photograph counts they are read
- * from. A progress bar across the top of the editor was considered and
- * rejected: it would cost every screen vertical space to say something about
- * one sale, and the person who needs the answer is here, comparing sixty. The
- * stage and the button come from the workflow (src/lib/workflow.ts) and this
- * page knows none of its names.
+ * Where a sale is in production and what to do about it next are two of this
+ * table's four columns, beside the counts they are read from. A progress bar
+ * across the top of the editor was considered and rejected: it would cost every
+ * screen vertical space to say something about one sale, and the person who
+ * needs the answer is here, comparing sixty. The stage and the button come from
+ * the workflow (src/lib/workflow.ts) and this page knows none of its names.
  *
  * The column REPORTS. Nothing in a row is disabled or hidden because of it —
  * the sale that comes back round after the export reads as a sale with work
  * outstanding, which is what it is (DFD.md §1: a cycle, not a pipeline).
+ *
+ * ── ONE LEDGER, NOT THREE ───────────────────────────────────────────────────
+ *
+ * `/catalogues` and `/exports` were this table with a different verb in the
+ * last column — same query, same component, three headings — and they are gone.
+ * The verb belongs to the sale, not to the screen: src/lib/ledger.ts holds that
+ * argument, and src/lib/nav.ts said the same thing about the rail before either
+ * page existed.
+ *
+ * ── THE VIEW IS THE URL ─────────────────────────────────────────────────────
+ *
+ * Search, stage and page are read from the query string and nothing else, so
+ * the whole screen is a pure function of an address: a link to "the sales still
+ * being photographed" is a link somebody can send, and the back button means
+ * what it says. It renders on the server for the same reason — there is no
+ * state here a browser has to hold — and this route was already
+ * `force-dynamic`, so the request-time read costs nothing new.
+ *
+ * The default is OPEN sales, not all of them. An exported sale is archive: it
+ * is findable, by name or by its own tab, and it is not what somebody came here
+ * to work on. Before this, the landing rendered every sale an org has in one
+ * table — measured at some 21,000px of page for 250 of them — with no search
+ * and no way to skip to a sale whose name you already know.
  */
-export default async function EventsPage(): Promise<React.ReactElement> {
+export default async function LedgerPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}): Promise<React.ReactElement> {
   const org = await currentOrgOrNull();
 
   if (!org) {
     return (
       <div className="mx-auto max-w-lg px-8 py-20">
-        <h1 className="text-lg font-semibold">No organisation yet</h1>
+        <h1 className="text-[16px] font-semibold">No organisation yet</h1>
         <p className="mt-2 text-[13px] leading-relaxed text-muted">
           Every row in this system carries the organisation that owns it, so
           there is nothing to show until one exists. Create it with{" "}
@@ -54,132 +68,28 @@ export default async function EventsPage(): Promise<React.ReactElement> {
     );
   }
 
-  const [events, workflow] = await Promise.all([
+  // The workflow is needed BEFORE the query can be read: a tab is one of its
+  // stage ids, and a house that has swapped workflows leaves stale ones in
+  // people's bookmarks. `readQuery` falls those back to the default rather
+  // than showing an empty table under a heading that names nothing.
+  const [raw, events, workflow] = await Promise.all([
+    searchParams,
     listEvents(org.id),
     workflowOf(org.id),
   ]);
+  const view = readLedger(events, workflow, readQuery(raw, workflow));
 
   return (
     <div className="px-8 py-8">
-      <header className="flex items-baseline justify-between">
-        <h1 className="text-[19px] font-semibold tracking-tight">Events</h1>
-        <p className="text-[12px] text-muted">
-          {events.length === 0
+      <PageHeader
+        title="Events"
+        meta={
+          view.total === 0
             ? "none yet"
-            : `${events.length} ${events.length === 1 ? "event" : "events"}`}
-        </p>
-      </header>
-
-      <div className="mt-5 border border-rule bg-paper">
-        <table className="w-full border-collapse text-[13px]">
-          <thead>
-            <tr className="border-b border-rule text-left text-[11px] tracking-wide text-muted">
-              <th className="px-4 py-2 font-medium">Event</th>
-              <th className="w-32 px-4 py-2 font-medium">Date</th>
-              <th className="w-20 px-4 py-2 text-right font-medium">Lots</th>
-              <th className="w-32 px-4 py-2 text-right font-medium">
-                Photographed
-              </th>
-              <th className="w-52 px-4 py-2 font-medium">Progress</th>
-              <th className="w-40 px-4 py-2 text-right font-medium">Next</th>
-            </tr>
-          </thead>
-
-          <tbody>
-            {/* QUICK-ADD IS THE NEXT BLANK LINE OF THE LEDGER, not a modal.
-                An auction house's own working record is a numbered book you
-                write the next line into; a dialog that covers the list you are
-                reading is a worse version of that. It also means the shortcut
-                from "I have a new sale" to "I am importing its lots" is one
-                keystroke and one click, which is the demo's opening move. */}
-            <tr className="border-b border-rule bg-field/60">
-              <td className="px-4 py-2" colSpan={6}>
-                <form
-                  action={createEventAction}
-                  className="flex flex-wrap items-center gap-2"
-                >
-                  <input
-                    name="name"
-                    required
-                    placeholder="Name a new event"
-                    aria-label="Event name"
-                    className="min-w-0 flex-1 border border-rule bg-paper px-2.5 py-1.5 text-[13px] placeholder:text-faint"
-                  />
-                  <input
-                    name="heldOn"
-                    type="date"
-                    aria-label="Date held, if known"
-                    className="border border-rule bg-paper px-2.5 py-1.5 text-[13px] text-muted"
-                  />
-                  <button
-                    type="submit"
-                    className="bg-seal px-3 py-1.5 text-[13px] font-medium text-white hover:bg-[#8d241f]"
-                  >
-                    Create event
-                  </button>
-                </form>
-              </td>
-            </tr>
-
-            {events.map((event) => {
-              const reading = readStage(workflow, factsOf(event), event.stageOverride);
-              return (
-                <tr
-                  key={event.id}
-                  className="border-b border-rule last:border-b-0 hover:bg-field"
-                >
-                  <td className="max-w-0 truncate px-4 py-2.5">
-                    <Link
-                      href={`/events/${event.id}`}
-                      className="font-medium hover:text-seal hover:underline"
-                    >
-                      {event.name}
-                    </Link>
-                  </td>
-                  <td className="px-4 py-2.5 text-muted">
-                    {formatDate(event.heldOn)}
-                  </td>
-                  <td className="px-4 py-2.5 text-right" data-numeric>
-                    {event.lotCount === 0 ? (
-                      <span className="text-faint">—</span>
-                    ) : (
-                      event.lotCount
-                    )}
-                  </td>
-                  <td className="px-4 py-2.5 text-right" data-numeric>
-                    {event.lotCount === 0 ? (
-                      <span className="text-faint">—</span>
-                    ) : (
-                      <span
-                        className={
-                          event.photographedCount === event.lotCount
-                            ? "text-ink"
-                            : "text-muted"
-                        }
-                      >
-                        {event.photographedCount}
-                        <span className="text-faint"> / {event.lotCount}</span>
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-4 py-2.5">
-                    <StageCell reading={reading} />
-                  </td>
-                  <td className="px-4 py-2 text-right">
-                    <NextAction reading={reading} eventId={event.id} />
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-
-        {events.length === 0 && (
-          <p className="px-4 py-8 text-center text-[13px] text-muted">
-            Name the sale you are cataloguing and the lots go in next.
-          </p>
-        )}
-      </div>
+            : `${view.open} open · ${view.total} in all`
+        }
+      />
+      <Ledger view={view} />
     </div>
   );
 }

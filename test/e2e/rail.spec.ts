@@ -28,12 +28,15 @@ const palette = (page: Page): Locator =>
   page.getByRole("complementary", { name: "What you can add" });
 
 // The house's places, in the order they are drawn, with the heading each one
-// lands on. The same four are held in test/nav.test.ts; change both on purpose.
+// lands on. The same two are held in test/nav.test.ts; change both on purpose.
+//
+// TWO, not four. `/catalogues` and `/exports` were one component over the same
+// rows as this ledger with a different verb, and the verb is now the row's own
+// next action — so the rail listed two extra doors into a table it already had
+// a door to. Both screens are gone; neither capability is.
 const HOUSE: [string, string][] = [
   ["Events", "Events"],
   ["Photographs", "Photographs"],
-  ["Catalogues", "Catalogues"],
-  ["Exports", "Exports"],
 ];
 
 // What the rail must NOT say any more. "Import" is here because importing is an
@@ -95,7 +98,7 @@ test("a group collapses, and is still collapsed after a reload", async ({
   const house = nav.getByRole("button", { name: "The house" });
 
   await expect(house).toHaveAttribute("aria-expanded", "true");
-  await expect(nav.getByRole("link", { name: /^Exports/ })).toBeVisible();
+  await expect(nav.getByRole("link", { name: /^Photographs/ })).toBeVisible();
 
   await house.click();
   await expect(house).toHaveAttribute("aria-expanded", "false");
@@ -127,10 +130,12 @@ test("every place in the rail is a place, not a dead link", async ({ page }) => 
     ).toBeVisible();
   }
 
-  await page.goto("/catalogues");
-  await page.screenshot({ path: shot("33-catalogues"), fullPage: true });
-  await page.goto("/exports");
-  await page.screenshot({ path: shot("34-exports"), fullPage: true });
+  // The two screens the rail used to hold, as one ledger: the default view,
+  // and the whole archive behind the All tab.
+  await page.goto("/");
+  await page.screenshot({ path: shot("33-ledger-open"), fullPage: true });
+  await page.goto("/?stage=all");
+  await page.screenshot({ path: shot("34-ledger-all"), fullPage: true });
 });
 
 test("an event's own group appears, and marks the innermost place", async ({
@@ -143,12 +148,12 @@ test("an event's own group appears, and marks the innermost place", async ({
   const nav = rail(page);
 
   await expect(nav.getByRole("button", { name: "This event" })).toBeVisible();
-  // Six places now: the event's two and the house's four.
+  // Four places now: the event's two and the house's two.
   await expect(nav.getByRole("link")).toHaveCount(HOUSE.length + 2);
 
   // THE INNERMOST CLAIM WINS. An editor path is honestly both this event's
-  // Editor and the house's Catalogues; marking both would leave a person
-  // unable to read their position off the rail, which is its only job.
+  // Editor and the house's Events; marking both would leave a person unable to
+  // read their position off the rail, which is its only job.
   await expect(nav.getByRole("link", { name: "Editor" })).toHaveAttribute(
     "aria-current",
     "page",
@@ -212,7 +217,12 @@ test("the top bar says which sale is open, and changes it", async ({ page }) => 
   // other sale's editor — that is the screen this control exists for.
   await switcher.click();
   await page.locator("#topbar").getByRole("link", { name: new RegExp(first) }).click();
-  await page.waitForURL(/\/events\/[0-9a-f-]+\/catalogue$/);
+  // WAIT FOR A DIFFERENT EDITOR, not for an editor. The pattern on its own is
+  // satisfied by the page this test is already standing on, so `waitForURL`
+  // returned before the click had navigated anywhere and the assertion below
+  // compared the starting URL with itself. It failed on both engines, which
+  // is what a race in the test rather than in the product looks like.
+  await page.waitForURL((url) => /\/catalogue$/.test(url.pathname) && url.href !== editorUrl);
   expect(page.url()).not.toBe(editorUrl);
   await expect(page.locator("main").getByRole("link", { name: first })).toBeVisible();
   await expect(page.locator("#topbar").getByRole("button")).toContainText(first);

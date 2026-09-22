@@ -26,7 +26,7 @@ export default async function ImportPage({
         >
           {event.name}
         </Link>
-        <h1 className="mt-1 text-[19px] font-semibold tracking-tight">
+        <h1 className="mt-1 text-[16px] font-semibold tracking-tight">
           Import lots
         </h1>
         <p className="mt-1 max-w-2xl text-[13px] leading-relaxed text-muted">

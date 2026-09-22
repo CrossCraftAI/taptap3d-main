@@ -32,6 +32,16 @@ const PLATE_B = writePlate(join(TEMP, `stage-b-${RUN}.png`), 240, 320, (RUN + 53
 
 /** This sale's row on the ledger. The ledger holds every sale ever run here. */
 const rowOf = (page: Page): Locator => page.getByRole("row", { name: new RegExp(EVENT) });
+/**
+ * The ledger showing EVERYTHING, archive included.
+ *
+ * The ledger defaults to the sales still in production, because a finished one
+ * is not what somebody came here to work on. This walk ends with a sale that
+ * has been printed, so the last two readings are taken from the tab that holds
+ * it — and the default's own behaviour is asserted where the sale crosses over,
+ * which is the moment it disappears from the front page.
+ */
+const archive = (page: Page): Promise<unknown> => page.goto("/?stage=all");
 /** The event's header, not the rail and not the ledger. */
 const header = (page: Page): Locator => page.locator("main header");
 
@@ -132,18 +142,34 @@ test("the ledger says where a sale is, and its button says what to do next", asy
   if (process.env.PUPPETEER_EXECUTABLE_PATH) expect(response.status()).toBe(200);
   else expect([200, 503]).toContain(response.status());
 
-  await page.goto("/");
   if (response.status() === 200) {
+    // THE PRINTED SALE LEAVES THE FRONT PAGE. It is archive now: findable, by
+    // name or by its own tab, and not what a person opening the ledger came
+    // for. This is the one assertion that the default is a filter at all.
+    await page.goto("/");
+    await expect(rowOf(page)).toHaveCount(0);
+    await expect(page.getByRole("link", { name: /^All/ })).toBeVisible();
+
+    await archive(page);
     await expect(rowOf(page).getByText("Exported", { exact: true })).toBeVisible();
     // The last stage's action is still to print: after the export the cycle
     // leaves this system, and sending the file again is what remains.
     await expect(rowOf(page).getByRole("link", { name: "Download PDF" })).toBeVisible();
   } else {
+    await page.goto("/");
     await expect(rowOf(page).getByText("Catalogued", { exact: true })).toBeVisible();
   }
   // Every sale this suite has ever made is on this ledger, at whatever stage
   // it stopped — which is what a specialist comparing sixty sales sees.
+  await archive(page);
   await page.screenshot({ path: shot("61-ledger-stages"), fullPage: true });
+
+  // ── FOUND BY NAME, WHICHEVER TAB IT IS IN ────────────────────────────────
+  // The reason the archive is allowed to be hidden: a sale you can name is one
+  // press away, and the address of that search is a link somebody can send.
+  await page.goto(`/?q=${encodeURIComponent(EVENT)}&stage=all`);
+  await expect(rowOf(page)).toHaveCount(1);
+  await page.screenshot({ path: shot("64-ledger-searched"), fullPage: true });
 });
 
 test("a person's answer wins over the data, and can be taken back", async ({
@@ -193,7 +219,8 @@ test("a person's answer wins over the data, and can be taken back", async ({
     /· from the data$/,
   );
 
-  await page.goto("/");
+  // The archive, because the data may well have this sale printed by now.
+  await archive(page);
   await expect(rowOf(page).getByText("set by hand")).toHaveCount(0);
   await expect(rowOf(page).getByText(/^(Catalogued|Exported)$/)).toBeVisible();
 });

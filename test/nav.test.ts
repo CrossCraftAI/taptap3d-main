@@ -66,17 +66,17 @@ describe("the rail is two groups of what is built", () => {
   // a pipeline as a menu. It was then four places and no categories, because
   // four items about one subject do not need a filing system.
   //
-  // It is now SIX places in two groups, and what changed is the list rather
-  // than the taste: two of the six are about the one event you have open.
+  // It is now FOUR places in two groups, and what changed is the list rather
+  // than the taste: two of the four are about the one event you have open.
+  //
+  // The house lost two the same day it gained the groups. `/catalogues` and
+  // `/exports` were one component over the same rows with a different verb,
+  // and the verb is now the row's own next action — so a rail that listed them
+  // was offering two more doors into the table it already had a door to.
   // Changing this is a product decision; change it here and in
   // test/e2e/rail.spec.ts together, on purpose.
-  it("names the house's four places, in this order", () => {
-    expect(NAV.map((item) => item.label)).toEqual([
-      "Events",
-      "Photographs",
-      "Catalogues",
-      "Exports",
-    ]);
+  it("names the house's two places, in this order", () => {
+    expect(NAV.map((item) => item.label)).toEqual(["Events", "Photographs"]);
   });
 
   it("names the event's two places, in this order", () => {
@@ -91,9 +91,8 @@ describe("the rail is two groups of what is built", () => {
   });
 
   it("carries a count only where there is something to count", () => {
-    // Events and photographs are the two things a house accumulates; a count
-    // on Catalogues would be a count of rows nobody chose to create. The
-    // event's own places carry none — the shell does not know that sale's lot
+    // Events and photographs are the two things a house accumulates, and they
+    // are the whole house list. The event's own places carry none — the shell does not know that sale's lot
     // count, and a number the chrome cannot read is not a number it may show.
     expect(EVERY.filter((item) => item.count).map((item) => item.label)).toEqual([
       "Events",
@@ -106,7 +105,7 @@ describe("which event a path is inside", () => {
   it.each([
     ["/", null],
     ["/photographs", null],
-    ["/exports", null],
+    ["/photographs?filter=unassigned", null],
     ["/events/abc", "abc"],
     ["/events/abc/", "abc"],
     ["/events/abc/import", "abc"],
@@ -130,12 +129,12 @@ describe("which place a screen belongs to", () => {
     ["/events/abc/lots/def", "Events"],
     ["/photographs", "Photographs"],
     ["/photographs?filter=unassigned", "Photographs"],
-    // AN EVENT'S CATALOGUE IS THE CATALOGUES. A person laying out pages is in
-    // the catalogues whichever sale it is, and the rail should say so.
-    ["/catalogues", "Catalogues"],
-    ["/events/abc/catalogue", "Catalogues"],
-    ["/events/abc/catalogue/preview", "Catalogues"],
-    ["/exports", "Exports"],
+    // AN EVENT'S CATALOGUE IS THE EVENTS, now that there is no Catalogues to
+    // be. This is the house list, which has no event open, so the editor has
+    // only one honest home; the moment an event IS open its own Editor row
+    // claims it first (see the innermost-mark cases below).
+    ["/events/abc/catalogue", "Events"],
+    ["/events/abc/catalogue/preview", "Events"],
   ])("%s is %s", (pathname, label) => {
     expect(activeItem(pathname)?.label).toBe(label);
   });
@@ -149,8 +148,6 @@ describe("which place a screen belongs to", () => {
       "/events/abc/import",
       "/events/abc/catalogue",
       "/photographs",
-      "/catalogues",
-      "/exports",
     ]) {
       const matched = NAV.filter((item) => item.match(pathname));
       expect(matched.map((item) => item.label), pathname).toHaveLength(1);
@@ -166,9 +163,11 @@ describe("which place a screen belongs to", () => {
 });
 
 describe("exactly one mark, and it is the innermost true one", () => {
-  // An editor path is honestly both the event's Editor and the house's
-  // Catalogues. Both marked leaves a person unable to read their position off
-  // the rail, which is the rail's only job.
+  // An editor path is honestly both the event's Editor and the house's Events.
+  // Both marked leaves a person unable to read their position off the rail,
+  // which is the rail's only job. The overlap did not go away when Catalogues
+  // did — it moved, because Events now claims everything under /events on
+  // purpose, so that the editor marks SOMETHING when no event group is drawn.
   it.each([
     [`/events/${EVENT}/catalogue`, "Editor"],
     [`/events/${EVENT}/catalogue/preview`, "Editor"],
@@ -179,8 +178,6 @@ describe("exactly one mark, and it is the innermost true one", () => {
     // and the house's Events does.
     ["/events/other", "Events"],
     ["/photographs", "Photographs"],
-    ["/catalogues", "Catalogues"],
-    ["/exports", "Exports"],
     ["/", "Events"],
   ])("%s is marked %s", (pathname, label) => {
     const groups = navGroups(EVENT);

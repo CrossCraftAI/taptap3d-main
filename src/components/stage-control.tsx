@@ -68,7 +68,7 @@ export function StageControl({
       </select>
       <button
         type="submit"
-        className="border border-rule px-1.5 py-0.5 text-[11px] text-muted hover:text-ink"
+        className="border border-rule px-1.5 py-0.5 text-[12px] text-muted hover:text-ink"
       >
         Set
       </button>

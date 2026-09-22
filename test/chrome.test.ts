@@ -33,8 +33,6 @@ describe("where the rail is by default", () => {
     ["/events/abc/import", true],
     ["/events/abc/lots/def", true],
     ["/photographs", true],
-    ["/catalogues", true],
-    ["/exports", true],
     // THE EDITOR TAKES THE WINDOW. Measured before: 22.1% of it was the page.
     ["/events/abc/catalogue", false],
   ])("%s → open: %s", (pathname, open) => {

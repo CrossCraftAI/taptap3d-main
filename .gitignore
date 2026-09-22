@@ -49,3 +49,9 @@ test/e2e/screens*/
 
 # typescript
 *.tsbuildinfo
+
+# Claude Code's own directory. `settings.local.json` is one developer's
+# permission choices, and `worktrees/` holds real git worktrees — committing
+# those adds them as embedded repositories, which clone as empty directories
+# and confuse everyone who checks out afterwards.
+.claude/

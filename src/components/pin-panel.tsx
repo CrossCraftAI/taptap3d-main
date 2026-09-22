@@ -68,14 +68,14 @@ export function PinPanel({
     >
       <div className="shrink-0 border-b border-rule px-4 py-2.5">
         <h2 className="text-[13px] font-medium">Lots</h2>
-        <p className="mt-0.5 text-[11px] leading-relaxed text-muted">
+        <p className="mt-0.5 text-[12px] leading-relaxed text-muted">
           Tick neighbours and pin them to stay on one page. Open a lot to correct it.
         </p>
       </div>
 
       {pins.length > 0 && (
         <div className="shrink-0 border-b border-rule px-4 py-2">
-          <p className="text-[11px] tracking-wide text-muted">Pinned together</p>
+          <p className="text-[10px] tracking-wide text-muted">Pinned together</p>
           <ul className="mt-1">
             {pins.map((pin) => (
               <li
@@ -91,7 +91,7 @@ export function PinPanel({
                 >
                   <button
                     type="submit"
-                    className="shrink-0 text-[11px] text-muted underline hover:text-seal"
+                    className="shrink-0 text-[12px] text-muted underline hover:text-seal"
                   >
                     Unpin
                   </button>
@@ -144,7 +144,7 @@ function PinBody({
         {lots.map((lot) => (
           <li
             key={lot.id}
-            className="flex items-center gap-2 border-b border-rule px-3 py-1.5 text-[12px] last:border-b-0 hover:bg-field"
+            className="flex items-center gap-2 border-b border-rule px-3 py-1.5 text-[12px] last:border-b-0 hover:bg-sunk"
           >
             <input
               type="checkbox"
@@ -155,7 +155,7 @@ function PinBody({
               // Already in a pin: the server would refuse, so the box says so first.
               disabled={lot.pinned}
               aria-label={`Select ${lot.ref ?? lot.title}`}
-              className="shrink-0 accent-[#a32a24]"
+              className="shrink-0 accent-seal"
             />
             <Link
               href={`/events/${eventId}/lots/${lot.id}`}
@@ -180,7 +180,7 @@ function PinBody({
                 pinned
               </span>
             )}
-            <span className="w-8 shrink-0 text-right text-[11px] text-faint" data-numeric>
+            <span className="w-8 shrink-0 text-right text-[10px] text-faint" data-numeric>
               {lot.page ? `p.${lot.page}` : ""}
             </span>
           </li>
@@ -199,7 +199,7 @@ function PinBody({
         <button
           type="submit"
           disabled={pending || selected.size < 2}
-          className="shrink-0 border border-ruleStrong bg-paper px-2.5 py-1 text-[12px] font-medium hover:bg-field disabled:opacity-50"
+          className="shrink-0 border border-ruleStrong bg-paper px-2.5 py-1 text-[12px] font-medium hover:bg-sunk disabled:opacity-50"
         >
           Pin together
         </button>

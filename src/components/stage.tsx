@@ -12,12 +12,16 @@ import { placeHref, placeIsFile, type StageReading } from "@/lib/workflow";
  * One segment per STEP between stages, not per stage: a sale that has only
  * been named shows nothing filled, which is the truth, rather than one block
  * of five for having a row. Filled segments are ink and empty ones are the
- * rule colour, and there is no third colour — a progress indicator in a
- * colour-neutral palette (globals.css) that turned green or amber would be a
- * rainbow on a page whose job is to let a specialist judge a photograph's
- * colour. Seal-red is kept for the one thing that needs doing, which on the
- * event page is the primary action and on the ledger is nothing at all: sixty
- * red buttons in a column is no seal.
+ * rule colour, and there is no third colour — a progress indicator that turned
+ * green or amber would be a rainbow beside a column of numbers, and the accent
+ * is spent elsewhere.
+ *
+ * WHERE IT IS SPENT: the row's call to action, and only on the sales somebody
+ * is part-way through (`isMidJob`, src/lib/workflow.ts). It used to be spent
+ * on no row at all, on the argument that sixty red buttons in a column is no
+ * seal — which is right about sixty and wrong about two. The indicator stays
+ * out of it either way: the accent says "a person is needed here", and a bar
+ * that says how far along a sale is is not asking anybody for anything.
  *
  * ── THE MARK FOR A HUMAN ANSWER ─────────────────────────────────────────────
  *
@@ -78,12 +82,27 @@ export function ByHand(): React.ReactElement {
  * The stage's own next action, as a button.
  *
  * The label and the destination are the STAGE'S — nothing here knows what
- * "Import lots" is. `primary` paints it as the one seal on the page; the ledger
- * leaves it off, because a column of them is no seal at all.
+ * "Import lots" is. `primary` paints it as the accent; an event's own header
+ * is always primary, because there is one sale on that screen and one thing to
+ * do to it. The ledger passes it only for a sale somebody is part-way through
+ * (`isMidJob`), because a column of sixty filled buttons is no accent at all.
+ *
+ * ── ONE BOX, TWO PAINTS ─────────────────────────────────────────────────────
+ *
+ * The two used to be different SIZES as well as different colours — 13px with
+ * a border of ink against 12px with a hairline — which is fine on a header
+ * where only one of them exists and wrong in a column where they alternate:
+ * the rows jump by three pixels wherever the paint changes. So the box is the
+ * same and only the fill moves, and it matches the standing buttons on the
+ * event's header, which is the other place these sit side by side.
+ *
+ * `min-h-[var(--tap)]` is the floor a finger needs; it lifts to 44px on a
+ * coarse pointer (src/app/globals.css). `inline-flex` rather than
+ * `inline-block` because a minimum height does nothing to an inline box.
  *
  * A file — the PDF — is a plain anchor, not a `<Link>`: the answer is a stream
  * of bytes with its own content-type, and a client-side navigation has nowhere
- * to put it (the exports ledger says the same).
+ * to put it.
  */
 export function NextAction({
   reading,
@@ -96,9 +115,11 @@ export function NextAction({
 }): React.ReactElement {
   const { next } = reading.stage;
   const href = placeHref(next.to, eventId);
+  const box =
+    "inline-flex min-h-[var(--tap)] items-center whitespace-nowrap border px-3 text-[13px] font-medium";
   const className = primary
-    ? "bg-seal px-3 py-1.5 text-[13px] font-medium text-white hover:bg-[#8d241f]"
-    : "inline-block whitespace-nowrap border border-ruleStrong bg-paper px-2.5 py-1 text-[12px] font-medium hover:bg-field";
+    ? `${box} border-seal bg-seal text-white hover:bg-sealPress`
+    : `${box} border-ruleStrong bg-paper hover:bg-sunk`;
   if (placeIsFile(next.to)) {
     return (
       <a href={href} className={className}>

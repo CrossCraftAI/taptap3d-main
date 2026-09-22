@@ -30,8 +30,10 @@ export async function setStageAction(
 
   await setStageOverride(orgId, eventId, stage);
 
+  // TWO PATHS, WHERE THERE WERE FOUR. `/catalogues` and `/exports` were the
+  // same table as `/` and each needed telling separately; one ledger means one
+  // path to invalidate, and a screen that reads the stage cannot be forgotten
+  // here because there is only the one.
   revalidatePath("/");
   revalidatePath(`/events/${eventId}`);
-  revalidatePath("/catalogues");
-  revalidatePath("/exports");
 }

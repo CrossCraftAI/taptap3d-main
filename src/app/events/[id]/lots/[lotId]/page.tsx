@@ -147,7 +147,7 @@ export default async function LotPage({
             {step && <LotSteps eventId={event.id} step={step} />}
             <Link
               href={`/events/${event.id}/catalogue`}
-              className="border border-ruleStrong bg-paper px-3 py-1.5 text-[13px] font-medium hover:bg-field"
+              className="border border-ruleStrong bg-paper px-3 py-1.5 text-[13px] font-medium hover:bg-sunk"
             >
               Open catalogue
             </Link>
@@ -157,7 +157,7 @@ export default async function LotPage({
 
       <div className="mt-6 grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         <section>
-          <h2 className="text-[14px] font-medium">Fields</h2>
+          <h2 className="text-[15px] font-medium">Fields</h2>
           <p className="mt-1 text-[12px] leading-relaxed text-muted">
             The record. A change here prints in every catalogue of this sale — a typo
             is wrong everywhere.
@@ -199,7 +199,7 @@ export default async function LotPage({
         </section>
 
         <section>
-          <h2 className="text-[14px] font-medium">Photographs</h2>
+          <h2 className="text-[15px] font-medium">Photographs</h2>
           {/* Dropping onto THIS page attaches to THIS lot — and the file still
               lands in the library, so nothing is trapped inside one lot. */}
           <Dropzone lotId={lot.id} label="Add to this lot">
@@ -209,7 +209,7 @@ export default async function LotPage({
       </div>
 
       <section className="mt-10">
-        <h2 className="text-[14px] font-medium">In the catalogue</h2>
+        <h2 className="text-[15px] font-medium">In the catalogue</h2>
         {catalogue ? (
           <LotCatalogueForm
             eventId={event.id}
@@ -228,7 +228,7 @@ export default async function LotPage({
             </p>
             <Link
               href={`/events/${event.id}/catalogue`}
-              className="mt-4 inline-block border border-ruleStrong bg-paper px-3 py-1.5 text-[13px] font-medium hover:bg-field"
+              className="mt-4 inline-block border border-ruleStrong bg-paper px-3 py-1.5 text-[13px] font-medium hover:bg-sunk"
             >
               Open the catalogue
             </Link>

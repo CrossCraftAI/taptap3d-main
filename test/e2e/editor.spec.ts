@@ -154,8 +154,8 @@ test("a new event lands on a blank page with the tools live, and the rail put aw
   await expect(rail(page)).toBeVisible();
   await expect(page.locator("#topbar")).toBeVisible();
   // THE INNERMOST CLAIM. An editor path is honestly both this event's Editor
-  // and the house's Catalogues; the rail marks the more specific one so a
-  // person can read their position off it (src/lib/nav.ts `currentItem`).
+  // and the house's Events; the rail marks the more specific one so a person
+  // can read their position off it (src/lib/nav.ts `currentItem`).
   await expect(rail(page).getByRole("link", { name: "Editor" })).toHaveAttribute(
     "aria-current",
     "page",
@@ -172,7 +172,7 @@ test("a new event lands on a blank page with the tools live, and the rail put aw
   await expect(rail(page)).toBeVisible();
 
   // ── AND GOES, by keyboard, focus coming out of the hidden rail ───────────
-  await rail(page).getByRole("link", { name: /^Exports/ }).focus();
+  await rail(page).getByRole("link", { name: /^Photographs/ }).focus();
   await page.keyboard.press("Control+\\");
   await expect(toggle(page)).toHaveAttribute("aria-expanded", "false");
   await expect(rail(page)).toBeHidden();

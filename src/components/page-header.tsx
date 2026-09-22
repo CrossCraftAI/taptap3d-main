@@ -36,7 +36,7 @@ export function PageHeader<T extends string>({
           </Link>
         )}
         <h1
-          className={`truncate text-[19px] font-semibold tracking-tight ${parent ? "mt-1" : ""}`}
+          className={`truncate text-[16px] font-semibold tracking-tight ${parent ? "mt-1" : ""}`}
         >
           {title}
         </h1>
