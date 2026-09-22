@@ -18,12 +18,10 @@ import { expect, test, type FrameLocator, type Page } from "@playwright/test";
 
 import { writePlate } from "./plate";
 import { createEvent } from "./sale";
+import { shot } from "./shots";
 
-const SHOTS = join("test", "e2e", "screens");
 const TEMP = join("test-results", "fixtures");
-mkdirSync(SHOTS, { recursive: true });
 mkdirSync(TEMP, { recursive: true });
-const shot = (name: string): string => join(SHOTS, `${name}.png`);
 
 const RUN = Date.now();
 const PLATE = writePlate(join(TEMP, `template-${RUN}.png`), 600, 450, RUN % 200);

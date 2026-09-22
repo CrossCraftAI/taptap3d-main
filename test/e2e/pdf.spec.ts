@@ -17,12 +17,10 @@ import { crc32, deflateSync } from "node:zlib";
 import { expect, test } from "@playwright/test";
 
 import { createEvent } from "./sale";
+import { shot } from "./shots";
 
-const SHOTS = join("test", "e2e", "screens");
 const TEMP = join("test-results", "fixtures");
-mkdirSync(SHOTS, { recursive: true });
 mkdirSync(TEMP, { recursive: true });
-const shot = (name: string): string => join(SHOTS, `${name}.png`);
 
 function pngChunk(type: string, data: Buffer): Buffer {
   const length = Buffer.alloc(4);

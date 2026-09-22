@@ -10,17 +10,11 @@
 //
 // Runs against the BUILT application and a real database, one worker.
 
-import { mkdirSync } from "node:fs";
-import { join } from "node:path";
-
 import { expect, test, type FrameLocator, type Page } from "@playwright/test";
 import pg from "pg";
 
 import { createEvent } from "./sale";
-
-const SHOTS = join("test", "e2e", "screens");
-mkdirSync(SHOTS, { recursive: true });
-const shot = (name: string): string => join(SHOTS, `${name}.png`);
+import { shot } from "./shots";
 
 const RUN = Date.now();
 const EVENT = `Correction Sale ${RUN}`;
@@ -92,6 +86,73 @@ test("a correction survives the density change it was never keyed to", async ({ 
   // The record changed: the header reads it back from the database.
   await expect(page.getByRole("heading", { name: /山水四屏（修訂）/ })).toBeVisible();
   await page.screenshot({ path: shot("41-lot-record-saved"), fullPage: true });
+
+  // ── 1b. THE SALE IS A SEQUENCE ───────────────────────────────────────────
+  // Correcting lots is per-lot work, and without a stepper each one costs
+  // three gestures — back to the sale, find the row again in a table that has
+  // scrolled, click it. On six lots that is an annoyance; on 128 it is two
+  // extra days. So: forward and back land on the right lots, by pointer and
+  // by key, and the ends are ends.
+  await expect(page.getByText("Lot 2 of 6")).toBeVisible();
+
+  await page.getByRole("link", { name: "Next lot" }).click();
+  await expect(page.getByRole("heading", { name: new RegExp(ref(3)) })).toBeVisible();
+  await expect(page.getByText("Lot 3 of 6")).toBeVisible();
+
+  // The same step from the keyboard, with nothing focused — the listener is on
+  // the window, which is the only way a shortcut is worth having.
+  await page.keyboard.press("ArrowLeft");
+  await expect(page.getByRole("heading", { name: /山水四屏（修訂）/ })).toBeVisible();
+  await expect(page.getByText("Lot 2 of 6")).toBeVisible();
+
+  // ── AND NOT WHILE SOMEBODY IS TYPING ─────────────────────────────────────
+  // The guard is one line — `isTyping(event.target)` in lot-steps.tsx — and
+  // without this press, deleting it leaves the whole repository green: every
+  // other press in this file happens with nothing focused, and test/keys.test.ts
+  // exercises the predicate in isolation and never reaches the call site. What
+  // it prevents is a specialist moving the caret inside a field and losing the
+  // page they were part-way through filling in, with no dirty-state warning
+  // anywhere to catch it. So it is asserted where it happens.
+  const asPrice = page.getByLabel("Print 估價 as");
+  await asPrice.fill("估價");
+  await asPrice.press("ArrowLeft");
+  await expect(page.getByText("Lot 2 of 6")).toBeVisible();
+  await expect(asPrice).toBeFocused();
+  await asPrice.fill("");
+
+  // ── The ends do not wrap ─────────────────────────────────────────────────
+  // Wrapping past lot 1 into lot 6 is the surprise that makes somebody lose
+  // their place and re-edit twenty lots they had already done. There is no
+  // link at the end, only a disabled button: asserting both is the point,
+  // because an `aria-disabled` anchor would still navigate.
+  await page.getByRole("link", { name: "Previous lot" }).click();
+  await expect(page.getByRole("heading", { name: new RegExp(ref(1)) })).toBeVisible();
+  await expect(page.getByText("Lot 1 of 6")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Previous lot" })).toBeDisabled();
+  await expect(page.getByRole("link", { name: "Previous lot" })).toHaveCount(0);
+
+  const firstUrl = page.url();
+  await page.keyboard.press("ArrowLeft");
+  await expect(page.getByText("Lot 1 of 6")).toBeVisible();
+  expect(page.url(), "the first lot must not wrap round to the last").toBe(firstUrl);
+
+  // And the other end, reached the long way — which is also the gesture count
+  // this control exists to remove.
+  await page.getByRole("link", { name: EVENT }).click();
+  await page.waitForURL(eventUrl);
+  await page.getByRole("link", { name: ref(6), exact: true }).click();
+  await expect(page.getByText("Lot 6 of 6")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Next lot" })).toBeDisabled();
+  await expect(page.getByRole("link", { name: "Next lot" })).toHaveCount(0);
+  await page.screenshot({ path: shot("41b-lot-steps-last"), fullPage: true });
+
+  await page.keyboard.press("ArrowLeft");
+  await expect(page.getByRole("heading", { name: new RegExp(ref(5)) })).toBeVisible();
+  await expect(page.getByText("Lot 5 of 6")).toBeVisible();
+
+  // Back to the lot being corrected; the rest of this test is about it.
+  await page.goto(lotUrl);
+  await expect(page.getByRole("heading", { name: /山水四屏（修訂）/ })).toBeVisible();
 
   // ── 2. THIS CATALOGUE: leave the maker off, print the estimate differently ─
   await expect(page.getByText("nothing overridden")).toBeVisible();
@@ -195,15 +256,34 @@ test("a correction survives the density change it was never keyed to", async ({ 
   // lists the log — it is an instrument, not a feature.
   const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 1 });
   try {
-    const { rows } = await pool.query<{ action: string; n: string }>(
-      `select a.action, count(*)::text as n
+    // The stepper carries no catalogue and no lotId — it is a gesture about
+    // the SALE — so the event in its own payload is the third way in.
+    // Cast, because $1 is a uuid everywhere else in this predicate and
+    // `->>` hands back text.
+    const COUNTS = `select a.action, count(*)::text as n
          from action_log a
          left join catalogues c on c.id = a.catalogue_id
-        where (c.event_id = $1 or a.payload->>'lotId' = $2)
-        group by a.action order by a.action`,
-      [eventId, lotId],
-    );
-    const counts = Object.fromEntries(rows.map((r) => [r.action, Number(r.n)]));
+        where (c.event_id = $1
+               or a.payload->>'lotId' = $2
+               or a.payload->>'eventId' = $1::text)
+        group by a.action order by a.action`;
+    const readCounts = async (): Promise<Record<string, number>> => {
+      const { rows } = await pool.query<{ action: string; n: string }>(COUNTS, [eventId, lotId]);
+      return Object.fromEntries(rows.map((r) => [r.action, Number(r.n)]));
+    };
+
+    // EXACTLY FOUR STEPS, two by pointer and two by key — and the exactness is
+    // the assertion. A fifth means one of the two refusals stepped anyway: the
+    // press at the first lot, or the press inside a field. A fourth missing
+    // means a step stopped being counted. `>= 3` tolerated the second of those
+    // silently, which is the failure this instrument exists to notice at all
+    // (principle 5).
+    //
+    // Polled, because logAction is fire and forget by design
+    // (src/lib/log/client.ts) and the last press can still be in flight.
+    await expect.poll(async () => (await readCounts())["lot.step"] ?? 0).toBe(4);
+
+    const counts = await readCounts();
     expect(counts["lot.fields.save"]).toBeGreaterThanOrEqual(1);
     expect(counts["catalogue.override.save"]).toBeGreaterThanOrEqual(2);
     expect(counts["catalogue.pin"]).toBeGreaterThanOrEqual(2); // one made, one refused

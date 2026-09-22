@@ -1,0 +1,295 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wall label preview</title>
+<style>
+  :root { color-scheme: light; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 16px; background: #f6f6f6;
+    /* HK BEFORE TC, AND THAT IS A DOMAIN DECISION RATHER THAN A PREFERENCE.
+       Noto Serif CJK ships separate HK and TC faces because Hong Kong and
+       Taiwan standardise different glyph forms for the same characters, and the
+       first customers are Hong Kong houses printing Hong Kong catalogues. Both
+       are in the image; naming HK first is the difference between a catalogue
+       that looks locally typeset and one that looks imported.
+
+       The container's faces come first, then a specialist's own machine, then
+       Latin. "Noto Sans CJK HK" is the last CJK rung on purpose: a sans
+       catalogue is a compromise, and tofu is a reprint. */
+    font-family: "Noto Serif CJK HK", "Noto Serif CJK TC", "Noto Serif TC",
+      "Source Han Serif TC", "Songti TC", "Noto Sans CJK HK", Georgia,
+      "Times New Roman", serif;
+    color: #1b1b1b;
+  }
+  /* SIZED BY HEIGHT, so a WHOLE PAGE is in the frame. A preview scaled to the
+     frame's width puts two thirds of an A4 page below the fold, and a
+     specialist judging whether a spread is balanced cannot judge a third of it.
+     Scrolling then moves page to page, which is how the deliverable is read.
+     The margin is the template's, as a share of the page's width. */
+  .page {
+    background: #fff; aspect-ratio: 297 / 210; height: calc(100vh - 32px); width: auto;
+    max-width: 100%; margin: 0 auto 16px; position: relative; overflow: hidden;
+    box-shadow: 0 1px 2px rgba(0,0,0,.10), 0 6px 20px rgba(0,0,0,.06);
+    display: flex; flex-direction: column;
+  }
+  /* ── THE MARGIN IS THE LIVE AREA'S, NOT THE PAGE'S ────────────────────────
+     It was the page's padding, and it moved for a reason that is not cosmetic:
+     an absolutely positioned child is laid out against its ancestor's PADDING
+     box, so a part placed at "0.5 of the page" inside a padded .page would land
+     at half of the page-minus-margins and drift with the template's margin.
+     Frames are page fractions (src/lib/engine/frame.ts) and nothing between the
+     drag and the paint may quietly mean something else. With the padding on an
+     inner box, .page's padding box IS the sheet and left/top/width/height are
+     the stored numbers with a percent sign.
+
+     It also fixes a margin that was wrong on screen. Percentage padding
+     resolves against the CONTAINING BLOCK's width, and .page's containing block
+     is the body — so at fit:page, where the page is narrower than the body, the
+     margin was a share of the window rather than of the paper and grew with the
+     viewport. On .live the containing block is .page, which is the paper.
+
+     .page CLIPS, and that is the trim. A frame may legitimately bleed past the
+     edge — a full-bleed plate does it by design — and the paper is where that
+     stops being visible, in the preview as at the press. Without it a bled part
+     would be painted over the next page in the scrolling preview, which is a
+     spread nobody will print. */
+  .live {
+    flex: 1; min-height: 0; display: flex; flex-direction: column;
+    padding: 4%;
+  }
+  /* ── A PART A PERSON PLACED ───────────────────────────────────────────────
+     Positioned against the page, which is what it is a fraction of. It is out
+     of the entry's flow and therefore out of the caption's font size too, so
+     the type is restated here rather than inherited from a box it has left.
+     CLIPPED for the caption's reason: the box is the size the person drew, and
+     text running out of it would run across the lot beneath. */
+  .placed {
+    position: absolute; margin: 0; overflow: hidden;
+    font-size: clamp(7px, 1.4vh, 13px); line-height: 1.45;
+  }
+  /* THE BLANK SHEET IS A .page AND NOTHING MORE: the same aspect, the same
+     fit, the same shadow. A rule stood here that made .page--empty an
+     auto-sized grey box with a sentence in it, which is an empty-state card
+     inside a frame whose one job is to show paper. */
+  .folio {
+    margin-top: 3%; text-align: center;
+    font: 9px/1 system-ui, sans-serif; color: #a8a8a8; letter-spacing: .12em;
+  }
+  .value { overflow-wrap: anywhere; }
+
+  /* ── GRID: cells ─────────────────────────────────────────────────────────
+     Scoped to the arrangement, because a rule for .slot that means a flex
+     column would break a table row of the same name. */
+  .page--grid .grid {
+    flex: 1; min-height: 0; display: grid; gap: 4%;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-rows: repeat(2, minmax(0, 1fr));
+  }
+  .page--grid .slot { display: flex; flex-direction: column; gap: 8px; min-height: 0; min-width: 0; }
+  /* A FIXED SHARE OF THE SLOT, not flex:1. With flex the plate absorbs
+     whatever the caption leaves, so a lot with a long description gets a
+     smaller photograph than the lot beside it — which is exactly the ragged
+     baseline a printed catalogue exists to avoid. The share is the template's. */
+  .page--grid .plate {
+    flex: 0 0 50%; min-height: 0; display: flex; align-items: center;
+    justify-content: center; background: #fafafa; overflow: hidden;
+  }
+  .page--grid .plate img { max-width: 100%; max-height: 100%; object-fit: contain; display: block; }
+  .page--grid .plate--empty {
+    border: 1px dashed #dcdcdc; background: #fcfcfc;
+    font: 10px/1.4 system-ui, sans-serif; color: #b4b4b4; letter-spacing: .04em;
+  }
+  .page--grid .slot--beside { flex-direction: row; align-items: stretch; gap: 12px; }
+  .page--grid .slot--beside .plate { flex: 0 0 0%; }
+  .page--grid .slot--beside .caption { flex: 1; min-width: 0; }
+  /* CONTAINED. This was overflow:visible, on the argument that a caption too
+     long for its slot is a defect and hiding it would make the future defect
+     gate blind. Production said otherwise: a 90-character provenance note ran
+     straight down through the plate of the lot beneath it, and three overlapping
+     lots is not a more honest page than a truncated one — it is an unreadable
+     one. The long-form field is clamped with an ellipsis, which is a visible
+     mark rather than a silent cut, and the rest is contained. The ceiling on
+     the caption box, in line boxes, is the density's; the engine already bounds
+     what goes into a caption and this is the last resort that keeps a
+     pathological value off the lot beneath it. */
+  .page--grid .caption {
+    flex: 1; min-height: 0; overflow: hidden; position: relative;
+    font-size: clamp(7px, 1.4vh, 13px); line-height: 1.45;
+    max-height: calc(1.45em * 8);
+  }
+  /* THE CUT IS A FADE, NOT A GUILLOTINE.
+     How many lines precede the description varies per lot — a work with no maker
+     and no date has two more lines of room than the one beside it — so no fixed
+     clamp fits every slot, and where it does not the box clips through the
+     middle of a glyph. Measuring the painted boxes is the honest answer and it
+     belongs to the editor overlay, which reads the preview from the parent.
+     Until then this: the last line fades into the page, which reads as "there is
+     more" instead of as a rendering fault. On a caption that does not fill its
+     box the gradient lies over blank paper and is invisible. */
+  .page--grid .caption::after {
+    content: ""; position: absolute; left: 0; right: 0; bottom: 0;
+    height: 1.5em; pointer-events: none;
+    background: linear-gradient(to bottom, rgba(255,255,255,0) 0%, #fff 85%);
+  }
+  .page--grid .ref {
+    margin: 0 0 3px; font-family: system-ui, sans-serif; font-weight: 600;
+    font-size: .82em; letter-spacing: .1em; color: #8a8a8a;
+  }
+  .page--grid .line { margin: 0 0 1px; }
+  .page--grid .line .label { display: none; }
+  .page--grid .line.labelled .label { display: inline; margin-right: .5em; font-size: .85em; color: #8a8a8a; letter-spacing: .04em; }
+  .page--grid .line--title .value { font-weight: 600; font-size: 1.12em; }
+  .page--grid .line--maker .value { color: #3a3a3a; }
+  .page--grid .line--price .value { font-variant-numeric: tabular-nums; letter-spacing: .01em; }
+  /* NO CLAMP HERE ANY MORE. It was keyed to the description class and never
+     fired on real data: the predecessor's long prose arrives under a column the
+     house calls notes, which prints as a custom field and matched no rule. Any
+     field can be long, so the bound moved into the engine, where it is
+     field-agnostic, derived, and does not depend on a browser honouring a
+     prefixed property.
+
+     (And no backticks in here: this stylesheet lives inside a template literal,
+     so one in a comment ends the string mid-rule. That has now cost two
+     debugging sessions.) */
+  .page--grid .line--description .value { color: #5a5a5a; }
+
+  /* ── TABLE: rows under a header ──────────────────────────────────────────
+     A real table element, because a price list is one and the markup should
+     say so to a screen reader and to the next person. Fixed layout with the
+     template's column shares, so the columns line up down the page whatever
+     the row above holds. */
+  .page--table .body { flex: 1; min-height: 0; overflow: hidden; }
+  .page--table table {
+    width: 100%; height: 100%; border-collapse: collapse; table-layout: fixed;
+    font-size: clamp(7px, 1.4vh, 13px); line-height: 1.35;
+  }
+  .page--table th {
+    text-align: left; vertical-align: bottom; padding: 0 .7em .55em 0;
+    font-family: system-ui, sans-serif; font-weight: 600; font-size: .78em;
+    letter-spacing: .1em; color: #6e6e6e; border-bottom: 1px solid #1b1b1b;
+  }
+  /* EVERY ROW THE SAME HEIGHT, the density's share of the table. A row's text
+     is already bounded by the engine to the column's units and to this many
+     lines; the cell is the last resort that keeps a row from growing into the
+     one beneath it and pushing the last row off the page in silence. */
+  .page--table tr.slot { height: 16.667%; }
+  .page--table td {
+    padding: .3em .7em .3em 0; vertical-align: top;
+    border-bottom: 1px solid #e0e0e0;
+  }
+  .page--table th:last-child, .page--table td:last-child { padding-right: 0; }
+  .page--table .cell { max-height: calc(1.35em * 8); overflow: hidden; }
+  /* A REFERENCE STAYS IN ITS COLUMN. The first screenshot of a price list had
+     a sixteen-character reference running straight across the thumbnail into
+     the title, because nowrap without containment is an invitation. A house
+     reference is usually P01, but any field can be long — so it is cut at the
+     column edge WITH AN ELLIPSIS, a visible mark, rather than wrapped mid-code
+     or allowed out. The column's width is the template's to widen. */
+  .page--table td.ref, .page--table th.ref { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .page--table td.ref {
+    font-family: system-ui, sans-serif; font-weight: 600; font-size: .82em;
+    letter-spacing: .1em; color: #8a8a8a; padding-top: .45em;
+  }
+  .page--table td.plate .cell {
+    height: calc(1.35em * 8); display: flex; align-items: center;
+  }
+  .page--table td.plate img { max-width: 100%; max-height: 100%; object-fit: contain; display: block; }
+  .page--table td.line--title .value { font-weight: 600; }
+  .page--table td.line--maker .value { color: #3a3a3a; }
+  .page--table th.line--price, .page--table td.line--price { text-align: right; }
+  .page--table td.line--price .value { font-variant-numeric: tabular-nums; letter-spacing: .01em; }
+  .page--table tr.filler td { border-bottom: 0; padding: 0; }
+  /* A PLACED CELL IS NO LONGER A CELL. Almost every rule above is keyed to a
+     td element — deliberately, because it describes the TABLE — so the handful
+     that describe the INK rather than the grid are restated here for a part
+     that has left it. It keeps no border and no cell padding: those belong to
+     the ledger it was taken out of. (And no backticks: see the note further
+     up. This comment cost the third debugging session.) */
+  .page--table .placed { line-height: 1.35; }
+  .page--table .placed .cell { max-height: none; height: 100%; }
+  .page--table .placed.plate { display: flex; align-items: center; }
+  .page--table .placed.plate img { max-width: 100%; max-height: 100%; object-fit: contain; display: block; }
+  .page--table .placed.ref {
+    font-family: system-ui, sans-serif; font-weight: 600; font-size: .82em;
+    letter-spacing: .1em; color: #8a8a8a;
+  }
+  .page--table .placed.line--title .value { font-weight: 600; }
+  .page--table .placed.line--maker .value { color: #3a3a3a; }
+  .page--table .placed.line--price { text-align: right; }
+  .page--table .placed.line--price .value { font-variant-numeric: tabular-nums; letter-spacing: .01em; }
+
+  /* ── SHEET: a page ───────────────────────────────────────────────────────
+     One entry, the plate dominant, the caption a description list with the
+     specifications labelled and the prose keeping its paragraphs. */
+  .page--sheet .slot { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 4%; }
+  .page--sheet .slot--beside { flex-direction: row; align-items: stretch; gap: 5%; }
+  .page--sheet .plate {
+    flex: 0 0 50%; min-height: 0; display: flex; align-items: center;
+    justify-content: center; background: #fafafa; overflow: hidden;
+  }
+  .page--sheet .slot--beside .plate { flex: 0 0 0%; }
+  .page--sheet .plate img { max-width: 100%; max-height: 100%; object-fit: contain; display: block; }
+  .page--sheet .plate--empty {
+    border: 1px dashed #dcdcdc; background: #fcfcfc;
+    font: 11px/1.4 system-ui, sans-serif; color: #b4b4b4; letter-spacing: .04em;
+  }
+  .page--sheet .caption {
+    flex: 1; min-height: 0; min-width: 0; margin: 0; overflow: hidden; position: relative;
+    font-size: clamp(7px, 1.4vh, 13px); line-height: 1.5;
+    max-height: calc(1.5em * 8);
+  }
+  .page--sheet .caption::after {
+    content: ""; position: absolute; left: 0; right: 0; bottom: 0;
+    height: 1.5em; pointer-events: none;
+    background: linear-gradient(to bottom, rgba(255,255,255,0) 0%, #fff 85%);
+  }
+  .page--sheet .ref {
+    margin: 0 0 .7em; font-family: system-ui, sans-serif; font-weight: 600;
+    font-size: .78em; letter-spacing: .14em; color: #8a8a8a;
+  }
+  .page--sheet .line { display: flex; gap: 1.2em; margin: 0 0 .3em; }
+  .page--sheet .label { display: none; }
+  .page--sheet .labelled .label {
+    display: block; flex: 0 0 4.5em; margin: 0; padding-top: .14em;
+    font-size: .82em; letter-spacing: .06em; color: #8a8a8a;
+  }
+  .page--sheet .value { flex: 1; min-width: 0; margin: 0; white-space: pre-line; }
+  .page--sheet .line--title { margin: 0 0 .4em; }
+  .page--sheet .line--title .value { font-weight: 600; font-size: 1.75em; line-height: 1.2; }
+  .page--sheet .line--maker .value { font-size: 1.15em; color: #3a3a3a; }
+  .page--sheet .line--date .value { color: #5a5a5a; }
+  .page--sheet .line--price .value { font-variant-numeric: tabular-nums; }
+  .page--sheet .line--description { margin-top: 1em; }
+  .page--sheet .line--description .value { color: #3a3a3a; }
+  /* The sheet's own leading on a part that has left its description list. Its
+     type rules are keyed to .line, .label and .value rather than to dt and dd,
+     which is why a placed part can take neutral tags and still look the same. */
+  .page--sheet .placed { line-height: 1.5; }
+
+  @media print {
+    /* MARGIN ZERO, and the page's own padding is the margin. Without this the
+       browser adds its default half-inch outside a box that is already exactly
+       A4, and every page overflows onto a second, blank one — eleven pages
+       become twenty-two. The sheet's orientation is the template's. */
+    @page { size: A4 landscape; margin: 0; }
+    body { background: #fff; padding: 0; }
+    .page {
+      box-shadow: none; margin: 0; break-after: page;
+      height: 210mm; width: 297mm; max-width: none;
+    }
+    .page:last-child { break-after: auto; }
+    /* NO FADE ON PAPER. A gradient at the foot of a caption tells a reader on a
+       screen that the text continues. A printed page has no "continues", so the
+       same gradient reads as a smear — as though the press ran out of ink. The
+       engine's caption budget is what keeps the text inside the box; this makes
+       sure nothing pretends otherwise. */
+    .caption::after { display: none; }
+  }
+</style>
+</head>
+<body><section class="page page--grid" data-page="1"><div class="live"><div class="grid"><article class="slot" data-lot="a"><div class="caption"><p class="line line--title" data-lot="a" data-field="title"><span class="label">品名</span><span class="value">青花纏枝蓮紋梅瓶</span></p><p class="line line--maker" data-lot="a" data-field="maker"><span class="label">作者</span><span class="value">佚名</span></p><p class="line line--date" data-lot="a" data-field="date"><span class="label">年代</span><span class="value">清乾隆</span></p><p class="line line--material labelled" data-lot="a" data-field="material"><span class="label">材質</span><span class="value">瓷</span></p><p class="ref" data-lot="a" data-field="ref">P01</p></div></article><article class="slot" data-lot="b"><div class="plate" data-lot="b" data-field="images"><img src="/api/assets/plate-b" alt=""></div><div class="caption"><p class="line line--title" data-lot="b" data-field="title"><span class="label">品名</span><span class="value">山水四屏</span></p><p class="line line--maker" data-lot="b" data-field="maker"><span class="label">作者</span><span class="value">張大千</span></p><p class="ref" data-lot="b" data-field="ref">P02</p></div></article><article class="slot" data-lot="c"><div class="plate plate--empty" data-lot="c" data-field="images"><span>no photograph</span></div><div class="caption"><p class="line line--title" data-lot="c" data-field="title"><span class="label">品名</span><span class="value">白玉雕螭龍紋佩</span></p></div></article><article class="slot" data-lot="d"><div class="plate plate--empty" data-lot="d" data-field="images"><span>no photograph</span></div><div class="caption"><p class="line line--title" data-lot="d" data-field="title"><span class="label">品名</span><span class="value">墨荷</span></p><p class="line line--date" data-lot="d" data-field="date"><span class="label">年代</span><span class="value">1950</span></p><p class="ref" data-lot="d" data-field="ref">P04</p></div></article><article class="slot" data-lot="e"><div class="plate" data-lot="e" data-field="images"><img src="/api/assets/plate-e" alt=""></div><div class="caption"><p class="line line--maker" data-lot="e" data-field="maker"><span class="label">作者</span><span class="value">顧景舟</span></p><p class="line line--date" data-lot="e" data-field="date"><span class="label">年代</span><span class="value">約 1960</span></p><p class="line line--material labelled" data-lot="e" data-field="material"><span class="label">材質</span><span class="value">紫砂</span></p><p class="ref" data-lot="e" data-field="ref">P05</p></div></article></div><footer class="folio">1</footer></div><div class="plate placed" data-lot="a" data-field="images" style="left: 8.0000%; top: 55.0000%; width: 34.0000%; height: 28.0000%" data-frame-source="override" data-page-frame="0.080000,0.550000,0.340000,0.280000"><img src="/api/assets/plate-a" alt=""></div><div class="ref placed" data-lot="c" data-field="ref" style="left: 70.0000%; top: 90.0000%; width: 22.0000%; height: 4.0000%" data-frame-source="override" data-page-frame="0.700000,0.900000,0.220000,0.040000">P03</div><div class="line line--title placed" data-lot="e" data-field="title" style="left: 10.0000%; top: 12.0000%; width: 50.0000%; height: 8.0000%" data-frame-source="override" data-page-frame="0.100000,0.120000,0.500000,0.080000"><span class="label">品名</span><span class="value">紫砂壺</span></div></section></body>
+</html>

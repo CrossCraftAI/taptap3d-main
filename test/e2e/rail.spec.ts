@@ -13,14 +13,9 @@
 // The screenshots are the point. ARCHITECTURE.md principle 10: "the tests pass"
 // is not evidence that an interface exists.
 
-import { mkdirSync } from "node:fs";
-import { join } from "node:path";
-
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
-const SHOTS = join("test", "e2e", "screens");
-mkdirSync(SHOTS, { recursive: true });
-const shot = (name: string): string => join(SHOTS, `${name}.png`);
+import { shot } from "./shots";
 
 const rail = (page: Page): Locator =>
   page.getByRole("navigation", { name: "Sections" });

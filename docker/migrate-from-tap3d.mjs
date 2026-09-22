@@ -543,6 +543,52 @@ async function main() {
     if (row) catalogueByProject.set(project.id, { id: row.id, orgId: event.orgId });
   }
 
+  // ── who decided a carried override ────────────────────────────────────────
+  //
+  // A carried hidden-field override is a DECISION: a specialist looked at a lot
+  // and said this field does not print. Writing it with `decided_by = null` is
+  // not a weaker version of that claim, it is a different claim — null means a
+  // machine proposed it and nobody has confirmed (src/db/schema.ts) — and
+  // listOverrides filters on exactly that (src/lib/data/overrides.ts). So every
+  // decision this loop carried was invisible to the engine, and every catalogue
+  // printed the field the specialist had suppressed.
+  //
+  // drizzle/0003_carried_decisions.sql rescues the rows already carried. It
+  // cannot rescue the next house: a migration runs once per database, so a
+  // tenant carried across after 0003 has been applied would get the bug back
+  // with no migration left to run. The fix belongs where the row is written.
+  //
+  // WHO. The gate identity — `gate@<slug>.taptap3d.invalid`, the row
+  // src/lib/data/actor.ts makes on first use and the address 0003 resolves. It
+  // says what is true: a member of the house decided, before the system could
+  // name which one. The ADDRESS is the key, so this, the migration and
+  // currentActorId() reach one row and not three.
+  //
+  // THE MEMBERSHIP IS NOT OPTIONAL, for the reason 0003 records: currentActorId
+  // returns early when the user already exists and never reaches its own
+  // membership insert, so an identity made here without one never gets one.
+  const gateIds = new Map();
+  const gateIdFor = async (orgId) => {
+    if (gateIds.has(orgId)) return gateIds.get(orgId);
+    const [org] = await write(`select slug, name from orgs where id = $1`, [orgId]);
+    if (!org) return null;
+    const email = `gate@${org.slug}.taptap3d.invalid`;
+    await write(
+      `insert into users (email, name) values ($1, $2)
+       on conflict (email) do nothing`,
+      [email, `${org.name} — via the gate`],
+    );
+    const [user] = await write(`select id from users where email = $1`, [email]);
+    if (!user) return null;
+    await write(
+      `insert into memberships (org_id, user_id, role) values ($1, $2, 'member')
+       on conflict (org_id, user_id) do nothing`,
+      [orgId, user.id],
+    );
+    gateIds.set(orgId, user.id);
+    return user.id;
+  };
+
   // ── overrides ← lot_field_overrides, and proposals ────────────────────────
   for (const override of await read(`select * from lot_field_overrides`)) {
     const lot = lotBySourceId.get(override.lot_id);
@@ -550,7 +596,7 @@ async function main() {
     if (!lot || !catalogue) continue;
     await write(
       `insert into overrides (org_id, catalogue_id, lot_id, field, value, decided_by)
-       values ($1, $2, $3, $4, $5, null)
+       values ($1, $2, $3, $4, $5, $6)
        on conflict (catalogue_id, lot_id, field) do nothing`,
       [
         catalogue.orgId,
@@ -558,6 +604,7 @@ async function main() {
         lot.id,
         override.field,
         JSON.stringify({ hidden: override.hidden === true }),
+        await gateIdFor(catalogue.orgId),
       ],
     );
     bump("overrides");

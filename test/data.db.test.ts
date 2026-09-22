@@ -18,7 +18,7 @@ import {
   setStageOverride,
 } from "@/lib/data/events";
 import { currentOrgId, NoOrgError } from "@/lib/data/org";
-import { insertLots, listLots } from "@/lib/data/lots";
+import { insertLots, listLots, lotNeighbours } from "@/lib/data/lots";
 import { applyMapping } from "@/lib/import/apply";
 import { inferMapping } from "@/lib/import/infer";
 import { parsePastedText } from "@/lib/import/parse";
@@ -179,6 +179,100 @@ describe("lots", () => {
     const event = await createEvent(orgA, { name: "Scoped Sale" });
     await insertLots(orgA, event.id, [{ ref: "P01", fields: {}, sourceRow: 2 }]);
     expect(await listLots(orgB, event.id)).toHaveLength(0);
+  });
+});
+
+describe("stepping between the lots of one sale", () => {
+  it("says where a lot sits, and stops at both ends instead of wrapping", async () => {
+    const event = await createEvent(orgA, { name: "Stepped Sale" });
+    await insertLots(orgA, event.id, [
+      { ref: "S01", fields: {}, sourceRow: 2 },
+      { ref: "S02", fields: {}, sourceRow: 3 },
+      { ref: "S03", fields: {}, sourceRow: 4 },
+    ]);
+    const stored = await listLots(orgA, event.id);
+
+    expect(await lotNeighbours(orgA, event.id, stored[1]!.id)).toEqual({
+      index: 2,
+      total: 3,
+      prev: { id: stored[0]!.id, ref: "S01" },
+      next: { id: stored[2]!.id, ref: "S03" },
+    });
+
+    // THE ENDS ARE ENDS. Wrapping is the surprise that makes somebody lose
+    // their place in a long sale, so `prev` and `next` are null there and the
+    // control has nothing to render but a disabled button.
+    expect(await lotNeighbours(orgA, event.id, stored[0]!.id)).toMatchObject({
+      index: 1,
+      prev: null,
+      next: { ref: "S02" },
+    });
+    expect(await lotNeighbours(orgA, event.id, stored[2]!.id)).toMatchObject({
+      index: 3,
+      prev: { ref: "S02" },
+      next: null,
+    });
+
+    // Numbers, not the strings node-postgres hands back for a bigint count.
+    const one = await lotNeighbours(orgA, event.id, stored[0]!.id);
+    expect(typeof one?.index).toBe("number");
+    expect(typeof one?.total).toBe("number");
+  });
+
+  it("walks exactly the order the sale's own table shows", async () => {
+    // TWO IMPORTS INTO ONE EVENT, which is the case that breaks a naive
+    // ordering: `position` is numbered from zero per import, so every row of
+    // the second import ties with a row of the first and the tiebreakers
+    // decide. Whatever order they decide, this must be the SAME one
+    // `listLots` returns — a Next button that disagrees with the row below it
+    // in the table is worse than no Next button at all.
+    const event = await createEvent(orgA, { name: "Twice-Imported Sale" });
+    await insertLots(orgA, event.id, [
+      { ref: "A1", fields: {}, sourceRow: 2 },
+      { ref: "A2", fields: {}, sourceRow: 3 },
+    ]);
+    await insertLots(orgA, event.id, [
+      { ref: "B1", fields: {}, sourceRow: 2 },
+      { ref: "B2", fields: {}, sourceRow: 3 },
+    ]);
+    const table = await listLots(orgA, event.id);
+    expect(table).toHaveLength(4);
+
+    const forwards: string[] = [];
+    let at: string | null = table[0]!.id;
+    while (at) {
+      const step = await lotNeighbours(orgA, event.id, at);
+      forwards.push(at);
+      expect(step?.index).toBe(forwards.length);
+      expect(step?.total).toBe(4);
+      at = step?.next?.id ?? null;
+    }
+    expect(forwards).toEqual(table.map((l) => l.id));
+
+    // And back up the same sequence: prev is not a second, differently-ordered
+    // query that happens to agree most of the time.
+    const backwards: string[] = [];
+    let from: string | null = table[3]!.id;
+    while (from) {
+      backwards.push(from);
+      from = (await lotNeighbours(orgA, event.id, from))?.prev?.id ?? null;
+    }
+    expect(backwards).toEqual([...table].reverse().map((l) => l.id));
+  });
+
+  it("is not another org's to walk, and not another sale's", async () => {
+    const event = await createEvent(orgA, { name: "Fenced Sale" });
+    await insertLots(orgA, event.id, [{ ref: "F01", fields: {}, sourceRow: 2 }]);
+    const [lot] = await listLots(orgA, event.id);
+
+    // Both conditions, always — an id alone is not an authorisation, and a
+    // stepper that answered here would leak the size of another house's sale.
+    expect(await lotNeighbours(orgB, event.id, lot!.id)).toBeNull();
+
+    // Right org, wrong sale. The lot is theirs and still is not in this
+    // event's sequence, so there is no position to report.
+    const other = await createEvent(orgA, { name: "Neighbouring Sale" });
+    expect(await lotNeighbours(orgA, other.id, lot!.id)).toBeNull();
   });
 });
 

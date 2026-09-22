@@ -128,6 +128,111 @@ export async function listLotsWithImages(
   return [...byLot.values()];
 }
 
+/** One end of a step: enough to link to it and to name it in a tooltip. */
+export interface LotNeighbour {
+  id: string;
+  ref: string | null;
+}
+
+export interface LotStep {
+  /** 1-based, because it is shown to a person: "Lot 18 of 128". */
+  index: number;
+  total: number;
+  /** null at the ends. The control disables rather than wrapping. */
+  prev: LotNeighbour | null;
+  next: LotNeighbour | null;
+}
+
+/** What the window query returns, before the bigints are coerced. */
+type StepRow = {
+  n: number;
+  total: number;
+  prevId: string | null;
+  prevRef: string | null;
+  nextId: string | null;
+  nextRef: string | null;
+};
+
+/**
+ * Where this lot sits in the sale, and the lot either side of it.
+ *
+ * ── ONE ROW, NOT THE SALE ────────────────────────────────────────────────────
+ *
+ * The obvious build is to reuse `listLotsWithImages`, find the lot in the array
+ * and take index ±1, and it is the wrong one. That query LEFT JOINs the
+ * photographs, so a 128-lot sale with three plates apiece is some four hundred
+ * rows, each carrying a full copy of that lot's `fields` jsonb — the whole
+ * record, titles and descriptions and the house's own columns — over the wire
+ * and through a grouping pass in JS. All of it to learn two uuids and a
+ * position. `listLots` is narrower and still ships 128 whole records.
+ *
+ * Postgres has to walk the sale either way: an ordinal — the "of 128" and the
+ * 18 — is not knowable from one row, so the scan is not the part worth saving.
+ * What IS worth saving is the transfer and the parse, and a window function
+ * does the walk where the rows already are and returns exactly one line of six
+ * small columns.
+ *
+ * ── THE SAME TOTAL ORDER, WRITTEN OUT ────────────────────────────────────────
+ *
+ * `position, created_at, id` is `listLotsWithImages`'s order and `listLots`'s,
+ * and it has to be: "next" must mean the row below the one a person just read
+ * in the table, and `position` alone ties across two imports into one event.
+ * Change one of the three and change all three, or the stepper walks an order
+ * nothing else shows.
+ *
+ * The table and column names are spelled out rather than interpolated from the
+ * drizzle schema. That is the fix for a real defect, documented at length in
+ * src/lib/data/events.ts: drizzle renders an interpolated column UNQUALIFIED
+ * inside a `sql` template, which silently resolves against the wrong table.
+ *
+ * Null when the lot is not this org's, or not in this event — the caller is
+ * already on its way to notFound() in that case, and the stepper is simply
+ * absent rather than wrong.
+ */
+export async function lotNeighbours(
+  orgId: string,
+  eventId: string,
+  lotId: string,
+): Promise<LotStep | null> {
+  const db = getDb();
+  const result = await db.execute<StepRow>(sql`
+    with ordered as (
+      select
+        lots.id,
+        row_number()   over w  as n,
+        count(*)       over () as total,
+        lag(lots.id)   over w  as prev_id,
+        lag(lots.ref)  over w  as prev_ref,
+        lead(lots.id)  over w  as next_id,
+        lead(lots.ref) over w  as next_ref
+      from lots
+      -- Both, always — an id alone is not an authorisation.
+      where lots.org_id = ${orgId} and lots.event_id = ${eventId}
+      window w as (order by lots.position, lots.created_at, lots.id)
+    )
+    select
+      n::int     as n,
+      total::int as total,
+      prev_id    as "prevId",
+      prev_ref   as "prevRef",
+      next_id    as "nextId",
+      next_ref   as "nextRef"
+    from ordered
+    where id = ${lotId}
+  `);
+
+  const row = result.rows[0];
+  if (!row) return null;
+  return {
+    // Numbers, not strings: node-postgres returns bigint counts as text, and
+    // the cast above is only half of it.
+    index: Number(row.n),
+    total: Number(row.total),
+    prev: row.prevId ? { id: row.prevId, ref: row.prevRef } : null,
+    next: row.nextId ? { id: row.nextId, ref: row.nextRef } : null,
+  };
+}
+
 export interface LotChoice {
   id: string;
   ref: string | null;

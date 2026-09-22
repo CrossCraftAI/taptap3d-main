@@ -13,6 +13,7 @@ import {
   readChoice,
   writeChoice,
 } from "@/lib/chrome";
+import { isTyping } from "@/lib/keys";
 import { logAction } from "@/lib/log/client";
 
 /**
@@ -41,7 +42,8 @@ import { logAction } from "@/lib/log/client";
  * Rejected: Ctrl+B, which is VS Code's and opens the bookmarks sidebar in
  * Firefox. Rejected: a bare key such as `[`, which is a character somebody
  * types. The chord is ignored while focus is in a field of any kind, so
- * nothing a person types into a form is ever read as a command.
+ * nothing a person types into a form is ever read as a command; that guard is
+ * shared with the lot stepper's arrows and lives in src/lib/keys.ts.
  *
  * The rail's PLACES are the Nav's concern and unchanged: a flat list of four,
  * nothing inside it collapses (src/lib/nav.ts). This puts the whole list away.
@@ -102,7 +104,16 @@ export function Shell({
         aria-expanded={open}
         aria-label="Navigation"
         title={`${open ? "Hide" : "Show"} the navigation (Ctrl+\\ or ⌘\\)`}
-        onClick={() => setOpen(!open)}
+        // FOCUS IS TAKEN, not assumed. Clicking a <button> does not focus it in
+        // WebKit — macOS convention, and the same is true of Firefox there — so
+        // the promise made above, that this control is the one way back and
+        // therefore keeps focus, was false in Safari and true everywhere the
+        // suite looked. Found by the webkit project the moment it existed; a
+        // no-op in Chromium, which has already done it.
+        onClick={() => {
+          toggle.current?.focus();
+          setOpen(!open);
+        }}
         className="fixed left-1.5 top-1.5 z-20 hidden h-[26px] w-[26px] items-center justify-center border border-rule bg-paper text-muted hover:text-ink md:flex"
       >
         <RailGlyph open={open} />
@@ -137,19 +148,6 @@ export function Shell({
 
       <main className="min-w-0 flex-1">{children}</main>
     </div>
-  );
-}
-
-/**
- * Whether a key event came from something a person types into. Duck-typed
- * rather than `instanceof`: ARCHITECTURE.md, "instanceof lies across realms".
- */
-function isTyping(target: EventTarget | null): boolean {
-  const el = target as { tagName?: string; isContentEditable?: boolean } | null;
-  const tag = el?.tagName;
-  if (!tag) return false;
-  return (
-    tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || el?.isContentEditable === true
   );
 }
 

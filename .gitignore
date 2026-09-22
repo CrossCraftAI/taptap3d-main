@@ -43,7 +43,9 @@ coverage/
 # the history by a megabyte every time someone moved a border.
 test-results/
 playwright-report/
-test/e2e/screens/
+# The trailing wildcard covers the per-project directories test/e2e/shots.ts
+# makes — screens-webkit and whatever engine comes after it.
+test/e2e/screens*/
 
 # typescript
 *.tsbuildinfo

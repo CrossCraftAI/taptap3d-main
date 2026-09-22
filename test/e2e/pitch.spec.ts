@@ -8,15 +8,11 @@
 //
 // It runs against the BUILT application, and it writes to a real database.
 
-import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 
 import { expect, test } from "@playwright/test";
 
-const SHOTS = join("test", "e2e", "screens");
-mkdirSync(SHOTS, { recursive: true });
-
-const shot = (name: string): string => join(SHOTS, `${name}.png`);
+import { shot } from "./shots";
 
 // A name unique per run: the suite writes real rows, and a fixed name would make
 // the second run ambiguous about which event it was looking at.

@@ -10,3 +10,16 @@
 *.mjs text eol=lf
 Dockerfile text eol=lf
 docker/** text eol=lf
+
+# A GOLDEN IS A BYTE FIXTURE, SO GIT CONVERTS NOTHING IN EITHER DIRECTION.
+# test/golden.test.ts compares the whole document the renderer returns against
+# the file, byte for byte and with no normalising, so `* text=auto` above would
+# break it twice over. Once on the way out: these are written LF and a Windows
+# checkout hands them back CRLF — `git ls-files --eol` already reports
+# test/templates.test.ts as `w/crlf` in a tree where the file it tests is
+# `w/lf`. And once on the way in: one golden deliberately holds a CRLF that
+# arrived in a description from a Windows-authored CSV, because on a tearsheet
+# `white-space: pre-line` makes it a line break in the deliverable — so
+# `text eol=lf` would rewrite the fixture out of the index, which is worse than
+# the problem. `-text` is neither conversion. See the header of golden.test.ts.
+test/golden/*.html -text

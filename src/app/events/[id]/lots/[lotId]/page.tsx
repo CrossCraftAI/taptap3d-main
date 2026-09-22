@@ -5,11 +5,12 @@ import { Dropzone } from "@/components/dropzone";
 import { LotCatalogueForm, type OverrideRowSpec } from "@/components/lot-catalogue-form";
 import { LotFieldsForm, type FieldRow } from "@/components/lot-fields-form";
 import { LotPhotographs } from "@/components/lot-photographs";
+import { LotSteps } from "@/components/lot-steps";
 import { PageHeader } from "@/components/page-header";
 import { listAssetsForLot } from "@/lib/data/assets";
 import { getCatalogue } from "@/lib/data/catalogues";
 import { getEvent } from "@/lib/data/events";
-import { getLot } from "@/lib/data/lots";
+import { getLot, lotNeighbours } from "@/lib/data/lots";
 import { currentOrgId } from "@/lib/data/org";
 import { listOverridesForLot } from "@/lib/data/overrides";
 import { asText } from "@/lib/engine/derive";
@@ -32,9 +33,14 @@ export default async function LotPage({
 }): Promise<React.ReactElement> {
   const { id, lotId } = await params;
   const orgId = await currentOrgId();
-  const [event, lot] = await Promise.all([
+  // The step rides along with the lot rather than after it: it is scoped by
+  // (org, event, lot) exactly as the two beside it are, so it needs nothing
+  // they return and adds no round trip. It comes back null for a lot that is
+  // not this event's — the same case the line below already sends to 404.
+  const [event, lot, step] = await Promise.all([
     getEvent(orgId, id),
     getLot(orgId, lotId),
+    lotNeighbours(orgId, id, lotId),
   ]);
   if (!event || !lot || lot.eventId !== event.id) notFound();
 
@@ -135,12 +141,17 @@ export default async function LotPage({
           </>
         }
         actions={
-          <Link
-            href={`/events/${event.id}/catalogue`}
-            className="border border-ruleStrong bg-paper px-3 py-1.5 text-[13px] font-medium hover:bg-field"
-          >
-            Open catalogue
-          </Link>
+          <>
+            {/* Where in the sale this is, and the two lots either side. First
+                in the row because it is where the hand goes back to. */}
+            {step && <LotSteps eventId={event.id} step={step} />}
+            <Link
+              href={`/events/${event.id}/catalogue`}
+              className="border border-ruleStrong bg-paper px-3 py-1.5 text-[13px] font-medium hover:bg-field"
+            >
+              Open catalogue
+            </Link>
+          </>
         }
       />
 

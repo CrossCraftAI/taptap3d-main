@@ -16,16 +16,10 @@
 //
 // Runs against the BUILT application and a real database, one worker.
 
-import { mkdirSync } from "node:fs";
-import { join } from "node:path";
-
 import { expect, test, type FrameLocator, type Locator, type Page } from "@playwright/test";
 
 import { createEvent } from "./sale";
-
-const SHOTS = join("test", "e2e", "screens");
-mkdirSync(SHOTS, { recursive: true });
-const shot = (name: string): string => join(SHOTS, `${name}.png`);
+import { shot } from "./shots";
 
 const RUN = Date.now();
 const REF = `E${RUN}`;
@@ -50,28 +44,62 @@ const rail = (page: Page): Locator => page.getByRole("navigation", { name: "Sect
 const frameOf = (page: Page): FrameLocator =>
   page.frameLocator('iframe[title="Catalogue preview"]');
 
-/** The first page's rect in WINDOW coordinates: the frame's box plus the page's box inside it. */
+/**
+ * A measurement lost because the thing being measured was replaced mid-read.
+ *
+ * Every control on this screen commits by bumping the catalogue's `updatedAt`,
+ * which bumps `previewKey`, which changes the iframe's `src` — so the document
+ * this reads into is torn down and rebuilt on the far side of the very gesture
+ * the caller just made. An `evaluate` that started before the swap lands in a
+ * context that no longer exists.
+ */
+const REPLACED = /execution context was destroyed|frame (was )?detached|not attached/i;
+
+/**
+ * The first page's rect in WINDOW coordinates: the frame's box plus the page's
+ * box inside it.
+ *
+ * IT RETRIES ITS OWN READ, and the retry is the load-bearing part. Chromium
+ * usually finishes the evaluate before the swap and WebKit usually does not,
+ * so this arrived looking like an engine difference and is a race both engines
+ * have. The caller's `expect.poll` cannot absorb it: poll retries a value it
+ * was handed, and this throws instead of handing one over.
+ *
+ * Only the replacement family is retried, and only for ten seconds. Anything
+ * else — a missing frame, a page that never renders — is raised on the first
+ * attempt, because a helper that swallows every error for ten seconds turns
+ * every real failure in this file into a timeout with the wrong message.
+ */
 async function pageRect(
   page: Page,
 ): Promise<{ x: number; y: number; width: number; height: number; share: number }> {
   // Measure the window you think you are measuring.
   expect(page.viewportSize()).toEqual(WINDOW);
-  const box = await page.locator('iframe[title="Catalogue preview"]').boundingBox();
-  expect(box).not.toBeNull();
-  const inner = await frameOf(page)
-    .locator(".page")
-    .first()
-    .evaluate((el) => {
-      const r = el.getBoundingClientRect();
-      return { x: r.x, y: r.y, width: r.width, height: r.height };
-    });
-  const rect = {
-    x: box!.x + inner.x,
-    y: box!.y + inner.y,
-    width: inner.width,
-    height: inner.height,
-  };
-  return { ...rect, share: (rect.width * rect.height) / (WINDOW.width * WINDOW.height) };
+  const deadline = Date.now() + 10_000;
+  for (;;) {
+    try {
+      const box = await page.locator('iframe[title="Catalogue preview"]').boundingBox();
+      expect(box).not.toBeNull();
+      const inner = await frameOf(page)
+        .locator(".page")
+        .first()
+        .evaluate((el) => {
+          const r = el.getBoundingClientRect();
+          return { x: r.x, y: r.y, width: r.width, height: r.height };
+        });
+      const rect = {
+        x: box!.x + inner.x,
+        y: box!.y + inner.y,
+        width: inner.width,
+        height: inner.height,
+      };
+      return { ...rect, share: (rect.width * rect.height) / (WINDOW.width * WINDOW.height) };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (!REPLACED.test(message) || Date.now() > deadline) throw error;
+      await page.waitForTimeout(100);
+    }
+  }
 }
 
 test("a new event lands on a blank page with the tools live, and the rail put away", async ({
