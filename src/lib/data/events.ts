@@ -212,14 +212,30 @@ export interface EventChoice {
  * exported — that a menu of names has no use for. This carries the one count
  * that changes what the chrome OFFERS rather than what it says: nothing prints
  * from a sale with no lots, so the palette's PDF row is not there for one
- * (src/lib/palette.ts, and src/app/exports/page.tsx made the same call).
+ * (src/lib/palette.ts, and src/app/exports/page.tsx made the same call). The
+ * rail's Lots number is that same count, read from the same row.
  *
- * It also replaces `countEvents` for the rail's number — the rail's count is
- * this list's length, so naming the whole set costs no extra query.
+ * It also replaces `countEvents` for the rail's Events number — the rail's
+ * count is this list's length, so naming the whole set costs no extra query.
+ * THAT IS ONLY TRUE WHILE THE SET IS WHOLE. The day this grows a `limit`, the
+ * rail's number has to come from `countEvents` in the same breath, or the rail
+ * quietly starts reporting the size of a menu instead of the size of a house.
  *
- * ONE QUERY AND THE WHOLE SET, as `listLotChoices` does: a house has tens of
- * sales, the menu filters nothing, and a switcher that paged would be a
- * switcher nobody could switch with.
+ * MOST RECENTLY TOUCHED FIRST, with creation as the tiebreak — `updated_at`
+ * and `created_at` are equal until something writes the row, so a house that
+ * has never overruled a stage gets exactly the newest-first order this had
+ * before. The order is load-bearing now: the switcher paints ten of these
+ * (src/lib/nav.ts `switcherRows`) and the ten it paints are the head of this
+ * list.
+ *
+ * ONE QUERY AND THE WHOLE SET, as `listLotChoices` does. The menu is capped in
+ * the COMPONENT rather than here, and that is forced rather than preferred:
+ * this is called from the root layout, which cannot know which sale is open —
+ * Next's layout documentation says a layout does not read the pathname because
+ * it does not re-render on navigation — so a `limit` here would be a server
+ * choosing rows without knowing the one row three parts of the chrome are
+ * about to look up. src/lib/nav.ts carries the measurement and the rest of the
+ * argument.
  */
 export async function listEventChoices(orgId: string): Promise<EventChoice[]> {
   const db = getDb();
@@ -235,7 +251,7 @@ export async function listEventChoices(orgId: string): Promise<EventChoice[]> {
     })
     .from(events)
     .where(eq(events.orgId, orgId))
-    .orderBy(desc(events.createdAt));
+    .orderBy(desc(events.updatedAt), desc(events.createdAt));
   return rows.map((r) => ({ ...r, lotCount: Number(r.lotCount) }));
 }
 

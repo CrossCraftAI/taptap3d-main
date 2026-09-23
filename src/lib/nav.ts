@@ -57,8 +57,8 @@
 // smaller menu but the window. src/lib/chrome.ts holds the measurement and the
 // mechanism; `isEditor` below is how the shell knows to start that way.
 
-/** Which of the rail's two numbers belongs beside an item, if either does. */
-export type NavCount = "events" | "photographs";
+/** Which of the rail's numbers belongs beside an item, if any does. */
+export type NavCount = "events" | "photographs" | "lots";
 
 export interface NavItem {
   /**
@@ -135,6 +135,105 @@ export function switchEvent(pathname: string, toEventId: string): string {
   return tail === "/catalogue" ? `${to}/catalogue` : to;
 }
 
+// ── WHICH ROWS THE SWITCHER PAINTS, AND WHY THERE ARE TEN OF THEM ───────────
+//
+// MEASURED FIRST. On a production build with 484 sales in the org, the shell
+// painted one anchor per sale into every document: 485 rows, 367,281 bytes on
+// the ledger and 292,682 on the editor, inside a panel nobody had opened. One
+// painted row is 405 bytes of that and one sale in the flight payload is 119
+// (measured by taking the distance between two consecutive rows and between
+// two consecutive `lotCount` keys in the served HTML) — so the DOM is 3.4 times
+// the payload and it is the term worth cutting.
+//
+// TEN, AND THE NUMBER IS ARITHMETIC RATHER THAN TASTE. The panel is capped at
+// `max-h-[70vh]`; at a 900px-tall window that is 630px. The search box takes
+// ~45, the "All events" row and its rule ~37, the foot ~39 and the list's own
+// padding 8, leaving ~500px. A row is two lines — `py-1.5` plus 13px and 12px
+// of text plus the 2px between them, so ~44px — and 500/44 is eleven. Ten is
+// the round number under that, which is the largest list that never needs its
+// own scrollbar. Re-measure it by changing those classes, not by preference.
+//
+// THE CAP IS ON WHAT IS PAINTED, NOT ON WHAT IS FETCHED, and that is forced
+// rather than chosen. Capping the data would mean the server picking which
+// sales to send, and the server that renders this chrome is the ROOT LAYOUT,
+// which cannot know which sale is open: Next's own layout documentation says a
+// layout "does not access pathname" because it does not re-render on
+// navigation (node_modules/next/dist/docs/01-app/03-api-reference/
+// 03-file-conventions/layout.md:240). Three things read the open sale's row out
+// of that list — this menu's own label and tick, the palette's PDF row
+// (src/lib/palette.ts, `eventId && lots > 0`) and the rail's Lots count — and
+// every one of them would be silently wrong for a sale outside the cap. So the
+// whole set is sent, the search reads all of it, and only ten are drawn.
+//
+// What a capped FETCH would cost is written down so the next person does not
+// have to rediscover it: a per-event server render (a layout under
+// `/events/[id]`, or the chrome moved out of the root layout) or a round trip
+// from the browser. Neither is a change to the switcher.
+
+/** The least a row needs in order to be found and drawn. */
+export interface Switchable {
+  id: string;
+  name: string;
+  note?: string | null;
+}
+
+/** How many rows the panel draws at once. See the arithmetic above. */
+export const SWITCHER_ROWS = 10;
+
+export interface SwitcherView<T> {
+  /** The rows to draw, in the order they arrived. */
+  shown: readonly T[];
+  /** How many the query matched, before the cap. */
+  matched: number;
+  /** How many there are in all, whatever the query. */
+  total: number;
+}
+
+/**
+ * The rows the panel draws for a query.
+ *
+ * PURE, SO IT IS HELD IN NODE. The thing that goes wrong with a capped list is
+ * that the row you are standing on falls off the end of it, and that is a
+ * question about an array rather than about a browser.
+ *
+ * THE OPEN ONE IS NEVER OFF THE LIST — but only while nobody has typed. A
+ * search that hands back something it was not asked for is a search nobody can
+ * trust, so when there is a query the results are the results and the tick is
+ * simply not among them. With no query the open one takes the last slot rather
+ * than the first: the list is newest-first, the sale that fell outside the cap
+ * is the oldest-touched thing in it, and that is where a reader expects it.
+ *
+ * Nothing here looks at `currentId` to decide the BUTTON's label. That is read
+ * from the whole set by the caller, so the name of the sale you are in never
+ * depends on whether its row happened to be drawn.
+ */
+export function switcherRows<T extends Switchable>(
+  items: readonly T[],
+  currentId: string | null,
+  query: string,
+  limit: number = SWITCHER_ROWS,
+): SwitcherView<T> {
+  const q = query.trim().toLowerCase();
+  // The NOTE as well as the name, for the reason src/lib/palette.ts gives
+  // about its own search: the note is where the date and the lot count live,
+  // and "2026" is a thing somebody types to find a sale.
+  const matches = q
+    ? items.filter((item) =>
+        `${item.name} ${item.note ?? ""}`.toLowerCase().includes(q),
+      )
+    : items;
+
+  let shown = matches.slice(0, limit);
+  if (!q && currentId) {
+    const current = items.find((item) => item.id === currentId);
+    if (current && !shown.includes(current)) {
+      shown = [...shown.slice(0, limit - 1), current];
+    }
+  }
+
+  return { shown, matched: matches.length, total: items.length };
+}
+
 /** The house's places: what is built, for the whole organisation. */
 export const NAV: readonly NavItem[] = [
   {
@@ -173,6 +272,16 @@ export const NAV: readonly NavItem[] = [
  * Both are pages that already shipped; what is new is that they are reachable
  * without going back to the ledger and finding the row again. The editor is
  * first because it is where the day is spent.
+ *
+ * LOTS CARRIES ITS COUNT, and the Editor does not. "How big is this sale" is
+ * the question a specialist standing in it asks, and the rail already answers
+ * the same question for the two things the HOUSE accumulates. It is not a new
+ * query: `listEventChoices` already returns a `lotCount` per event for the
+ * palette, which drops its PDF row on a sale with nothing in it, so the shell
+ * looks the open sale up ONCE and both read the same number.
+ *
+ * The Editor gets none because a catalogue has no count that is not either the
+ * lot count again or a page total nobody has asked for.
  */
 export function saleNav(eventId: string): readonly NavItem[] {
   const base = `/events/${eventId}`;
@@ -187,6 +296,7 @@ export function saleNav(eventId: string): readonly NavItem[] {
       route: "/events/[id]",
       href: base,
       label: "Lots",
+      count: "lots",
       // The event and everything under it EXCEPT its catalogue — its import and
       // its individual lots are the event; the catalogue is the editor above.
       match: (p) =>

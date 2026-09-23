@@ -158,9 +158,17 @@ test("the ledger says where a sale is, and its button says what to do next", asy
   // make the row (the other is a pin). One select, and the sale has moved.
   await page.goto(`${eventPath}/catalogue`);
   await page.getByLabel("Template").selectOption("tearsheet");
-  // The SELECT, not the word: "Tearsheet" is also an <option> in that same
-  // select, so matching on text finds two elements and neither is the answer.
-  await expect(page.getByLabel("Template")).toHaveValue("tearsheet");
+  // THE SERVER'S ANSWER, NOT THE SELECT'S. The control is optimistic — it holds
+  // the new value in local state and posts on a microtask — so asserting its
+  // value proves only that the pointer landed, and the `page.goto` on the next
+  // line then cancelled the request in flight. The row stayed Photographed and
+  // the failure appeared three assertions later, in the ledger, looking like a
+  // stage bug.
+  //
+  // The editor's meta line is rendered from the stored parameters, so it cannot
+  // say Tearsheet until the row does. Scoped to the header because "Tearsheet"
+  // is also an <option> in the select that was just used.
+  await expect(page.locator("header").getByText(/Tearsheet/)).toBeVisible();
 
   await page.goto("/");
   await expect(rowOf(page).getByText("Catalogued", { exact: true })).toBeVisible();

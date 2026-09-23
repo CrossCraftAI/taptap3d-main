@@ -59,11 +59,31 @@ import { currentItem, navGroups, openEventId, type NavGroup, type NavItem } from
  * group heading and the count beside a row are different jobs, and giving the
  * quietest colour to the thing that organises the list puts the label below
  * the number it is labelling. Proximity and weight should agree.
+ *
+ * ── THE SALE'S OWN NUMBER ───────────────────────────────────────────────────
+ *
+ * Lots carries a count now, beside the two the house already had. A specialist
+ * standing in a sale is the person who wants to know how big it is, and this
+ * rail was the one place that could say so and did not. `lots` is NULLABLE
+ * rather than defaulted to nought, and that is the whole care in it: nought
+ * lots is a real and useful answer — a sale created and not yet imported —
+ * while "the shell could not find that sale" is not an answer at all, and
+ * painting the two the same way is a number that means something other than
+ * what it says.
  */
+
+/** The rail's numbers. `lots` is null when no sale is open, or none is known. */
+export interface NavCounts {
+  events: number;
+  photographs: number;
+  unassigned: number;
+  lots: number | null;
+}
+
 export function Nav({
   counts,
 }: {
-  counts: { events: number; photographs: number; unassigned: number };
+  counts: NavCounts;
 }): React.ReactElement {
   const pathname = usePathname();
   const groups = navGroups(openEventId(pathname));
@@ -99,7 +119,7 @@ function Group({
   group: NavGroup;
   part: Collapsible;
   here: NavItem | null;
-  counts: { events: number; photographs: number; unassigned: number };
+  counts: NavCounts;
 }): React.ReactElement {
   const [open, setOpen] = useCollapsible(part, true, `shell.nav.${group.key}`);
 
@@ -136,14 +156,16 @@ function Row({
 }: {
   item: NavItem;
   current: boolean;
-  counts: { events: number; photographs: number; unassigned: number };
+  counts: NavCounts;
 }): React.ReactElement {
   const total =
     item.count === "events"
       ? counts.events
       : item.count === "photographs"
         ? counts.photographs
-        : null;
+        : item.count === "lots"
+          ? counts.lots
+          : null;
 
   return (
     <Link

@@ -4,7 +4,7 @@ import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useRef } from "react";
 
 import { InlineScript } from "@/components/inline-script";
-import { Nav } from "@/components/nav";
+import { Nav, type NavCounts } from "@/components/nav";
 import { Palette } from "@/components/palette";
 import { TopBar } from "@/components/top-bar";
 import { useCollapsible } from "@/components/use-collapsible";
@@ -81,7 +81,8 @@ export function Shell({
 }: {
   org: string | null;
   events: readonly EventChoice[];
-  counts: { events: number; photographs: number; unassigned: number };
+  /** The house's numbers. The open sale's own is looked up here, below. */
+  counts: Omit<NavCounts, "lots">;
   children: React.ReactNode;
 }): React.ReactElement {
   const pathname = usePathname();
@@ -114,10 +115,21 @@ export function Shell({
   }, [open, setOpen]);
 
   const eventId = openEventId(pathname);
+  // ONE LOOKUP, TWO READERS. The palette drops its PDF row on a sale with
+  // nothing in it and the rail says how big the sale is; both are the same
+  // number out of the same row, so they are found once and cannot disagree.
+  //
+  // The two DEFAULTS differ on purpose. The palette asks "is there anything to
+  // print", and not knowing is as good as nought there. The rail PRINTS the
+  // number, so not knowing has to stay null — a rail that says 0 for a sale
+  // the shell could not find is a number that means something else.
+  const openSale = eventId
+    ? (events.find((event) => event.id === eventId) ?? null)
+    : null;
   const panels = paletteFor({
     pathname,
     eventId,
-    lots: events.find((event) => event.id === eventId)?.lotCount ?? 0,
+    lots: openSale?.lotCount ?? 0,
   });
 
   return (
@@ -165,7 +177,7 @@ export function Shell({
           className="w-56 shrink-0 overflow-y-auto border-r border-rule bg-paper max-md:hidden"
         >
           <div className="flex min-h-full flex-col py-2">
-            <Nav counts={counts} />
+            <Nav counts={{ ...counts, lots: openSale?.lotCount ?? null }} />
             <p className="mt-auto px-3 pt-4 text-[12px] leading-relaxed text-faint">
               M1 — the pitch. Catalogue production; no money path.
             </p>

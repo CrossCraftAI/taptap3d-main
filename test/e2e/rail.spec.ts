@@ -43,6 +43,12 @@ const HOUSE: [string, string][] = [
 // action and lives in the palette; the rail holds places.
 const GONE = ["Record", "Capture", "Compose", "Publish", "Move", "Connect", "Admin", "Import"];
 
+// How many sales the switcher's panel draws. Written out rather than imported,
+// the way HOUSE above is: nothing else in this directory reaches into `src`,
+// and the number is a product decision held in two places on purpose.
+// src/lib/nav.ts SWITCHER_ROWS is the other one and it carries the arithmetic.
+const SWITCHER_ROWS = 10;
+
 test("the rail is two groups of what is built, and nothing else", async ({
   page,
 }) => {
@@ -161,10 +167,18 @@ test("an event's own group appears, and marks the innermost place", async ({
   await expect(nav.locator("[aria-current]")).toHaveCount(1);
   await page.screenshot({ path: shot("32-rail-event-group"), fullPage: true });
 
+  // THE SALE'S OWN SIZE, beside the row that leads to it. `^Lots` rather than
+  // `Lots`: the count is part of the link's accessible name, the same way it
+  // already is for Events and Photographs. A sale quick-added and not yet
+  // imported has none, and NOUGHT is the honest answer to "how big is it" —
+  // the thing that must never appear is a nought standing in for "the shell
+  // could not find that sale".
+  await expect(nav.getByRole("link", { name: /^Lots/ })).toContainText("0");
+
   // Both of the event's places are real pages.
-  await nav.getByRole("link", { name: "Lots" }).click();
+  await nav.getByRole("link", { name: /^Lots/ }).click();
   await page.waitForURL(eventUrl);
-  await expect(nav.getByRole("link", { name: "Lots" })).toHaveAttribute(
+  await expect(nav.getByRole("link", { name: /^Lots/ })).toHaveAttribute(
     "aria-current",
     "page",
   );
@@ -195,8 +209,9 @@ test("the top bar says which sale is open, and changes it", async ({ page }) => 
   const switcher = page.locator("#topbar").getByRole("button");
   await expect(switcher).toContainText(second);
 
-  // The menu names every sale, ticks the open one, and carries the way out at
-  // its head.
+  // The menu names the most recently touched sales — these two are the two
+  // most recent, because this test just made them — ticks the open one, and
+  // carries the way out at its head.
   await switcher.click();
   await expect(switcher).toHaveAttribute("aria-expanded", "true");
   const bar = page.locator("#topbar");
@@ -231,6 +246,97 @@ test("the top bar says which sale is open, and changes it", async ({ page }) => 
   await page.locator("#topbar").getByRole("button").click();
   await page.locator("#topbar").getByRole("link", { name: /All events/ }).click();
   await expect(page.getByRole("heading", { name: "Events" })).toBeVisible();
+});
+
+test("the switcher is ten rows and a search, not every sale there is", async ({
+  page,
+}) => {
+  // WHAT THIS IS FOR, in one number: with 484 sales in the org, the shell
+  // painted 485 anchors into every document and the ledger was 367,281 bytes
+  // — measured on a production build against `next start`, by counting the
+  // rows in the served HTML. A menu nobody had opened was most of the page.
+  //
+  // A driven test cannot assert a byte count that moves with the data, so it
+  // asserts the thing that produced it: the panel draws a bounded number of
+  // rows however many sales exist, and what it does not draw is findable.
+  //
+  // A CAP'S WORTH IS MADE HERE rather than assumed of the database. The
+  // machine this was written on had 484 sales in the org and a fresh CI
+  // database has none, and a test that only proves a cap when somebody else's
+  // spec happened to run first proves nothing. Eleven creations is the price
+  // of a deterministic one.
+  test.slow();
+  const oldest = `Cap first ${RUN}`;
+  await createEvent(page, oldest);
+  for (let i = 1; i <= SWITCHER_ROWS; i++) {
+    await createEvent(page, `Cap ${i} ${RUN}`);
+  }
+
+  await page.goto("/");
+  const bar = page.locator("#topbar");
+  const switcher = bar.getByRole("button");
+  await switcher.click();
+
+  // TEN, plus the way out at the head and the way in at the foot — both of
+  // those point at the ledger, so the event rows are the ones whose href is
+  // an event. src/lib/nav.ts SWITCHER_ROWS carries the arithmetic behind the
+  // number; this holds that the number is obeyed.
+  const rows = bar.locator("a[href^='/events/']");
+  await expect(rows).toHaveCount(SWITCHER_ROWS);
+  await page.screenshot({ path: shot("36-switcher-capped") });
+
+  // AND THE SEARCH READS ALL OF THEM, not the ten. `oldest` is the first sale
+  // this test made and at least ten were made after it, so it is off the end
+  // of the drawn list by construction — which is exactly the sale a filter
+  // over a truncated list could not find.
+  const search = bar.getByRole("searchbox", { name: "Search events" });
+  await expect(search).toBeFocused();
+  await expect(bar.getByRole("link", { name: new RegExp(oldest) })).toHaveCount(0);
+  await search.fill(oldest);
+  await expect(bar.getByRole("link", { name: new RegExp(oldest) })).toBeVisible();
+  await expect(rows).toHaveCount(1);
+  await page.screenshot({ path: shot("37-switcher-search") });
+
+  // A word that is in no sale says so, and says how much there was to look
+  // through — the palette's own empty state, for the same reason.
+  await search.fill("nothing is called this");
+  await expect(rows).toHaveCount(0);
+  await expect(bar.getByText(/Nothing here matches/)).toBeVisible();
+
+  // Shutting it forgets what was typed: a panel that reopens already filtered
+  // looks like a panel that has lost its rows.
+  await page.keyboard.press("Escape");
+  await switcher.click();
+  await expect(search).toHaveValue("");
+  await expect(rows).toHaveCount(SWITCHER_ROWS);
+});
+
+test("a sale can be started from the strip that is on every screen", async ({
+  page,
+}) => {
+  // THE PROMISE THE DRAWING MADE AND THREE TRANCHES DROPPED. From the editor
+  // there was no way to start a sale without going to the ledger and hunting
+  // for the quick-add line. There is no second creation path here — the row
+  // lands on that line, and `createEventAction` stays the only way a sale is
+  // made.
+  const { editorUrl } = await createEvent(page, `New From Bar ${RUN}`);
+  await page.goto(editorUrl);
+  await page.getByRole("button", { name: "Navigation" }).click();
+
+  const bar = page.locator("#topbar");
+  await bar.getByRole("button").click();
+  const create = bar.getByRole("link", { name: /New event/ });
+  await expect(create).toBeVisible();
+  await create.click();
+
+  // On the ledger, with the blank line it named waiting to be filled — and
+  // filling it makes a sale, which is the whole claim.
+  await expect(page.getByRole("heading", { name: "Events" })).toBeVisible();
+  const made = `Bar Made ${RUN}`;
+  await page.getByLabel("Event name").fill(made);
+  await page.getByRole("button", { name: "Create event" }).click();
+  await page.waitForURL(/\/events\/[0-9a-f-]+\/catalogue$/);
+  await expect(page.getByRole("link", { name: made })).toBeVisible();
 });
 
 test("the palette offers only what this product can actually do", async ({

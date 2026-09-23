@@ -14,6 +14,7 @@ import {
   createEvent,
   getEvent,
   getEventSummary,
+  listEventChoices,
   listEvents,
   setStageOverride,
 } from "@/lib/data/events";
@@ -158,6 +159,50 @@ describe("events", () => {
 
     // And the summary of another org's event is not this org's to read.
     expect(await getEventSummary(orgB, event.id)).toBeNull();
+  });
+
+  it("offers the switcher the most recently touched first", async () => {
+    // THE ORDER IS LOAD-BEARING NOW. The top bar paints the head of this list
+    // and nothing else (src/lib/nav.ts `switcherRows`), so "most recently
+    // touched" has to be true of the query rather than of the intention —
+    // and the failure mode is silent: a wrong ORDER BY still returns every
+    // row, it just offers the wrong ten.
+    const org = await makeOrg("choices");
+    try {
+      const first = await createEvent(org, { name: "Choice One" });
+      const second = await createEvent(org, { name: "Choice Two" });
+      const third = await createEvent(org, { name: "Choice Three" });
+
+      // Untouched since creation, so newest-first — which is the order this
+      // had before `updated_at` came into it, and the tiebreak keeps it.
+      expect((await listEventChoices(org)).map((e) => e.name)).toEqual([
+        "Choice Three",
+        "Choice Two",
+        "Choice One",
+      ]);
+
+      // Touching the oldest one moves it to the head. Setting a stage is the
+      // one thing that writes `updated_at` today; whatever else learns to,
+      // the menu follows it without another change here.
+      expect(await setStageOverride(org, first.id, "catalogued")).toBe(true);
+      expect((await listEventChoices(org)).map((e) => e.name)).toEqual([
+        "Choice One",
+        "Choice Three",
+        "Choice Two",
+      ]);
+
+      // And it carries the lot count the palette and the rail both read, as a
+      // number rather than the string node-postgres hands back for a count.
+      await insertLots(org, second.id, [
+        { ref: "1", fields: { title: "A" }, sourceRow: 1 },
+      ]);
+      const choice = (await listEventChoices(org)).find((e) => e.id === second.id);
+      expect(choice?.lotCount).toBe(1);
+      expect(choice?.lotCount).not.toBe("1");
+      expect((await listEventChoices(org)).find((e) => e.id === third.id)?.lotCount).toBe(0);
+    } finally {
+      await db.delete(orgs).where(eq(orgs.id, org));
+    }
   });
 });
 

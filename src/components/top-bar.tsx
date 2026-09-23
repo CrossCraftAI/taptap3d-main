@@ -117,6 +117,27 @@ export function TopBar({
             items={items}
             currentId={openId}
             all={{ href: "/", label: "All events" }}
+            // "NEW EVENT…", NOT "NEW SALE…", which is what the drawing calls
+            // it. The chrome's own word for this noun is `event` — the row
+            // above it says "All events", the ledger's field says "Name a new
+            // event" and its button says "Create event" — and two words for
+            // one thing inside one menu is exactly what the drawing's
+            // vocabulary select was rejected for (see above). The day that
+            // select ships, both labels change together.
+            //
+            // IT LINKS TO THE LEDGER rather than creating anything. The
+            // ledger's quick-add IS the first line of that screen, so the
+            // sentence below is the whole instruction; a second field here
+            // would be `createEventAction` driven from two places. What it
+            // cannot do from out here is put the cursor in that field — the
+            // field belongs to the ledger, the chrome does not reach into the
+            // page to focus things, and giving it an anchor is the ledger's
+            // change to make, not this one's.
+            create={{
+              href: "/",
+              label: "New event…",
+              note: "Name it on the ledger's first line.",
+            }}
           />
         </>
       )}

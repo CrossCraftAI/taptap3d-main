@@ -13,12 +13,14 @@ import { describe, expect, it } from "vitest";
 
 import {
   NAV,
+  SWITCHER_ROWS,
   activeItem,
   currentItem,
   navGroups,
   openEventId,
   saleNav,
   switchEvent,
+  switcherRows,
 } from "@/lib/nav";
 
 const ROOT = path.resolve(import.meta.dirname, "..");
@@ -92,9 +94,16 @@ describe("the rail is two groups of what is built", () => {
 
   it("carries a count only where there is something to count", () => {
     // Events and photographs are the two things a house accumulates, and they
-    // are the whole house list. The event's own places carry none — the shell does not know that sale's lot
-    // count, and a number the chrome cannot read is not a number it may show.
+    // are the whole house list. Lots is the sale's own size, and it is here
+    // because the shell CAN read it: `listEventChoices` already returns a
+    // lotCount per event for the palette, so the rail's number is the same
+    // lookup rather than a second query. The sale's group is drawn first, so
+    // Lots comes first in this flattened list.
+    //
+    // The Editor carries none: a catalogue's only honest count is the lot
+    // count again.
     expect(EVERY.filter((item) => item.count).map((item) => item.label)).toEqual([
+      "Lots",
       "Events",
       "Photographs",
     ]);
@@ -219,5 +228,104 @@ describe("switching event keeps the screen where it can", () => {
     for (const pathname of [`/events/${A}/catalogue`, `/events/${A}/lots/x`, "/"]) {
       expect(switchEvent(pathname, B)).not.toContain(A);
     }
+  });
+});
+
+describe("the switcher draws ten of them and searches all of them", () => {
+  // THE FAILURE THIS EXISTS FOR: a capped list that drops the row you are
+  // standing on. The shell measured 485 painted rows and 367KB of HTML on the
+  // ledger with 484 sales in the org; capping the paint is what fixed that,
+  // and the thing capping can get wrong is a question about an array.
+  const sales = Array.from({ length: 40 }, (_, i) => ({
+    id: `e${i}`,
+    // Newest first, as `listEventChoices` orders them.
+    name: i === 7 ? "Spring Bronzes" : `Sale ${i}`,
+    note: i === 7 ? "04 Apr 2026 · 12 lots" : `${i} lots`,
+  }));
+
+  it("draws the cap and says how many there are in all", () => {
+    const view = switcherRows(sales, null, "");
+    expect(view.shown).toHaveLength(SWITCHER_ROWS);
+    expect(view.shown.map((s) => s.id)).toEqual(
+      sales.slice(0, SWITCHER_ROWS).map((s) => s.id),
+    );
+    expect(view.total).toBe(40);
+    expect(view.matched).toBe(40);
+  });
+
+  it("draws everything when there is less than a cap's worth", () => {
+    const few = sales.slice(0, 3);
+    expect(switcherRows(few, null, "").shown).toHaveLength(3);
+  });
+
+  it("keeps the open one on the list when recency would drop it", () => {
+    // The whole point. `e30` is nowhere near the ten most recently touched,
+    // and it is the sale the viewer is standing in.
+    const view = switcherRows(sales, "e30", "");
+    expect(view.shown).toHaveLength(SWITCHER_ROWS);
+    expect(view.shown.map((s) => s.id)).toContain("e30");
+    // In the LAST slot, not the first: the list is newest-first and the one
+    // that fell outside the cap is the oldest-touched thing on it.
+    expect(view.shown.at(-1)?.id).toBe("e30");
+    // And it took a slot rather than adding one.
+    expect(view.shown.map((s) => s.id).slice(0, -1)).toEqual(
+      sales.slice(0, SWITCHER_ROWS - 1).map((s) => s.id),
+    );
+  });
+
+  it("leaves the open one where recency put it when it is already there", () => {
+    const view = switcherRows(sales, "e2", "");
+    expect(view.shown.map((s) => s.id)).toEqual(
+      sales.slice(0, SWITCHER_ROWS).map((s) => s.id),
+    );
+  });
+
+  it("searches every sale, not the ten that are drawn", () => {
+    // `Spring Bronzes` is the eighth, so this would pass even uncapped; `Sale
+    // 33` is the case that matters — it is off the end of every drawn list.
+    expect(switcherRows(sales, null, "Sale 33").shown.map((s) => s.id)).toEqual([
+      "e33",
+    ]);
+    expect(switcherRows(sales, null, "bronze").shown.map((s) => s.id)).toEqual([
+      "e7",
+    ]);
+  });
+
+  it("reads the note as well as the name", () => {
+    // The date and the lot count live in the note, and "2026" is a thing
+    // somebody types to find a sale.
+    expect(switcherRows(sales, null, "Apr 2026").matched).toBe(1);
+  });
+
+  it("caps the matches too, and says how many there were", () => {
+    const view = switcherRows(sales, null, "Sale ");
+    expect(view.shown).toHaveLength(SWITCHER_ROWS);
+    // 39 of the 40 are named "Sale n"; the fortieth is Spring Bronzes.
+    expect(view.matched).toBe(39);
+    expect(view.total).toBe(40);
+  });
+
+  it("does not force the open one into a result set that excludes it", () => {
+    // A search that hands back something it was not asked for is a search
+    // nobody can trust. The tick is simply not among these.
+    const view = switcherRows(sales, "e30", "Sale 1");
+    expect(view.shown.map((s) => s.id)).not.toContain("e30");
+  });
+
+  it("matches nothing rather than everything for a word that is not there", () => {
+    const view = switcherRows(sales, null, "porcelain");
+    expect(view.shown).toHaveLength(0);
+    expect(view.matched).toBe(0);
+    // The panel's empty state says how much there was to match against, so
+    // the total has to survive a query that matched none of it.
+    expect(view.total).toBe(40);
+  });
+
+  it("treats whitespace as no query at all", () => {
+    expect(switcherRows(sales, null, "   ").matched).toBe(40);
+  });
+
+  it("ignores case, because nobody types a sale's capitals", () => {
+    expect(switcherRows(sales, null, "SPRING").matched).toBe(1);
   });
 });

@@ -27,6 +27,15 @@ export default async function RootLayout({
   // `listEventChoices` rather than `countEvents`: the top bar has to name the
   // sales to offer them, and the rail's count is then that list's length, so
   // the switcher costs no query the rail was not already making.
+  //
+  // THE LIST IS WHOLE AND THE MENU IS NOT. The switcher paints ten of these
+  // and searches all of them (src/lib/nav.ts `switcherRows`), which is why
+  // `events.length` is still honestly the number of sales this house has
+  // rather than the number the chrome felt like offering. The cap cannot move
+  // down here: this layout does not know which sale is open — it has no
+  // pathname, because a layout does not re-render on navigation — and the
+  // switcher's own label, the palette's PDF row and the rail's Lots count all
+  // read that sale's row out of this list.
   const [events, photographs] = org
     ? await Promise.all([listEventChoices(org.id), countAssets(org.id)])
     : [[], { total: 0, unassigned: 0 }];
