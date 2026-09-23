@@ -93,6 +93,7 @@ export default async function LotPage({
       record,
       hidden: own?.hidden === true,
       text: own?.text ?? "",
+      placed: own?.frame !== undefined,
       hideOnly,
     };
   };
@@ -210,30 +211,21 @@ export default async function LotPage({
 
       <section className="mt-10">
         <h2 className="text-[15px] font-medium">In the catalogue</h2>
-        {catalogue ? (
-          <LotCatalogueForm
-            eventId={event.id}
-            lotId={lot.id}
-            catalogueId={catalogue.id}
-            catalogueName={catalogue.name}
-            rows={catalogueRows}
-            version={catalogue.updatedAt.getTime()}
-          />
-        ) : (
-          <div className="mt-3 border border-dashed border-rule bg-paper px-6 py-8 text-center">
-            <p className="text-[13px] font-medium">This sale has no catalogue yet.</p>
-            <p className="mx-auto mt-1 max-w-md text-[12px] leading-relaxed text-muted">
-              Open it once and it exists. Then this is where a field can be left off, or
-              printed differently, in that catalogue only.
-            </p>
-            <Link
-              href={`/events/${event.id}/catalogue`}
-              className="mt-4 inline-block border border-ruleStrong bg-paper px-3 py-1.5 text-[13px] font-medium hover:bg-sunk"
-            >
-              Open the catalogue
-            </Link>
-          </div>
-        )}
+        {/* ALWAYS THE FORM, never an errand. This was gated on a catalogue row
+            existing, with a panel saying "This sale has no catalogue yet — open
+            it once and it exists". That was a true instruction while opening
+            the editor made the row; now that a GET makes nothing, it would have
+            been a dead end — go to another screen, cause a side effect, come
+            back. The save makes the row (./actions.ts), so the decision a
+            person came here to make is the thing that creates what holds it. */}
+        <LotCatalogueForm
+          eventId={event.id}
+          lotId={lot.id}
+          catalogueId={catalogue?.id ?? null}
+          catalogueName={catalogue?.name ?? `${event.name} catalogue`}
+          rows={catalogueRows}
+          version={catalogue?.updatedAt.getTime() ?? 0}
+        />
       </section>
     </div>
   );

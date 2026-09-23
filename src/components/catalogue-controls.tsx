@@ -91,15 +91,20 @@ export function CatalogueControls({
       // No border or ground of its own: this is one row of the editor's toolbar
       // (catalogue-workspace.tsx), which draws the rules. The bar it used to be
       // cost the page 60px of the window's height.
-      className="flex w-full flex-wrap items-center gap-x-4 gap-y-1.5"
+      // TWO SHAPES, ONE FORM. Docked beside the page at `lg` and above it is a
+      // column 230px wide; below that there is no desk to dock to and it is a
+      // strip across the top (src/components/catalogue-workspace.tsx explains
+      // which and why). Same fields, same submit, same one stored object —
+      // only the axis changes, so there is nothing to keep in step.
+      className="flex w-full flex-wrap items-center gap-x-4 gap-y-1.5 lg:flex-col lg:items-stretch lg:gap-y-2.5"
     >
-      <label className="flex items-center gap-2 text-[13px]">
+      <label className="flex items-center gap-2 text-[13px] lg:flex-col lg:items-start lg:gap-1">
         <span className="text-muted">Template</span>
         <select
           name="template"
           value={template.id}
           onChange={(e) => chooseTemplate(e.target.value)}
-          className="border border-rule bg-paper px-2 py-1 text-[13px]"
+          className="border border-rule bg-paper px-2 py-1 text-[13px] lg:w-full"
         >
           {templates.map((t) => (
             <option key={t.id} value={t.id}>
@@ -109,7 +114,7 @@ export function CatalogueControls({
         </select>
       </label>
 
-      <label className="flex items-center gap-2 text-[13px]">
+      <label className="flex items-center gap-2 text-[13px] lg:flex-col lg:items-start lg:gap-1">
         <span className="text-muted">Per page</span>
         <select
           name="perPage"
@@ -117,7 +122,7 @@ export function CatalogueControls({
           onChange={(e) => change({ perPage: Number(e.target.value) })}
           // One density is a fact about the template, not a choice to make.
           disabled={template.densities.length < 2}
-          className="border border-rule bg-paper px-2 py-1 text-[13px] disabled:text-muted"
+          className="border border-rule bg-paper px-2 py-1 text-[13px] disabled:text-muted lg:w-full"
         >
           {template.densities.map((density) => (
             <option key={density} value={density}>
@@ -128,7 +133,7 @@ export function CatalogueControls({
       </label>
 
       {template.placements.length > 0 && (
-        <label className="flex items-center gap-2 text-[13px]">
+        <label className="flex items-center gap-2 text-[13px] lg:flex-col lg:items-start lg:gap-1">
           <span className="text-muted">Photograph</span>
           <select
             name="imagePlacement"
@@ -139,7 +144,7 @@ export function CatalogueControls({
               })
             }
             disabled={template.placements.length < 2}
-            className="border border-rule bg-paper px-2 py-1 text-[13px] disabled:text-muted"
+            className="border border-rule bg-paper px-2 py-1 text-[13px] disabled:text-muted lg:w-full"
           >
             {template.placements.includes("above") && (
               <option value="above">above the caption</option>
@@ -153,7 +158,7 @@ export function CatalogueControls({
         </label>
       )}
 
-      <label className="flex items-center gap-2 text-[13px]">
+      <label className="flex items-center gap-2 text-[13px] lg:flex-col lg:items-start lg:gap-1">
         <span className="text-muted">Fit</span>
         <select
           name="fit"
@@ -161,7 +166,7 @@ export function CatalogueControls({
           onChange={(e) =>
             change({ fit: e.target.value as CatalogueParams["fit"] })
           }
-          className="border border-rule bg-paper px-2 py-1 text-[13px]"
+          className="border border-rule bg-paper px-2 py-1 text-[13px] lg:w-full"
         >
           <option value="page">符合頁面 · whole page</option>
           <option value="width">符合寬度 · page width</option>
@@ -190,7 +195,7 @@ export function CatalogueControls({
           smaller label. The `title` carries it at every width, and the same
           sentence is on each option of the Template select. */}
       <p
-        className="hidden min-w-0 flex-1 truncate text-[12px] text-faint xl:block"
+        className="hidden min-w-0 flex-1 truncate text-[12px] text-faint xl:block lg:block lg:flex-none lg:overflow-visible lg:whitespace-normal lg:leading-relaxed"
         title={template.purpose}
       >
         {template.purpose}
@@ -201,7 +206,7 @@ export function CatalogueControls({
           to apply a change in one that did not. */}
       <button
         type="submit"
-        className="ml-auto border border-ruleStrong px-2.5 py-1 text-[12px] hover:bg-sunk"
+        className="ml-auto border border-ruleStrong px-2.5 py-1 text-[12px] hover:bg-sunk lg:ml-0 lg:w-full"
       >
         Apply
       </button>

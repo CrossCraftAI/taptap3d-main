@@ -7,7 +7,6 @@ import {
   createPin,
   deletePin,
   ensureCatalogue,
-  getCatalogue,
   updateCatalogueParams,
 } from "@/lib/data/catalogues";
 import { getLot } from "@/lib/data/lots";
@@ -152,20 +151,27 @@ export async function placePartAction(
   }
 
   const orgId = await currentOrgId();
-  const [lot, catalogue] = await Promise.all([
-    getLot(orgId, lotId),
-    getCatalogue(orgId, eventId),
-  ]);
+  const lot = await getLot(orgId, lotId);
   if (!lot || lot.eventId !== eventId) {
     return { ok: false, message: "That lot is not in this sale." };
   }
-  // READ, NOT ENSURED. A catalogue row is made when the editor opens on a sale
-  // with lots (../page.tsx says why the workflow depends on that), so a drag
-  // always has one. Making one here would let a POST create the row the
-  // workflow reads as "this sale has been laid out".
-  if (!catalogue) {
-    return { ok: false, message: "This sale has no catalogue yet." };
-  }
+  // ENSURED, AND THAT IS A REVERSAL WORTH READING. This said READ, NOT
+  // ENSURED, on the argument that the editor's own page made the row when it
+  // opened, so a drag always had one — and that making one here would let a
+  // POST create the row the workflow reads as "this sale has been laid out".
+  //
+  // The premise went first: ../page.tsx no longer makes a row on open, because
+  // a GET that advances a sale's stage is the worse of the two problems. With
+  // it gone, the first drag on a fresh sale found no catalogue and was refused
+  // with "This sale has no catalogue yet" — a sentence about an implementation
+  // detail, in answer to a gesture that had nothing wrong with it.
+  //
+  // And the conclusion inverts with it. DRAGGING A PART IS LAYING OUT. It is
+  // the same class of act as choosing a template or pinning two lots, and
+  // those two both make the row for exactly that reason. The rule that comes
+  // out of this is the clean one: the row is made by the gestures that ARE
+  // layout decisions, and by no read at all.
+  const catalogue = await ensureCatalogue(orgId, eventId);
 
   const decidedBy = await currentActorId(orgId);
   const done = await setOverride(orgId, catalogue.id, lotId, trimmed, { frame: placed }, decidedBy);

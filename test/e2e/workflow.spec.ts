@@ -124,7 +124,30 @@ test("the ledger says where a sale is, and its button says what to do next", asy
   await openCatalogue.click();
   await expect(page.getByRole("heading", { name: "Catalogue" })).toBeVisible();
 
-  // ── CATALOGUED: opening it was the fact ──────────────────────────────────
+  // ── LOOKING IS NOT LAYING OUT ────────────────────────────────────────────
+  // This test used to read "CATALOGUED: opening it was the fact", and it was
+  // right about the code and wrong about the product. Loading the editor called
+  // `ensureCatalogue`, the workflow reads a catalogue row as the fact that a
+  // sale has been catalogued, and so a GET advanced the stage: a specialist
+  // opening a sale to look at it filed a status on the way past. The ledger
+  // prints "Nobody files a status, so nobody can forget to" two inches above
+  // the row it had just changed.
+  //
+  // So the assertion is inverted, and this is the guard on the fix: after
+  // opening the editor and touching nothing, the sale is still where it was.
+  await page.goto("/");
+  await expect(rowOf(page).getByText("Photographed", { exact: true })).toBeVisible();
+  await expect(rowOf(page).getByText("Catalogued", { exact: true })).toHaveCount(0);
+
+  // ── CATALOGUED: A LAYOUT DECISION IS THE FACT ────────────────────────────
+  // Choosing a template is laying out, and it is one of the two gestures that
+  // make the row (the other is a pin). One select, and the sale has moved.
+  await page.goto(`${eventPath}/catalogue`);
+  await page.getByLabel("Template").selectOption("tearsheet");
+  // The SELECT, not the word: "Tearsheet" is also an <option> in that same
+  // select, so matching on text finds two elements and neither is the answer.
+  await expect(page.getByLabel("Template")).toHaveValue("tearsheet");
+
   await page.goto("/");
   await expect(rowOf(page).getByText("Catalogued", { exact: true })).toBeVisible();
   // A file, so a plain anchor — but a link to a person all the same.

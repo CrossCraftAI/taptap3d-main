@@ -50,7 +50,8 @@ export function PinPanel({
   pins,
 }: {
   eventId: string;
-  catalogueId: string;
+  /** Null until the first layout decision makes the row; see the editor page. */
+  catalogueId: string | null;
   lots: PinPanelLot[];
   pins: PinPanelPin[];
 }): React.ReactElement {

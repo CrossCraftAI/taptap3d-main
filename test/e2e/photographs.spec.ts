@@ -153,7 +153,13 @@ test("photographs arrive unassigned, and are filed when someone gets to it", asy
   await expect(page.getByRole("heading", { name: new RegExp(REF_A) })).toBeVisible();
   // Nobody was asked to choose a plate; the first photograph became one, or the
   // catalogue renders a lot that has pictures and shows none.
-  await expect(page.getByText("plate", { exact: true })).toBeVisible();
+  //
+  // THE CHIP ON THE PHOTOGRAPH, not the word. "plate" is also the label of a
+  // row in the override table below — it is a field this catalogue can hide —
+  // and that table now renders on every lot rather than only on a sale whose
+  // catalogue row happened to exist, so the bare text matches twice. Scoping
+  // to the figure is what the assertion always meant.
+  await expect(page.locator("figure").getByText("plate", { exact: true })).toBeVisible();
   const figures = await page.locator("figure").count();
   expect(figures).toBeGreaterThanOrEqual(2);
   await page.screenshot({ path: shot("14-lot-detail"), fullPage: true });
@@ -169,7 +175,8 @@ test("photographs arrive unassigned, and are filed when someone gets to it", asy
   await expect(page.locator("figure")).toHaveCount(figures - 1, { timeout: 60_000 });
   // Still a plate on the lot: detaching the plate hands it to the next
   // photograph rather than leaving a lot with pictures and nothing to print.
-  await expect(page.getByText("plate", { exact: true })).toBeVisible();
+  // Scoped to the figure for the same reason as above.
+  await expect(page.locator("figure").getByText("plate", { exact: true })).toBeVisible();
 
   await page.goto("/photographs");
   await expect(page.locator("button[aria-pressed]")).toHaveCount(before + 2);
@@ -183,7 +190,8 @@ test("a lot takes a photograph dropped straight onto it", async ({ page }) => {
   await expect(page.getByText("No photograph on this lot yet.")).toBeVisible();
   await page.locator('input[type="file"]').setInputFiles([PHOTO_C]);
   await expect(page.locator("figure")).toHaveCount(1, { timeout: 60_000 });
-  await expect(page.getByText("plate", { exact: true })).toBeVisible();
+  // The chip, not the override table's row of the same name — see line 156.
+  await expect(page.locator("figure").getByText("plate", { exact: true })).toBeVisible();
   await page.screenshot({ path: shot("15-lot-direct-upload"), fullPage: true });
 
   // It attached here AND stayed in the library — nothing is trapped inside one

@@ -14,6 +14,18 @@ export interface OverrideRowSpec {
   record: string;
   hidden: boolean;
   text: string;
+  /**
+   * Somebody has dragged this part to a place of their own choosing.
+   *
+   * It is not a control here and it is deliberately not one: a frame is four
+   * fractions of a page and the only sane way to change it is to move it on
+   * the page. What it IS here is VISIBLE, which it was not — the header
+   * counted every override row and this table counted the two kinds it could
+   * draw, so a lot with one placement said "1 field overridden in the
+   * catalogue" at the top and "nothing overridden" ninety pixels below. One
+   * noun, two definitions, both printed on one screen.
+   */
+  placed: boolean;
   /** The plate is a content hash: it can be hidden but not retyped. */
   hideOnly?: boolean;
 }
@@ -40,7 +52,8 @@ export function LotCatalogueForm({
 }: {
   eventId: string;
   lotId: string;
-  catalogueId: string;
+  /** Null until a decision makes the row; the save is one. See ../app/.../actions.ts. */
+  catalogueId: string | null;
   catalogueName: string;
   rows: OverrideRowSpec[];
   version: number;
@@ -49,7 +62,9 @@ export function LotCatalogueForm({
     setLotOverridesAction.bind(null, eventId, lotId),
     IDLE_LOT_FORM,
   );
-  const overridden = rows.filter((r) => r.hidden || r.text).length;
+  // THE SAME SET THE HEADER COUNTS. Anything less makes the two numbers on
+  // this page disagree, which is how a person learns to believe neither.
+  const overridden = rows.filter((r) => r.hidden || r.text || r.placed).length;
 
   return (
     <form
@@ -134,6 +149,22 @@ function OverridesBody({ rows }: { rows: OverrideRowSpec[] }): React.ReactElemen
                   {marked && (
                     <span className="ml-2 bg-sealSoft px-1 py-px text-[10px] font-medium text-seal">
                       overridden
+                    </span>
+                  )}
+                  {/* SAID, NOT OFFERED. A frame is four fractions of a page and
+                      the only sane way to change it is to move it on the page,
+                      so this reports and points rather than pretending to a
+                      control it cannot honestly draw — principle 9 asks that a
+                      correction be visible and reversible, and the reversal is
+                      one screen away rather than absent. Without it the row was
+                      silent about the one kind of override nothing else on this
+                      page can see. */}
+                  {row.placed && (
+                    <span
+                      className="ml-2 border border-seal/30 px-1 py-px text-[10px] font-medium text-seal"
+                      title="Dragged to a place of its own on the page. Move it again, or reset it, in the catalogue."
+                    >
+                      placed by hand
                     </span>
                   )}
                 </td>

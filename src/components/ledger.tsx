@@ -230,8 +230,16 @@ export function Ledger({ view }: { view: LedgerView }): React.ReactElement {
                   className="relative border-b border-rule last:border-b-0 hover:bg-sunk"
                 >
                   <td className="max-w-0 px-4 py-2.5 align-top">
+                    {/* THE WHOLE NAME IS ON THE LINK. A real sale is named
+                        「香港蘇富比二零二六年春季中國古代書畫及近現代名家精品
+                        專場拍賣會第一部分」 and at 768px this cell shows about
+                        seven characters of it — measured, 96px of the 455px the
+                        name wants. The switcher's own truncation was designed
+                        with a `title`; this one was not, so the rest of the name
+                        was unreachable rather than merely hidden. */}
                     <Link
                       href={`/events/${event.id}`}
+                      title={event.name}
                       className="block truncate font-medium after:absolute after:inset-0 after:content-['']"
                     >
                       {event.name}

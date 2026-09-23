@@ -112,6 +112,26 @@
      brown; in oklab it stays the same colour, darker. */
   --color-sealPress: color-mix(in oklab, var(--color-seal) 82%, black);
   --color-sealSoft: #f7ecec;
+
+  /* DONE, PASSED, PRESENT — and nothing else. The one other hue in the house,
+     added for the progress indicator after it shipped as five greys and read
+     as decoration: a bar that cannot say which end is finished is not a bar,
+     it is a texture.
+
+     It is not a second accent and it never asks for anything. The pair is a
+     sentence the drawing makes explicitly — NOTHING IS BOTH FINISHED AND
+     WAITING — so seal means a person is needed and go means nobody is. A
+     control painted in this would be claiming to be done, which is why there
+     is no filled-button twin of it and no hover state.
+
+     #597928 was named by the owner. It carries 10px text on `goSoft` at
+     4.9:1 and on paper at 4.6:1, so the label beside the bar may use it; the
+     bar itself is a block and has only to be distinguishable from `--rule`,
+     which at these two lightnesses it comfortably is. The house accent above
+     is still undecided and this does not pre-empt it: a green that means
+     "finished" is a convention rather than a brand. */
+  --color-go: #597928;
+  --color-goSoft: #f4f7ee;
 }
 
 :root {

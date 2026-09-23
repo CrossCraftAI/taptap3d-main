@@ -182,9 +182,33 @@ export function Shell({
             invisible — and the canvas is an absolutely positioned frame, so
             there would be nothing on screen to suggest what went wrong. A
             column costs nothing and cannot fail that way. */}
-        <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto">
+        <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto max-md:hidden">
           {children}
         </main>
+
+        {/* ── BELOW 768 IT SAYS SO, RATHER THAN TRYING ─────────────────────
+            The owner's decision: a tablet at a viewing is plausible, a handset
+            cataloguing a sale is not. What was shipping below `md` was not a
+            smaller version of this product, it was a broken one — the rail and
+            the palette were already hidden, so there was no navigation at all;
+            the ledger's Next column, which is the entire point of that screen,
+            sat off the right edge; and on the editor the lots panel is a rigid
+            340px, so the document itself measured 0px at 320 and 50px at 390.
+            Three screens' worth of clipping, none of which a person could act
+            on.
+
+            A sentence is more honest than any of that. It is not an apology
+            and it does not promise a phone version — it says what the window
+            needs, which is the one thing the reader can change. When a phone
+            form is designed, this is the thing that is deleted, and it is
+            findable because it is the only `md:hidden` block in the shell. */}
+        <div className="flex flex-1 items-center justify-center px-6 md:hidden">
+          <p className="max-w-xs text-center text-[13px] leading-relaxed text-muted">
+            taptap3d needs a window at least 768 pixels wide. A tablet held
+            landscape is enough; a phone is not, and a catalogue laid out on one
+            would be a catalogue nobody could read.
+          </p>
+        </div>
       </div>
     </div>
   );

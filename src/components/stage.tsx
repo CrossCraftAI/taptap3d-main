@@ -7,21 +7,26 @@ import { placeHref, placeIsFile, type StageReading } from "@/lib/workflow";
  * stage's name. Read wherever events are listed, so every ledger in the system
  * says the same thing about the same sale.
  *
- * ── THE INDICATOR IS GREY, AND COUNTS STEPS ─────────────────────────────────
+ * ── THE INDICATOR COUNTS STEPS, AND SAYS WHICH ARE DONE ─────────────────────
  *
  * One segment per STEP between stages, not per stage: a sale that has only
  * been named shows nothing filled, which is the truth, rather than one block
- * of five for having a row. Filled segments are ink and empty ones are the
- * rule colour, and there is no third colour — a progress indicator that turned
- * green or amber would be a rainbow beside a column of numbers, and the accent
- * is spent elsewhere.
+ * of five for having a row.
  *
- * WHERE IT IS SPENT: the row's call to action, and only on the sales somebody
- * is part-way through (`isMidJob`, src/lib/workflow.ts). It used to be spent
- * on no row at all, on the argument that sixty red buttons in a column is no
- * seal — which is right about sixty and wrong about two. The indicator stays
- * out of it either way: the accent says "a person is needed here", and a bar
- * that says how far along a sale is is not asking anybody for anything.
+ * Done segments are `--go`, the rest are `--rule`. This shipped as ink on grey
+ * on the argument that a third colour would be "a rainbow beside a column of
+ * numbers" — and put beside the drawing it read as texture rather than as
+ * progress, because two greys a column apart are two greys. The owner settled
+ * it: green for done. The argument was right about the ACCENT and wrong about
+ * this; `--go` is not an accent, it asks for nothing, and the pair is a
+ * sentence — NOTHING IS BOTH FINISHED AND WAITING.
+ *
+ * THE ACCENT IS STILL SPENT ELSEWHERE: the row's call to action, and only on
+ * the sales somebody is part-way through (`isMidJob`, src/lib/workflow.ts). It
+ * used to be spent on no row at all, on the argument that sixty red buttons in
+ * a column is no seal — which is right about sixty and wrong about two. The
+ * indicator stays out of it: the accent says "a person is needed here", and a
+ * bar saying how far along a sale is is not asking anybody for anything.
  *
  * ── THE MARK FOR A HUMAN ANSWER ─────────────────────────────────────────────
  *
@@ -62,7 +67,7 @@ export function StageSegments({
       {Array.from({ length: of }, (_, i) => (
         <span
           key={i}
-          className={`block h-1.5 w-2 ${i < filled ? "bg-ink" : "bg-rule"}`}
+          className={`block h-1.5 w-2 ${i < filled ? "bg-go" : "bg-rule"}`}
         />
       ))}
     </span>

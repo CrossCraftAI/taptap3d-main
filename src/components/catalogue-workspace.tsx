@@ -105,11 +105,53 @@ export function CatalogueWorkspace({
             {actions}
           </div>
         </div>
-        <div className="border-t border-rule py-1.5 pl-11 pr-3">{controls}</div>
       </header>
 
       <div className="flex min-h-0 flex-1">
-        <div className="relative min-w-0 flex-1">{canvas}</div>
+        {/* ── THE DOCUMENT'S SETTINGS, BESIDE THE PAGE AND NOT ABOVE IT ─────
+            They were a full-width band under the header. A band costs the page
+            more than its own height: at fit-page the preview sizes the sheet by
+            HEIGHT (render/html.ts), the sheet is A4, so its AREA falls with the
+            SQUARE of whatever is taken off the top. That is the same arithmetic
+            that made the top bar hide on this screen, and this was the last
+            strip standing. Measured before and after in one 1440x900 window:
+            33.7% of it, then 37.3%.
+
+            FLOATING IT OVER THE CANVAS WAS TRIED FIRST, because "all the view
+            controls over the canvas" is what the plan says, and it cannot work.
+            The reason is geometric rather than a matter of taste: measured at
+            1440x900 with the sheet fitted to the page, the desk around it is
+            236px to the left, 236px to the right and SIXTEEN PIXELS at the top.
+            A control bar needs forty. Every horizontal bar over this canvas
+            covers the sheet, which is the one thing the screen exists to show.
+
+            Docked to the left it costs nothing, and that is the part worth
+            knowing: the sheet is HEIGHT-bound, not width-bound — 585px wide in
+            a 1056px canvas — so taking 230px of width away still leaves 826px,
+            more than the sheet wants. The page keeps its area and the header
+            row's height is pure gain. At fit-width it does cost, which is the
+            honest trade of asking for the width.
+
+            The drawing puts it here too, which is a check rather than a reason.
+            Next: fold it into the palette's own Document panel so the spine can
+            put it away. What makes that more than a move is that these controls
+            are ONE stored object — setCatalogueParamsAction re-normalises
+            everything it receives, so a panel posting only `template` would
+            silently reset the fit and the reference. */}
+        {/* ONE INSTANCE, TURNED BY THE FLEX DIRECTION. The first version of
+            this rendered {controls} twice — a docked copy and a `lg:hidden`
+            strip — and hiding one with CSS hides nothing: both were in the
+            document, so every `<select name="template">` existed twice, two
+            forms posted the same parameters, and `getByLabel("Template")`
+            matched two elements. A control that exists twice is a defect
+            before it is a test failure. So the column/row switch is on the
+            PARENT and the settings are one element that changes shape. */}
+        <div className="flex min-w-0 flex-1 max-lg:flex-col">
+          <div className="shrink-0 overflow-y-auto border-rule bg-paper px-3 py-2 max-lg:border-b lg:w-[230px] lg:border-r">
+            {controls}
+          </div>
+          <div className="relative min-h-0 min-w-0 flex-1">{canvas}</div>
+        </div>
         {panel !== null && (
           <>
             <div

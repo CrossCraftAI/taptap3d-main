@@ -5,7 +5,7 @@ import { CatalogueControls } from "@/components/catalogue-controls";
 import { CatalogueWorkspace } from "@/components/catalogue-workspace";
 import { PinPanel, type PinPanelLot, type PinPanelPin } from "@/components/pin-panel";
 import { PreviewCanvas } from "@/components/preview-canvas";
-import { ensureCatalogue, getCatalogue, listPins } from "@/lib/data/catalogues";
+import { getCatalogue, listPins } from "@/lib/data/catalogues";
 import { getEvent } from "@/lib/data/events";
 import { listLotsWithImages } from "@/lib/data/lots";
 import { currentOrgId } from "@/lib/data/org";
@@ -30,17 +30,33 @@ export const dynamic = "force-dynamic";
  * foot of the sheet. That bar is not a dismissible hint: it is the action, and
  * it leaves with the first lot.
  *
- * ── THE CATALOGUE ROW WAITS FOR LOTS ─────────────────────────────────────────
+ * ── THIS SCREEN WRITES NOTHING. LOOKING IS NOT LAYING OUT ────────────────────
  *
- * `ensureCatalogue` used to run on every open — opening the catalogue was the
- * request for one. Now that quick-add opens it, every sale would be born with a
- * catalogue row, and the workflow reads that row as a FACT: a new sale would go
- * from Photographed straight to Catalogued without anyone having laid it out,
- * and the "Open catalogue" call to action would never show (src/lib/workflow.ts).
- * So the row is made when this screen opens on a sale WITH lots — there is
- * something to catalogue — and only read before that. Changing a parameter on
- * the blank page still makes it (catalogue/actions.ts): choosing a template is
- * laying out. The preview route never makes one; it is a GET.
+ * `ensureCatalogue` ran here, and the workflow reads a catalogue row as the
+ * FACT that a sale has been catalogued (src/lib/workflow.ts). So loading this
+ * page advanced the sale's stage: measured, by opening a sale that read
+ * "Photographed · Open catalogue", clicking nothing, and finding it read
+ * "Catalogued · Download PDF" afterwards. The ledger prints "Nobody files a
+ * status, so nobody can forget to" — and looking filed one.
+ *
+ * An earlier version of this note saw half of it. It guarded the sale with NO
+ * lots, because a brand-new sale jumping to Catalogued was the obvious case,
+ * and left the write in place for every sale that had any. The half that was
+ * missed is the one a specialist meets every day.
+ *
+ * So the row is read, never made. It is made by the first thing that is
+ * actually a layout decision, and each of those already makes it:
+ * `setCatalogueParamsAction` (choosing a template IS laying out) and
+ * `pinTogetherAction`, both in ./actions.ts. Everything below already handles
+ * a null catalogue, because it had to for the empty sale — including the lots
+ * panel, whose pins are empty until there is a row to hang them on and whose
+ * first pin creates it.
+ *
+ * Rejected: leaving the write and narrowing the FACT instead — counting only
+ * catalogues that carry a decision, or whose `updated_at` has moved past their
+ * `created_at`. Both make the stage a derived property of a row's history
+ * rather than of its existence, which is a second rule to keep in step with
+ * this one, and neither stops a GET writing.
  */
 export default async function CataloguePage({
   params,
@@ -53,10 +69,7 @@ export default async function CataloguePage({
   if (!event) notFound();
 
   const lots = await listLotsWithImages(orgId, id);
-  const catalogue =
-    lots.length > 0
-      ? await ensureCatalogue(orgId, id, `${event.name} catalogue`)
-      : await getCatalogue(orgId, id);
+  const catalogue = await getCatalogue(orgId, id);
   const [pins, overrides] = catalogue
     ? await Promise.all([listPins(orgId, catalogue.id), listOverrides(orgId, catalogue.id)])
     : [[], []];
@@ -227,13 +240,21 @@ export default async function CataloguePage({
         </>
       }
       panel={
-        catalogue && !empty ? (
+        !empty ? (
           /* Keyed on the catalogue's version: a pin that lands gives a fresh
-             panel, a refusal — which changes nothing — keeps its message. */
+             panel, a refusal — which changes nothing — keeps its message.
+
+             NOT GATED ON THE CATALOGUE ROW any more. The row no longer exists
+             merely because someone opened this screen, so gating the panel on
+             it would hide the pin control until a template had been chosen —
+             and pinning is itself a layout decision, so it is one of the two
+             gestures that CREATES the row (pinTogetherAction ensures it). The
+             id is only carried here so a gesture can be counted against the
+             right catalogue; null until the first one, which is honest. */
           <PinPanel
             key={version}
             eventId={event.id}
-            catalogueId={catalogue.id}
+            catalogueId={catalogue?.id ?? null}
             lots={panelLots}
             pins={panelPins}
           />

@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import { currentActorId } from "@/lib/data/actor";
-import { getCatalogue } from "@/lib/data/catalogues";
+import { ensureCatalogue } from "@/lib/data/catalogues";
 import { getLot, updateLotFields } from "@/lib/data/lots";
 import { currentOrgId } from "@/lib/data/org";
 import { setOverride } from "@/lib/data/overrides";
@@ -115,20 +115,22 @@ export async function setLotOverridesAction(
   formData: FormData,
 ): Promise<LotFormState> {
   const orgId = await currentOrgId();
-  const [lot, catalogue] = await Promise.all([
-    getLot(orgId, lotId),
-    getCatalogue(orgId, eventId),
-  ]);
+  const lot = await getLot(orgId, lotId);
   if (!lot || lot.eventId !== eventId) {
     return { ok: false, message: "That lot is not in this sale.", at: Date.now() };
   }
-  if (!catalogue) {
-    return {
-      ok: false,
-      message: "This sale has no catalogue yet. Open the catalogue once, then come back.",
-      at: Date.now(),
-    };
-  }
+  // THE ROW IS MADE HERE, and the refusal it replaces is worth recording. This
+  // read the catalogue and answered "This sale has no catalogue yet. Open the
+  // catalogue once, then come back" — which was true while opening the editor
+  // made the row, and became a dead end the moment that stopped (see
+  // ../../catalogue/page.tsx: a GET must not advance a sale's stage).
+  //
+  // Saying how THIS catalogue prints a field is a decision about that
+  // catalogue; there is nothing else it could be a decision about. So it joins
+  // the template, the pin and the placement as a gesture that makes the row,
+  // and the person who came here to hide a maker is not sent on an errand to
+  // another screen to make an empty thing exist first.
+  const catalogue = await ensureCatalogue(orgId, eventId);
 
   const decidedBy = await currentActorId(orgId);
   const scope = formData
