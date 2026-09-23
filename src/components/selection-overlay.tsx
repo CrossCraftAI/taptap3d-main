@@ -1,6 +1,6 @@
 "use client";
 
-import type { ClipMark } from "@/lib/editor/overlay-model";
+import type { ClipMark, OverlapMark } from "@/lib/editor/overlay-model";
 import type { OverlayRect, SelectionRing } from "@/lib/editor/selection-geometry";
 
 /**
@@ -49,12 +49,15 @@ import type { OverlayRect, SelectionRing } from "@/lib/editor/selection-geometry
 export function SelectionOverlay({
   rings,
   clips,
+  overlaps,
   note,
   selection,
   placements,
 }: {
   rings: readonly SelectionRing[];
   clips: readonly ClipMark[];
+  /** Hand-placed parts sitting on another lot's ink. */
+  overlaps: readonly OverlapMark[];
   /** One sentence about the last gesture, or null. */
   note: string | null;
   /** `selectionKey` of what is selected, for an audit and for nothing else. */
@@ -67,6 +70,7 @@ export function SelectionOverlay({
       data-overlay=""
       data-selection={selection ?? ""}
       data-clip-count={clips.length}
+      data-overlap-count={overlaps.length}
       data-placements={placements}
       // CLIPPED TO THE CANVAS. A ring around a part that has been scrolled off
       // the top is drawn at a negative offset, and without this it would paint
@@ -85,6 +89,22 @@ export function SelectionOverlay({
       ))}
       {clips.map((mark) => (
         <ClipEdges key={mark.key} mark={mark} />
+      ))}
+      {/* THE INTERSECTION, not the part. Outlining the whole placed box would
+          say "this part is wrong"; the part is fine, and what wants looking at
+          is the region where it lands on somebody else's line. A wash rather
+          than a ring, because a ring here would be a fourth kind of rectangle
+          on a surface that already has three and means something by each.
+
+          The seal is right for once without argument: this is the accent's own
+          sentence — a person is needed here. */}
+      {overlaps.map((mark) => (
+        <div
+          key={mark.key}
+          data-overlap-key={mark.key}
+          className="pointer-events-none absolute bg-seal/15 outline outline-1 outline-seal/40"
+          style={box(mark.rect)}
+        />
       ))}
       {note !== null && (
         /* At the foot of the canvas, where the empty page's own call to action

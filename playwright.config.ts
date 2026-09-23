@@ -28,8 +28,29 @@ export default defineConfig({
   // a changed one is the build that had to happen anyway before the number
   // meant anything. A dev server already sitting on this port now fails the run
   // with "already used" instead of silently becoming the thing under test.
+  //
+  // AND IT IS THE SERVER THE IMAGE RUNS. This said `npm run start`, and Next
+  // printed a warning on every single run that nobody read:
+  //
+  //   ⚠ "next start" does not work with "output: standalone" configuration.
+  //
+  // next.config.ts sets standalone deliberately, docker/entrypoint.sh execs
+  // `node /app/server.js`, and `next start` is a different server with a
+  // different module resolution. It worked, which is precisely the trouble —
+  // the suite was measuring a near-neighbour of the artefact, which is the same
+  // class of fault as the stale build above and would be discovered the same
+  // way: by a production defect no test could have had. scripts/
+  // serve-standalone.mjs reproduces what the Dockerfile does, including the
+  // `.next/static` copy that standalone omits and without which every
+  // stylesheet 404s into naked markup.
   webServer: {
-    command: `npm run build && npm run start -- --port ${PORT}`,
+    // `node` directly, not `npm run`. Measured on Windows: an env var set for
+    // `npm run start:standalone` did not reach the script — npm's shim goes
+    // through cmd and the assignment was lost, so the server bound 3000 while
+    // the suite waited on 3100. Playwright's own `env` is passed to the spawn,
+    // and one less shell between it and the process is one less place for that
+    // to happen. `npm run build` keeps its wrapper because it needs no env.
+    command: `npm run build && node scripts/serve-standalone.mjs`,
     url: `http://127.0.0.1:${PORT}/api/health`,
     reuseExistingServer: false,
     // Long enough for a cold `next build` on a machine that has never built
@@ -37,6 +58,9 @@ export default defineConfig({
     // comfortable for the developer who did not need it.
     timeout: 300_000,
     env: {
+      // The standalone server reads PORT rather than taking a flag.
+      PORT: String(PORT),
+      HOSTNAME: "127.0.0.1",
       // Pinned rather than resolved: `currentOrgId()` refuses when more than one
       // org exists, and a developer's machine frequently has several.
       TAPTAP3D_ORG_SLUG: process.env.TAPTAP3D_ORG_SLUG ?? "dev",

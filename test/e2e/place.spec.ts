@@ -272,3 +272,59 @@ test("the overlay never takes the wheel", async ({ page }) => {
   // And no capture layer is left standing between gestures.
   await expect(page.locator("[data-capture]")).toHaveCount(0);
 });
+
+test("a part dropped on another lot says so, and the page still prints", async ({ page }) => {
+  // THE ONE WAY A DRAG CAN SPOIL A PAGE IN SILENCE. Nothing is cut: the ink
+  // underneath is painted first and then covered, so no clip mark fires, the
+  // renderer has nothing to say, and the preview looks exactly like a spread
+  // somebody composed on purpose. It reaches the printer that way.
+  //
+  // Deterministic rather than hopeful: the second lot's own title box is
+  // measured and the first lot's title is dragged onto its centre, so the
+  // intersection is the whole of the smaller box and cannot be a rounding
+  // artefact of the viewport.
+  const { eventUrl, editorUrl } = await createEvent(page, `Overlap Sale ${RUN}`);
+  await importLots(page, eventUrl, 8);
+  await page.goto(editorUrl);
+  await expect(preview(page).locator(".page")).toHaveCount(2);
+
+  const slots = preview(page).locator(".slot");
+  const lotA = await slots.nth(0).getAttribute("data-lot");
+  const lotB = await slots.nth(1).getAttribute("data-lot");
+  expect(lotA).toBeTruthy();
+  expect(lotB).toBeTruthy();
+  expect(lotA).not.toBe(lotB);
+
+  // Nothing to report before the gesture — the engine's own layout does not
+  // overlap, and a mark on an untouched page would be noise on every sale.
+  await expect(overlay(page)).toHaveAttribute("data-overlap-count", "0");
+
+  const from = await boxIn(page, `[data-lot="${lotA}"][data-field="title"]`);
+  const onto = await boxIn(page, `[data-lot="${lotB}"][data-field="title"]`);
+  await page.mouse.move(from.x + from.w / 2, from.y + from.h / 2);
+  await page.mouse.down();
+  await page.mouse.move(onto.x + onto.w / 2, onto.y + onto.h / 2, { steps: 12 });
+  await page.mouse.up();
+
+  await expect.poll(() => storedFrame(page, lotA!, "title")).not.toBeNull();
+  // AND THE PREVIEW HAS CAUGHT UP. `storedFrame` asks the server, which
+  // answers as soon as the row is written; the overlay measures the DOCUMENT,
+  // which does not exist until the back buffer has loaded and swapped. Polling
+  // the mark without waiting for the part to be painted asks a question about
+  // a page that is still the old one, and gets the honest answer nought.
+  await expect(preview(page).locator('[data-frame-source="override"]')).toHaveCount(1);
+  // It landed, and it is marked — one is no use without the other. The whole
+  // point is that the commit SUCCEEDS and is reported: principle 9, a default
+  // and not a lock, because a part over the next lot is sometimes what a
+  // spread wants.
+  await expect
+    .poll(async () => Number(await overlay(page).getAttribute("data-overlap-count")))
+    .toBeGreaterThan(0);
+  await expect(page.locator("[data-overlay-note]")).toContainText("over another lot");
+  await page.screenshot({ path: shot("84-place-overlap") });
+
+  // AND IT IS NOT A CLIP. The two marks answer different questions and the
+  // note says the one that costs somebody else's line; asserting this is what
+  // stops the overlap being "fixed" by folding it into clipMarks.
+  await expect(overlay(page)).toHaveAttribute("data-clip-count", "0");
+});

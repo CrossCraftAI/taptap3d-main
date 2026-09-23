@@ -333,6 +333,108 @@ export function clipMarks(parts: readonly MeasuredPart[]): ClipMark[] {
   return marks;
 }
 
+/**
+ * The least intersection worth calling an overlap, in overlay pixels.
+ *
+ * Two pixels on BOTH axes. A placed part set flush against its neighbour will
+ * touch it by a sub-pixel at some zoom or other — that is a rounding artefact
+ * of the measurement, not a composition anybody has to answer for, and marking
+ * it would put a warning on the tidiest page in the sale.
+ */
+export const OVERLAP_MIN_PX = 2;
+
+/** A hand-placed part sitting on ink that belongs to a different lot. */
+export interface OverlapMark {
+  key: string;
+  /** The intersection itself — what is actually covered, not the whole part. */
+  rect: OverlayRect;
+  /** The part underneath. Named, because "something" is not a report. */
+  under: PreviewSelection;
+}
+
+/**
+ * Every hand-placed part that is sitting on another lot's ink.
+ *
+ * ── THE ONE WAY A DRAG CAN SPOIL A PAGE IN SILENCE ──────────────────────────
+ *
+ * Dragging a part out of its caption and onto the lot below is two pixels of
+ * pointer movement away from dragging it somewhere sensible, and the preview
+ * shows the result as though it were intended: the plate simply sits over the
+ * neighbour's reference line and hides it. There is no fade, no scrollbar and
+ * no clip — the ink underneath is painted first and then covered, so
+ * `clipOverflow` has nothing to say about it and neither does the renderer.
+ * Measured on this build: a committed placement covered 40px of the next lot's
+ * reference line, `data-clip-count` stayed 0, and nothing on screen differed
+ * from a page laid out on purpose. It reaches the printer that way.
+ *
+ * ── WHY THIS IS THE OVERLAY'S JOB AND NOT THE DEFECT GATE'S ─────────────────
+ *
+ * ROADMAP D8's gate is about the DOCUMENT — deterministic defects the engine
+ * can be asked about without a person present, computed on the way to a PDF.
+ * This one is about a GESTURE: it exists because somebody just moved something,
+ * it is answered by moving it back, and the moment to say so is while their
+ * hand is still on it. The gate will find it later; by then the answer is a
+ * report rather than an undo.
+ *
+ * ── ANOTHER LOT'S INK, AND THAT QUALIFIER IS THE WHOLE RULE ─────────────────
+ *
+ * A plate over its OWN caption is composition — the commonest deliberate thing
+ * a person does with this tool, and the reason the frame is a fraction of the
+ * page rather than of the slot. So the subject must be placed, the thing
+ * underneath must belong to a different lot, and both must be on the same
+ * sheet: a part at the same overlay coordinates two pages down the flow
+ * intersects nothing, and comparing page rects is what keeps a long scroll from
+ * marking every part against every other.
+ *
+ * Rejected: marking the pair. Only one of the two was moved, only one has a
+ * frame to move back, and drawing on the innocent part would ask the specialist
+ * to work out which is which.
+ *
+ * Rejected: refusing the commit. Principle 9 — a default, not a lock. A part
+ * over the next lot is sometimes exactly what a spread wants, and an editor
+ * that refuses it is an editor somebody works around. It reports.
+ */
+export function overlapMarks(parts: readonly MeasuredPart[]): OverlapMark[] {
+  const marks: OverlapMark[] = [];
+  for (const part of parts) {
+    if (!part.placed) continue;
+    for (const other of parts) {
+      if (other.sel.lotId === part.sel.lotId) continue;
+      // The same sheet. Comparing the page's own box rather than an id,
+      // because the overlay measures boxes and never reads the child's ids.
+      if (other.page.y !== part.page.y || other.page.x !== part.page.x) continue;
+      const x = Math.max(part.rect.x, other.rect.x);
+      const y = Math.max(part.rect.y, other.rect.y);
+      const right = Math.min(part.rect.x + part.rect.w, other.rect.x + other.rect.w);
+      const bottom = Math.min(part.rect.y + part.rect.h, other.rect.y + other.rect.h);
+      const w = right - x;
+      const h = bottom - y;
+      if (w < OVERLAP_MIN_PX || h < OVERLAP_MIN_PX) continue;
+      marks.push({
+        key: `${selectionKey(part.sel)}|over|${selectionKey(other.sel)}`,
+        rect: { x, y, w, h },
+        under: other.sel,
+      });
+    }
+  }
+  return marks;
+}
+
+/** Would painting these change anything? Same reasoning as `sameRings`. */
+export function sameOverlaps(a: readonly OverlapMark[], b: readonly OverlapMark[]): boolean {
+  if (a.length !== b.length) return false;
+  return a.every((mark, i) => {
+    const other = b[i]!;
+    return (
+      mark.key === other.key &&
+      mark.rect.x === other.rect.x &&
+      mark.rect.y === other.rect.y &&
+      mark.rect.w === other.rect.w &&
+      mark.rect.h === other.rect.h
+    );
+  });
+}
+
 /** Would painting these marks change anything? Same reasoning as `sameRings`. */
 export function sameClips(a: readonly ClipMark[], b: readonly ClipMark[]): boolean {
   if (a.length !== b.length) return false;

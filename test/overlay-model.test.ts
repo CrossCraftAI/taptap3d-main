@@ -15,6 +15,9 @@ import { describe, expect, it } from "vitest";
 import {
   ATTR,
   clipMarks,
+  overlapMarks,
+  OVERLAP_MIN_PX,
+  sameOverlaps,
   clipOverflow,
   DRAG_THRESHOLD_PX,
   isDrag,
@@ -414,5 +417,74 @@ describe("placementFrame", () => {
     // zeros toPageFrame answers with instead — would store a frame nothing can
     // ever paint or clear.
     expect(placementFrame(start, { x: 0, y: 0, w: 0, h: 0 }, 10, 10)).toBeNull();
+  });
+});
+
+// ── Overlap ──────────────────────────────────────────────────────────────────
+
+describe("overlapMarks", () => {
+  // THE FAILURE IT EXISTS FOR, written as the case: a part dragged out of its
+  // own caption and left sitting on the lot below. Nothing is cut — the ink
+  // underneath is painted and then covered — so `clipMarks` is silent, the
+  // renderer is silent, and the page prints that way.
+  const OVER: OverlayRect = { x: 100, y: 500, w: 200, h: 40 };
+  const UNDER: OverlayRect = { x: 120, y: 520, w: 300, h: 60 };
+
+  it("names the part underneath, and marks only where they meet", () => {
+    const marks = overlapMarks([
+      part("lot-a", "title", OVER, { placed: true }),
+      part("lot-b", "ref", UNDER),
+    ]);
+    expect(marks).toHaveLength(1);
+    // The intersection, not the placed box: 120..300 by 520..540.
+    expect(marks[0]!.rect).toEqual({ x: 120, y: 520, w: 180, h: 20 });
+    expect(marks[0]!.under).toEqual(sel("lot-b", "ref"));
+  });
+
+  it("says nothing about a part over its OWN caption", () => {
+    // The commonest deliberate gesture in the product, and the reason a frame
+    // is a fraction of the page rather than of the slot. Marking it would put
+    // a warning on every composed entry in the sale.
+    expect(
+      overlapMarks([
+        part("lot-a", "images", OVER, { placed: true }),
+        part("lot-a", "title", UNDER),
+      ]),
+    ).toEqual([]);
+  });
+
+  it("says nothing about two parts neither of which was placed", () => {
+    // The engine laid these out. If they overlap, that is the engine's doing
+    // and belongs to the defect gate, not to a gesture nobody made.
+    expect(overlapMarks([part("lot-a", "title", OVER), part("lot-b", "ref", UNDER)])).toEqual([]);
+  });
+
+  it("says nothing across two sheets at the same overlay coordinates", () => {
+    // A long flow puts page two's parts at overlay coordinates that page one
+    // also used. Without the page check every part would be marked against its
+    // opposite number on every other sheet.
+    const elsewhere = { ...PAGE, y: PAGE.y + PAGE.h + 24 };
+    expect(
+      overlapMarks([
+        part("lot-a", "title", OVER, { placed: true }),
+        part("lot-b", "ref", UNDER, { page: elsewhere }),
+      ]),
+    ).toEqual([]);
+  });
+
+  it("ignores a touch below the threshold on either axis", () => {
+    // Flush against a neighbour, off by a rounding artefact of the
+    // measurement. One pixel is not a composition anybody must answer for.
+    const flush = { x: OVER.x + OVER.w - (OVERLAP_MIN_PX - 1), y: OVER.y, w: 100, h: 40 };
+    expect(
+      overlapMarks([part("lot-a", "title", OVER, { placed: true }), part("lot-b", "ref", flush)]),
+    ).toEqual([]);
+  });
+
+  it("is quiet when the paint would not change", () => {
+    const parts = [part("lot-a", "title", OVER, { placed: true }), part("lot-b", "ref", UNDER)];
+    expect(sameOverlaps(overlapMarks(parts), overlapMarks(parts))).toBe(true);
+    const moved = [parts[0]!, part("lot-b", "ref", { ...UNDER, y: UNDER.y + 4 })];
+    expect(sameOverlaps(overlapMarks(parts), overlapMarks(moved))).toBe(false);
   });
 });

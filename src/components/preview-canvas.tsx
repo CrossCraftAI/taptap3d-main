@@ -8,6 +8,7 @@ import { dragRect, parseContent, subjectRect, type PageFrame } from "@/lib/edito
 import {
   ATTR,
   clipMarks,
+  overlapMarks,
   isDrag,
   PAGE_SELECTOR,
   PART_SELECTOR,
@@ -17,7 +18,9 @@ import {
   PLACED_SELECTOR,
   ringsFor,
   sameClips,
+  sameOverlaps,
   type ClipMark,
+  type OverlapMark,
   type MeasuredPart,
 } from "@/lib/editor/overlay-model";
 import {
@@ -142,10 +145,11 @@ export function PreviewCanvas({
   const [paint, setPaint] = useState<{
     rings: SelectionRing[];
     clips: ClipMark[];
+    overlaps: OverlapMark[];
     selection: string | null;
     clipped: boolean;
     placements: number;
-  }>({ rings: [], clips: [], selection: null, clipped: false, placements: 0 });
+  }>({ rings: [], clips: [], overlaps: [], selection: null, clipped: false, placements: 0 });
 
   const container = useRef<HTMLDivElement>(null);
   // TWO REFS RATHER THAN ONE HOLDING A TWO-ELEMENT ARRAY. An array literal
@@ -238,16 +242,67 @@ export function PreviewCanvas({
       live: live.current,
     });
     const clips = clipMarks(parts);
+
+    // ── WHAT IS UNDERNEATH IS NOT IN `parts`, AND THAT IS THE WHOLE PROBLEM ──
+    //
+    // `parts` above is the placed parts, the selection and the hover, for the
+    // reason written there: measuring a thousand boxes per frame is what makes
+    // a preview stutter. Overlap asks a different question — not "where is the
+    // thing I am holding" but "whose ink is under it" — and the answer is
+    // never in that list. Measured while building this: a placed title landing
+    // exactly on a neighbour's title, same x, same y, same width to the pixel,
+    // reported nought overlaps, because the neighbour had never been looked at.
+    //
+    // So the neighbours are collected PER PAGE, and only for the pages that
+    // carry a placement. That bounds it twice over: a page holds at most the
+    // density times the field count — five fields at nine-up is forty-five —
+    // and a document with no placement, which is nearly all of them, measures
+    // nothing extra at all. The cost is paid by the person who made the frame.
+    const placedNodes = Array.from(doc.querySelectorAll(PLACED_SELECTOR));
+    let overlaps: OverlapMark[] = [];
+    if (placedNodes.length > 0) {
+      const pages = new Set<Element>();
+      for (const node of placedNodes) {
+        const owner = node.closest(PAGE_SELECTOR);
+        if (owner) pages.add(owner);
+      }
+      const near: MeasuredPart[] = [];
+      const seenNear = new Set<string>();
+      for (const owner of pages) {
+        for (const node of Array.from(owner.querySelectorAll(PART_SELECTOR))) {
+          const measured = measurePart(node as ChildEl, origin);
+          if (!measured) continue;
+          // Keyed on identity AND on placedness: a price list leaves the
+          // lifted cell's empty <td> behind carrying the same two attributes,
+          // so one identity can have two boxes and the placed one is the
+          // subject. Both are kept; the same-lot rule in `overlapMarks` is
+          // what stops a part being reported as sitting on its own ghost.
+          const key = `${selectionKey(measured.sel)}|${measured.placed ? "p" : "f"}`;
+          if (seenNear.has(key)) continue;
+          seenNear.add(key);
+          near.push(measured);
+        }
+      }
+      overlaps = overlapMarks(near);
+    }
     const selection = selected.current ? selectionKey(selected.current) : null;
     const clipped = selection !== null && clips.some((c) => c.key === `${selection}|clip`);
     setPaint((prev) =>
       sameRings(prev.rings, rings) &&
       sameClips(prev.clips, clips) &&
+      sameOverlaps(prev.overlaps, overlaps) &&
       prev.selection === selection &&
       prev.clipped === clipped &&
       prev.placements === history.current.length
         ? prev
-        : { rings, clips, selection, clipped, placements: history.current.length },
+        : {
+            rings,
+            clips,
+            overlaps,
+            selection,
+            clipped,
+            placements: history.current.length,
+          },
     );
   }, [frameAt]);
 
@@ -660,13 +715,20 @@ export function PreviewCanvas({
         <SelectionOverlay
           rings={paint.rings}
           clips={paint.clips}
+          overlaps={paint.overlaps}
           selection={paint.selection}
           placements={paint.placements}
           note={
+            // THE OVERLAP SPEAKS FIRST. A box cutting its own text costs one
+            // field; a part sitting on the next lot costs that lot's line, and
+            // the specialist who has to be told about exactly one of the two
+            // should be told about the one that spoils somebody else's entry.
             note ??
-            (paint.clipped
-              ? "This box is too small for its text, so the rest is cut. A placed part has no fade to say so, on the screen or on paper — give it more room, or shorten the field."
-              : null)
+            (paint.overlaps.length > 0
+              ? "This part is over another lot. Nothing is cut — the ink underneath is simply covered, and it will print that way. Move it, or leave it if the spread wants it."
+              : paint.clipped
+                ? "This box is too small for its text, so the rest is cut. A placed part has no fade to say so, on the screen or on paper — give it more room, or shorten the field."
+                : null)
           }
         />
       </div>

@@ -15,6 +15,7 @@
     "dev": "next dev",
     "lint": "eslint .",
     "start": "next start",
+    "start:standalone": "node scripts/serve-standalone.mjs",
     "test": "vitest run",
     "test:e2e": "playwright test",
     "test:watch": "vitest",
