@@ -209,7 +209,7 @@ export function Dropzone({
         <button
           type="button"
           onClick={() => input.current?.click()}
-          className="border border-ruleStrong bg-paper px-3 py-1.5 text-[13px] font-medium hover:bg-sunk"
+          className="inline-flex min-h-[var(--tap)] items-center border border-ruleStrong bg-paper px-3 text-[13px] font-medium hover:bg-sunk"
         >
           {label ?? "Add photographs"}
         </button>

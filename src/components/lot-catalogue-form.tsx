@@ -41,6 +41,18 @@ export interface OverrideRowSpec {
  *
  * Same mechanics as the record's form: uncontrolled inputs, the body remounted
  * on the catalogue's version, the status line outside it.
+ *
+ * ── THE HIDE COLUMN IS A TICK WITH NO WORDS BESIDE IT ───────────────────────
+ *
+ * Everywhere else a checkbox's target is its label, because the words are the
+ * obvious thing to press. Here the words are the COLUMN HEADER, one per table
+ * rather than one per row, so there is nothing per-row to wrap. The target is
+ * therefore a square of `--tap` in the cell, drawn as nothing and centred on
+ * the box the browser paints — and it fits without widening the table: the
+ * column is declared `w-14`, which is 56px, against 44 at the coarse pointer's
+ * token. That is also why the cell gives up its own horizontal padding; with
+ * `px-2` still on it the square would have had 40px to sit in and the column
+ * would have grown to take it.
  */
 export function LotCatalogueForm({
   eventId,
@@ -100,7 +112,7 @@ export function LotCatalogueForm({
         <button
           type="submit"
           disabled={pending}
-          className="shrink-0 border border-ruleStrong bg-paper px-3 py-1.5 text-[13px] font-medium hover:bg-sunk disabled:opacity-60"
+          className="min-h-[var(--tap)] shrink-0 border border-ruleStrong bg-paper px-3 text-[13px] font-medium hover:bg-sunk disabled:opacity-60"
         >
           Apply to this catalogue
         </button>
@@ -168,14 +180,25 @@ function OverridesBody({ rows }: { rows: OverrideRowSpec[] }): React.ReactElemen
                     </span>
                   )}
                 </td>
-                <td className="px-2 py-1.5 text-center align-top">
-                  <input
-                    type="checkbox"
-                    name={`hide:${row.key}`}
-                    defaultChecked={row.hidden}
-                    aria-label={`Hide ${row.label} in this catalogue`}
-                    className="accent-seal"
-                  />
+                {/* THE CELL GIVES ITS PADDING UP TO THE TARGET rather than
+                    stacking on top of it: `py-1.5` here and `min-h` on the
+                    label would make this cell the token PLUS twelve, on a
+                    table that is one row per field. Moved INSIDE the label as
+                    `pt-1.5` it costs nothing — `min-height` counts padding
+                    under border-box, which Tailwind sets globally — so the box
+                    is exactly `--tap` and the tick still starts level with the
+                    text and the input beside it. The horizontal padding goes
+                    for the reason the header gives. */}
+                <td className="align-top">
+                  <label className="flex min-h-[var(--tap)] min-w-[var(--tap)] cursor-pointer items-start justify-center pt-1.5">
+                    <input
+                      type="checkbox"
+                      name={`hide:${row.key}`}
+                      defaultChecked={row.hidden}
+                      aria-label={`Hide ${row.label} in this catalogue`}
+                      className="accent-seal"
+                    />
+                  </label>
                 </td>
                 <td className="px-4 py-1.5 align-top">
                   {row.hideOnly ? (
@@ -186,7 +209,7 @@ function OverridesBody({ rows }: { rows: OverrideRowSpec[] }): React.ReactElemen
                       defaultValue={row.text}
                       aria-label={`Print ${row.label} as`}
                       placeholder="—"
-                      className="w-full border border-rule bg-paper px-2 py-1 text-[13px]"
+                      className="min-h-[var(--tap)] w-full border border-rule bg-paper px-2 text-[13px]"
                     />
                   )}
                 </td>

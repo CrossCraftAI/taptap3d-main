@@ -130,9 +130,15 @@ export default async function CataloguePage({
       catalogueId={catalogue?.id ?? null}
       heading={
         <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5 text-[13px]">
+          {/* The floor is on an inline link too. It is the way back to the sale
+              from the one screen a specialist lives on, and on a tablet it was
+              twenty pixels tall — `--tap` is 28px with a mouse, so on a desk
+              this costs eight pixels of a baseline-aligned row and changes
+              nothing anybody sees. `inline-flex items-center` because a bare
+              `min-h` does nothing to an inline box. */}
           <Link
             href={`/events/${event.id}`}
-            className="max-w-[20rem] truncate text-muted hover:text-seal hover:underline"
+            className="inline-flex max-w-[20rem] min-h-[var(--tap)] items-center truncate text-muted hover:text-seal hover:underline"
           >
             {event.name}
           </Link>
@@ -178,7 +184,7 @@ export default async function CataloguePage({
           <a
             href={`/events/${event.id}/catalogue/pdf`}
             title="The PDF is this same document, printed. It takes a moment on a long sale."
-            className="bg-seal px-3 py-1 text-[12px] font-medium text-white hover:bg-sealPress"
+            className="inline-flex min-h-[var(--tap)] items-center bg-seal px-3 text-[12px] font-medium text-white hover:bg-sealPress"
           >
             Download PDF
           </a>

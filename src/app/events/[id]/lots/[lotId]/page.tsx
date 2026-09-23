@@ -148,7 +148,7 @@ export default async function LotPage({
             {step && <LotSteps eventId={event.id} step={step} />}
             <Link
               href={`/events/${event.id}/catalogue`}
-              className="border border-ruleStrong bg-paper px-3 py-1.5 text-[13px] font-medium hover:bg-sunk"
+              className="inline-flex min-h-[var(--tap)] items-center border border-ruleStrong bg-paper px-3 text-[13px] font-medium hover:bg-sunk"
             >
               Open catalogue
             </Link>

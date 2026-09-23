@@ -95,7 +95,23 @@ export function CatalogueWorkspace({
                 aria-expanded={open}
                 title={`${open ? "Hide" : "Show"} the lots panel`}
                 onClick={() => setOpen(!open)}
-                className={`border border-ruleStrong px-2.5 py-1 text-[12px] font-medium hover:bg-sunk ${
+                // `min-h-[var(--tap)]` in place of the vertical padding, the
+                // way the ledger's own buttons carry it (ledger.tsx).
+                //
+                // THIS ROW IS THE ONE PLACE THE FLOOR IS NOT FREE. The header
+                // is what the note above subtracts from the window, and at
+                // fit-page the sheet's area falls with the square of anything
+                // taken off the top — so a row that grows costs the page more
+                // than its own height. It is paid anyway, and the shape of the
+                // trade is what makes it payable: with a precise pointer the
+                // token is 28px, which is the same floor the ledger's controls
+                // have always stood on, so the worst the mouse case can do is
+                // rise TO the house minimum rather than past it; the header's
+                // own `py-1.5` is untouched, so nothing else on the row moves.
+                // Under a coarse pointer the token is 44 and the row grows
+                // with it, which is the whole point of a token that knows
+                // which pointer it is under.
+                className={`min-h-[var(--tap)] border border-ruleStrong px-2.5 text-[12px] font-medium hover:bg-sunk ${
                   open ? "bg-sunk" : "bg-paper"
                 }`}
               >

@@ -93,6 +93,12 @@ test("the ledger says where a sale is, and its button says what to do next", asy
 
   await page.goto("/");
   await expect(rowOf(page).getByText("Recorded", { exact: true })).toBeVisible();
+  // THE STAGE NAME IS HALF THE CELL. "Recorded" is a state and says nothing
+  // about how much of the step is left; the drawing's cell was "Receive · 87
+  // without a condition check", and this is that half — derived from the next
+  // stage's own conditions, so it is "2 without a photograph" here because the
+  // built-in's next stage wants a plate on every lot.
+  await expect(rowOf(page).getByText("2 without a photograph")).toBeVisible();
   await expect(rowOf(page).getByRole("link", { name: "Add photographs" })).toHaveAttribute(
     "href",
     "/photographs",
@@ -109,6 +115,10 @@ test("the ledger says where a sale is, and its button says what to do next", asy
   await page.goto("/");
   await expect(rowOf(page).getByText("Recorded", { exact: true })).toBeVisible();
   await expect(rowOf(page).getByText("1 / 2")).toBeVisible();
+  // THE READING THE BARE LABEL COULD NOT TELL FROM THE ONE ABOVE. Both say
+  // "Recorded"; one lot of two now has a plate, and the cell says so in the
+  // column where the question was asked rather than two columns away.
+  await expect(rowOf(page).getByText("1 without a photograph")).toBeVisible();
 
   await page.goto(eventUrl);
   await page.getByRole("link", { name: `${REF}-2` }).first().click();
@@ -119,6 +129,10 @@ test("the ledger says where a sale is, and its button says what to do next", asy
   await page.goto("/");
   await expect(rowOf(page).getByText("Photographed", { exact: true })).toBeVisible();
   await expect(rowOf(page).getByText("2 / 2")).toBeVisible();
+  // Nothing per-lot is outstanding now, so the shortfall moves on with the
+  // stage: what the NEXT stage wants is a catalogue, and there is none.
+  await expect(rowOf(page).getByText("no catalogues yet")).toBeVisible();
+  await expect(rowOf(page).getByText("without a photograph")).toHaveCount(0);
   const openCatalogue = rowOf(page).getByRole("link", { name: "Open catalogue" });
   await expect(openCatalogue).toHaveAttribute("href", `${eventPath}/catalogue`);
   await openCatalogue.click();
@@ -223,6 +237,11 @@ test("a person's answer wins over the data, and can be taken back", async ({
   await page.goto("/");
   await expect(rowOf(page).getByText("New", { exact: true })).toBeVisible();
   await expect(rowOf(page).getByText("set by hand")).toBeVisible();
+  // AND NOTHING IS OUTSTANDING AT THAT STAGE, so the cell says only the name.
+  // The step from New to Recorded wants lots, and this sale has two — a sale
+  // parked behind its own facts is not a sale with work to do, and inventing
+  // a shortfall for it would be the label disagreeing with the data.
+  await expect(rowOf(page).getByText(/without a photograph|no \w+ yet/)).toHaveCount(0);
   await expect(rowOf(page).getByRole("link", { name: "Import lots" })).toBeVisible();
   await expect(rowOf(page).getByText("2 / 2")).toBeVisible();
   await page.screenshot({ path: shot("63-ledger-stage-set"), fullPage: true });

@@ -171,10 +171,10 @@ export const workflowSchema = z
     workflow.stages.forEach((stage, index) => {
       const path = ["stages", index];
       if (index === 0 && stage.when !== undefined) {
-        issue("the first stage is where a sale begins; it has nothing to satisfy", [...path, "when"]);
+        issue("the first stage is where an event begins; it has nothing to satisfy", [...path, "when"]);
       }
       if (index > 0 && stage.when === undefined) {
-        issue("a stage after the first must say what makes a sale reach it", [...path, "when"]);
+        issue("a stage after the first must say what makes an event reach it", [...path, "when"]);
       }
       stage.when?.forEach((condition, c) => {
         if (condition.atLeast === "all" && !PER_LOT.includes(condition.fact)) {
@@ -314,6 +314,16 @@ export interface StageReading {
   derivedIndex: number;
   /** True when a person's answer is standing in for the derived one. */
   overridden: boolean;
+  /**
+   * The counts this reading was taken from.
+   *
+   * CARRIED, not asked for again. Everything a caller wants to say about a
+   * reading — how far along it is, what the next stage is still waiting for —
+   * is a question about these same numbers, and a second `facts` argument
+   * beside a reading is two answers to "which sale?" that nothing checks are
+   * the same one. `isMidJob` took one until this landed.
+   */
+  facts: StageFacts;
 }
 
 /**
@@ -344,14 +354,113 @@ export interface StageReading {
  * Reads the SHOWN stage, so a person who set the stage by hand moves the
  * question with it (principle 9). PURE, for the reason everything else here is.
  */
-export function isMidJob(reading: StageReading, facts: StageFacts): boolean {
+export function isMidJob(reading: StageReading): boolean {
   const next = reading.workflow.stages[reading.index + 1];
   if (!next) return false;
+  const facts = reading.facts;
   return (next.when ?? []).some((condition) => {
     if (condition.atLeast !== "all" || !PER_LOT.includes(condition.fact)) return false;
     const done = facts[condition.fact];
     return done > 0 && done < facts.lots;
   });
+}
+
+/**
+ * What the next stage is still waiting for, in words — the other half of the
+ * stage cell.
+ *
+ * ── WHY THE LABEL NEEDS IT ──────────────────────────────────────────────────
+ *
+ * A stage name is a state and says nothing about how much of the current step
+ * is left, so "Recorded" reads identically for a sale with one plate of two
+ * hundred and one with a hundred and ninety-nine — which is the same defect
+ * `isMidJob` exists for, told rather than painted. The drawing's cell was
+ * "Receive · 87 without a condition check"; the product's was "Recorded", and
+ * the quantifier had been moved two columns away into the lot counts, where it
+ * is about the inventory rather than about the step.
+ *
+ * ── WHY IT IS DERIVED AND NOT FIVE SENTENCES ────────────────────────────────
+ *
+ * A sentence per stage would work for the built-in and for nothing else: a
+ * house authors its own stages (see the note at the top of this file), and the
+ * day it does, a hard-coded phrase either names a stage that no longer exists
+ * or says nothing at all. So the shortfall is read from the next stage's own
+ * `when` conditions against the facts — the same two inputs `deriveStageIndex`
+ * uses, so the cell cannot disagree with the indicator beside it.
+ *
+ * THIS IS POSSIBLE ONLY BECAUSE THE FACTS ARE A CLOSED SET. `FACTS` is four
+ * names, the schema refuses any other, and a house-authored workflow can
+ * therefore only ever ask for a quantity of something this file already knows
+ * the noun for. The conditions are the house's; the nouns are ours. A fact
+ * joining `FACTS` joins `FACT_NOUN` in the same commit, and the test walks the
+ * two lists against each other so it cannot be forgotten.
+ *
+ * Rejected: a phrase authored on the condition itself (`when: [{ fact,
+ * atLeast, lacking }]`). It would have to be optional — no existing workflow
+ * carries one — so the house that omits it gets the bare stage name back and
+ * the defect returns for exactly the workflows this exists to serve. It would
+ * also put a user-facing sentence into stored data, where the vocabulary layer
+ * (Phase 10, deferred) cannot reach it.
+ *
+ * Null where there is nothing to say: at the last stage, because nothing is
+ * both finished and waiting; and when the next stage's conditions already hold,
+ * which is what a person setting a sale BACK by hand looks like.
+ *
+ * PURE, and English only — the same half of the bilingual pair the cell renders
+ * beside it (`stage.label.en`). A `zh` half here would be a string no screen
+ * reads and no test can hold to account, which is the kind of speculative
+ * second vocabulary ARCHITECTURE.md's closing list refuses; it arrives when the
+ * interface picks a language, and it arrives for the whole interface at once.
+ */
+export function shortfallOf(reading: StageReading): string | null {
+  const next = reading.workflow.stages[reading.index + 1];
+  if (!next) return null;
+  const unmet = (next.when ?? []).filter((c) => !holds(c, reading.facts));
+  if (unmet.length === 0) return null;
+  // Every one of them, in the order the workflow declares them: a stage that
+  // waits on two things is not half-described by the first. The built-in never
+  // declares more than one, so this is the house-authored case being kept
+  // whole rather than a shape the shipped ledger draws.
+  return unmet.map((c) => lacking(c, reading.facts)).join(", ");
+}
+
+/**
+ * What each fact is called when a label has to name what is missing.
+ *
+ * Two voices, because a shortfall is said two ways: "no photographs yet" counts
+ * the fact, and "87 without a photograph" counts the LOTS that lack one. Both
+ * nouns are the schema's, not an auction house's — the word a tenant sees for
+ * its own objects is the vocabulary layer's job (Phase 10), and hard-coding one
+ * house's word here would be work that layer has to undo first.
+ */
+const FACT_NOUN: Record<Fact, { one: string; many: string }> = {
+  lots: { one: "lot", many: "lots" },
+  photographed: { one: "photograph", many: "photographs" },
+  catalogues: { one: "catalogue", many: "catalogues" },
+  exported: { one: "export", many: "exports" },
+};
+
+/** One unmet condition, as the shortfall it describes. */
+function lacking(condition: Condition, facts: StageFacts): string {
+  const noun = FACT_NOUN[condition.fact];
+  const have = facts[condition.fact];
+
+  if (condition.atLeast === "all") {
+    // "all" is per-lot — the schema refuses it on any other fact — so what is
+    // outstanding is the lots without it, which is the drawing's phrasing.
+    // With no lots there is nothing to be short OF: the sale needs lots first,
+    // and saying "0 without a photograph" of an empty sale would be a sentence
+    // that is true and useless.
+    return facts.lots === 0
+      ? `no ${FACT_NOUN.lots.many} yet`
+      : `${facts.lots - have} without a ${noun.one}`;
+  }
+
+  // A floor. Nothing yet is the common case and reads better as a state than
+  // as arithmetic; past that it is how many more.
+  if (have === 0) return `no ${noun.many} yet`;
+  const short = condition.atLeast - have;
+  return `${short} more ${short === 1 ? noun.one : noun.many}`;
 }
 
 /**
@@ -377,7 +486,7 @@ export function readStage(
   const pinnedIndex =
     typeof override === "string" ? workflow.stages.findIndex((s) => s.id === override) : -1;
   if (pinnedIndex < 0) {
-    return { workflow, stage: derived, index: derivedIndex, derived, derivedIndex, overridden: false };
+    return { workflow, stage: derived, index: derivedIndex, derived, derivedIndex, overridden: false, facts };
   }
   return {
     workflow,
@@ -386,5 +495,6 @@ export function readStage(
     derived,
     derivedIndex,
     overridden: true,
+    facts,
   };
 }

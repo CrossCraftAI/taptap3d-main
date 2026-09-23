@@ -7,6 +7,11 @@
 // once reads as New and not as Catalogued. The rest holds the vocabulary to its
 // refusals, proves a person's answer wins and can be taken back, and reads a
 // workflow the built-in knows nothing about, because a gallery's will be one.
+//
+// The shortfall — the half of the stage cell that says what the next stage is
+// still waiting for — is held to the same standard: every case below is read
+// from a workflow's own conditions, and three of them are read from workflows
+// the built-in could not have anticipated.
 
 import { existsSync } from "node:fs";
 import path from "node:path";
@@ -16,12 +21,14 @@ import { describe, expect, it } from "vitest";
 import {
   BUILT_IN_WORKFLOWS,
   CATALOGUE_PRODUCTION,
+  FACTS,
   PLACES,
   deriveStageIndex,
   isMidJob,
   placeHref,
   placeIsFile,
   readStage,
+  shortfallOf,
   workflowFor,
   workflowSchema,
   type Place,
@@ -170,7 +177,7 @@ describe("whether somebody is part-way through", () => {
   // that it says something the stage LABEL cannot: "Recorded" reads the same
   // at 1 plate of 200 as at 199, and only one of those is a job to resume.
   const mid = (f: StageFacts, override: string | null = null): boolean =>
-    isMidJob(readStage(W, f, override), f);
+    isMidJob(readStage(W, f, override));
 
   it.each<[string, StageFacts, boolean]>([
     ["nothing at all", facts(), false],
@@ -212,8 +219,132 @@ describe("whether somebody is part-way through", () => {
       ],
     } satisfies WorkflowInput);
     for (const f of [facts(), facts(10), facts(10, 4)]) {
-      expect(isMidJob(readStage(gallery, f, null), f)).toBe(false);
+      expect(isMidJob(readStage(gallery, f, null))).toBe(false);
     }
+  });
+});
+
+describe("what the next stage is still waiting for", () => {
+  // The other half of the stage cell. A stage NAME is a state, so "Recorded"
+  // reads identically at 1 plate of 200 and at 199 — the drawing's cell was
+  // "Receive · 87 without a condition check" and the product's was "Recorded".
+  // This is that quantifier, derived from the next stage's own conditions so
+  // that a house-authored workflow gets one too.
+  const short = (f: StageFacts, override: string | null = null): string | null =>
+    shortfallOf(readStage(W, f, override));
+
+  it.each<[string, StageFacts, string | null]>([
+    ["nothing at all", facts(), "no lots yet"],
+    ["lots in, not one plate", facts(10), "10 without a photograph"],
+    ["four plates of ten", facts(10, 4), "6 without a photograph"],
+    // The two readings the bare label could not tell apart, told apart.
+    ["one of two hundred", facts(200, 1), "199 without a photograph"],
+    ["a hundred and ninety-nine of two hundred", facts(200, 199), "1 without a photograph"],
+    ["every plate taken", facts(10, 10), "no catalogues yet"],
+    ["a catalogue opened", facts(10, 10, 1), "no exports yet"],
+    // Nothing is both finished and waiting: there is no stage after the last.
+    ["printed", facts(10, 10, 1, 1), null],
+  ])("%s", (_what, f, expected) => {
+    expect(short(f)).toBe(expected);
+  });
+
+  it("follows the shown stage, not the data's", () => {
+    // The person put a half-photographed sale at Catalogued; what is
+    // outstanding is what stands between THAT stage and the next one.
+    expect(short(facts(10, 4), "catalogued")).toBe("no exports yet");
+  });
+
+  it("says nothing when the next stage is already satisfied", () => {
+    // A printed sale sent back to New by hand. The step to Recorded wants
+    // lots, and there are ten — so there is nothing outstanding to say, even
+    // though the sale is not at the end of the workflow.
+    expect(short(facts(10, 10, 1, 1), "new")).toBeNull();
+  });
+
+  it("has a noun for every fact a workflow may name", () => {
+    // FACTS is closed and the schema refuses anything else, which is the whole
+    // reason this can be derived rather than written as a sentence per stage.
+    // Walked here so that a fact added without its noun fails loudly rather
+    // than printing "no undefined yet" in a column.
+    for (const fact of FACTS) {
+      const w = workflowSchema.parse({
+        id: "one-fact",
+        name: { zh: "一項", en: "One fact" },
+        stages: [
+          { id: "start", label: { zh: "始", en: "Start" }, next: { label: { zh: "去", en: "Go" }, to: "import" } },
+          {
+            id: "done",
+            label: { zh: "終", en: "Done" },
+            when: [{ fact, atLeast: 1 }],
+            next: { label: { zh: "印", en: "Print" }, to: "pdf" },
+          },
+        ],
+      } satisfies WorkflowInput);
+      const said = shortfallOf(readStage(w, facts(), null));
+      expect(said, fact).toMatch(/^no [a-z]+ yet$/);
+      // "no undefined yet" matches that pattern too, and is what a fact
+      // without a noun would print if the lookup were ever made lenient.
+      expect(said, fact).not.toContain("undefined");
+    }
+  });
+
+  it("counts up to a floor above one, and says every unmet condition", () => {
+    // Neither shape occurs in the built-in — it has one condition a stage and
+    // every floor is one — and both are authorable, so both are held here.
+    const strict = workflowSchema.parse({
+      id: "strict-house",
+      name: { zh: "嚴格", en: "Strict house" },
+      stages: [
+        { id: "start", label: { zh: "始", en: "Start" }, next: { label: { zh: "匯入", en: "Import" }, to: "import" } },
+        {
+          id: "ready",
+          label: { zh: "就緒", en: "Ready" },
+          when: [
+            { fact: "lots", atLeast: 12 },
+            { fact: "photographed", atLeast: "all" },
+          ],
+          next: { label: { zh: "印", en: "Print" }, to: "pdf" },
+        },
+      ],
+    } satisfies WorkflowInput);
+
+    expect(shortfallOf(readStage(strict, facts(10, 10), null))).toBe("2 more lots");
+    expect(shortfallOf(readStage(strict, facts(10, 4), null))).toBe(
+      "2 more lots, 6 without a photograph",
+    );
+    expect(shortfallOf(readStage(strict, facts(1), null))).toBe(
+      "11 more lots, 1 without a photograph",
+    );
+  });
+
+  it("asks for lots before plates when there are no lots to photograph", () => {
+    // "all" of nothing is not a shortfall of photographs — the sale needs lots
+    // first, and "0 without a photograph" would be true and useless. A house
+    // can put a per-lot stage first; the built-in cannot.
+    const gallery = workflowSchema.parse({
+      id: "plates-first",
+      name: { zh: "先攝影", en: "Plates first" },
+      stages: [
+        { id: "planned", label: { zh: "籌備", en: "Planned" }, next: { label: { zh: "匯入", en: "Import" }, to: "import" } },
+        {
+          id: "shot",
+          label: { zh: "已攝影", en: "Shot" },
+          when: [{ fact: "photographed", atLeast: "all" }],
+          next: { label: { zh: "單張", en: "Tearsheets" }, to: "catalogue" },
+        },
+      ],
+    } satisfies WorkflowInput);
+    expect(shortfallOf(readStage(gallery, facts(), null))).toBe("no lots yet");
+    expect(shortfallOf(readStage(gallery, facts(4, 1), null))).toBe("3 without a photograph");
+  });
+
+  it("is the reading's own, so nothing has to hand it the facts twice", () => {
+    // The reading carries the counts it was taken from. Two arguments — a
+    // reading and a `StageFacts` — would be two answers to "which sale?" that
+    // nothing checks are the same one.
+    const f: StageFacts = facts(10, 4);
+    expect(readStage(W, f, null).facts).toEqual(f);
+    expect(readStage(W, f, "catalogued").facts).toEqual(f);
   });
 });
 

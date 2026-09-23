@@ -43,6 +43,17 @@ export interface FieldRow {
  * browser and eats the keystrokes typed into it — the predecessor lost `-1.37`
  * to exactly that — and a person who keeps typing during a save should lose
  * nothing but the round trip.
+ *
+ * ── THE FIELD IS THE FLOOR, NOT THE ROW AROUND IT ───────────────────────────
+ *
+ * Every input carries `min-h-[var(--tap)]` IN PLACE OF its own vertical
+ * padding rather than on top of it, so the field's box is the token (28px with
+ * a mouse, 44 under `@media (pointer: coarse)` — globals.css) instead of the
+ * token plus the eight pixels it used to be padded by.
+ *
+ * The label column beside it is left alone: `htmlFor` already makes the words
+ * focus the field, so the caption is reachable without a box of its own, and a
+ * floor on every caption would push the record's rows apart for nothing.
  */
 export function LotFieldsForm({
   eventId,
@@ -79,7 +90,7 @@ export function LotFieldsForm({
         <button
           type="submit"
           disabled={pending}
-          className="shrink-0 bg-seal px-3 py-1.5 text-[13px] font-medium text-white hover:bg-sealPress disabled:opacity-60"
+          className="min-h-[var(--tap)] shrink-0 bg-seal px-3 text-[13px] font-medium text-white hover:bg-sealPress disabled:opacity-60"
         >
           Save fields
         </button>
@@ -112,14 +123,17 @@ function FieldsBody({ rows }: { rows: FieldRow[] }): React.ReactElement {
                 name={`field:${row.key}`}
                 defaultValue={row.value}
                 rows={3}
-                className="min-w-0 flex-1 resize-y border border-rule bg-paper px-2 py-1 text-[13px] leading-relaxed"
+                // The floor is a no-op on three rows of text and it is here
+                // anyway: what makes it safe to change `rows` later, and the
+                // one shape that does not need an exception in the census.
+                className="min-h-[var(--tap)] min-w-0 flex-1 resize-y border border-rule bg-paper px-2 py-1 text-[13px] leading-relaxed"
               />
             ) : (
               <input
                 id={id}
                 name={`field:${row.key}`}
                 defaultValue={row.value}
-                className="min-w-0 flex-1 border border-rule bg-paper px-2 py-1 text-[13px]"
+                className="min-h-[var(--tap)] min-w-0 flex-1 border border-rule bg-paper px-2 text-[13px]"
               />
             )}
           </div>
@@ -133,13 +147,13 @@ function FieldsBody({ rows }: { rows: FieldRow[] }): React.ReactElement {
           name="newKey"
           aria-label="New column name"
           placeholder="new column"
-          className="w-28 shrink-0 border border-rule bg-paper px-2 py-1 text-[12px]"
+          className="min-h-[var(--tap)] w-28 shrink-0 border border-rule bg-paper px-2 text-[12px]"
         />
         <input
           name="newValue"
           aria-label="New column value"
           placeholder="its value for this lot"
-          className="min-w-0 flex-1 border border-rule bg-paper px-2 py-1 text-[13px]"
+          className="min-h-[var(--tap)] min-w-0 flex-1 border border-rule bg-paper px-2 text-[13px]"
         />
       </div>
     </div>

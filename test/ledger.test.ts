@@ -15,6 +15,7 @@ import {
   ALL,
   DEFAULT_QUERY,
   OPEN,
+  ORDERS,
   PAGE_SIZE,
   ledgerHref,
   readLedger,
@@ -28,7 +29,7 @@ const W = CATALOGUE_PRODUCTION;
 /** A sale, at whatever counts are given. The stage falls out of them. */
 function sale(
   name: string,
-  counts: Partial<Pick<EventSummary, "lotCount" | "photographedCount" | "catalogueCount" | "exportedCount" | "stageOverride">> = {},
+  counts: Partial<Pick<EventSummary, "lotCount" | "photographedCount" | "catalogueCount" | "exportedCount" | "stageOverride" | "heldOn" | "createdAt">> = {},
 ): EventSummary {
   return {
     id: name,
@@ -60,13 +61,21 @@ const view = (query: Partial<LedgerQuery> = {}, events = SALES) =>
   readLedger(events, W, { ...DEFAULT_QUERY, ...query });
 
 describe("what the URL is allowed to say", () => {
-  it("reads the three parameters", () => {
-    expect(readQuery({ q: " 青花 ", stage: "recorded", page: "3" }, W)).toEqual({
+  it("reads the four parameters", () => {
+    expect(readQuery({ q: " 青花 ", stage: "recorded", sort: "big", page: "3" }, W)).toEqual({
       q: "青花",
       tab: "recorded",
+      sort: "big",
       page: 3,
     });
   });
+
+  it.each([["by-name"], ["NEW"], [""], ["undefined"]])(
+    "falls the order %s back to newest, as a stale bookmark and not an error",
+    (sort) => {
+      expect(readQuery({ sort }, W).sort).toBe(DEFAULT_QUERY.sort);
+    },
+  );
 
   it.each<[string, Record<string, string | string[] | undefined>]>([
     ["nothing at all", {}],
@@ -102,13 +111,19 @@ describe("the address a control points at", () => {
     // Two URLs must not mean the same screen, and the short one is the one a
     // person sees first.
     expect(ledgerHref(DEFAULT_QUERY)).toBe("/");
-    expect(ledgerHref({ q: "", tab: OPEN, page: 1 })).toBe("/");
+    expect(ledgerHref({ q: "", tab: OPEN, sort: "new", page: 1 })).toBe("/");
   });
 
   it("carries only what is not the default", () => {
     expect(ledgerHref(DEFAULT_QUERY, { tab: "recorded" })).toBe("/?stage=recorded");
     expect(ledgerHref(DEFAULT_QUERY, { page: 4 })).toBe("/?page=4");
-    expect(ledgerHref({ q: "jade", tab: ALL, page: 2 })).toBe("/?q=jade&stage=all&page=2");
+    expect(ledgerHref(DEFAULT_QUERY, { sort: "soon" })).toBe("/?sort=soon");
+    // Newest is the default order, so choosing it writes nothing down — the
+    // same rule the tab and the page already obey.
+    expect(ledgerHref({ ...DEFAULT_QUERY, sort: "big" }, { sort: "new" })).toBe("/");
+    expect(ledgerHref({ q: "jade", tab: ALL, sort: "big", page: 2 })).toBe(
+      "/?q=jade&stage=all&sort=big&page=2",
+    );
   });
 
   it("survives a Chinese search, which is what these names are", () => {
@@ -119,9 +134,9 @@ describe("the address a control points at", () => {
 
   it("round-trips through readQuery", () => {
     for (const query of [
-      { q: "青花", tab: ALL, page: 3 },
-      { q: "", tab: "photographed", page: 1 },
-      { q: "a b", tab: OPEN, page: 1 },
+      { q: "青花", tab: ALL, sort: "new", page: 3 },
+      { q: "", tab: "photographed", sort: "soon", page: 1 },
+      { q: "a b", tab: OPEN, sort: "big", page: 1 },
     ] satisfies LedgerQuery[]) {
       const url = new URL(ledgerHref(query), "https://x");
       expect(readQuery(Object.fromEntries(url.searchParams), W)).toEqual(query);
@@ -218,6 +233,117 @@ describe("the search", () => {
     expect(out.matched).toBe(0);
     expect(out.from).toBe(0);
     expect(out.to).toBe(0);
+  });
+});
+
+describe("the order", () => {
+  // Search, filter and pagination shipped and the order did not: it was fixed
+  // at newest-first, and the result count said so. A specialist comparing
+  // sixty sales asks "which is biggest" and "which is soonest" as often as
+  // "which is newest", and each answer has to be an address they can send.
+  const on = (d: string): Date => new Date(`${d}T00:00:00Z`);
+
+  // Deliberately NOT newest-first: `listEvents` orders by created_at desc and
+  // the default order re-uses that answer rather than deriving it a second
+  // time, so a test that handed these in already sorted could not tell the two
+  // apart.
+  const SMALL = sale("Small, soon", {
+    lotCount: 3,
+    createdAt: on("2026-03-01"),
+    heldOn: on("2026-04-01"),
+  });
+  const BIG = sale("Big, late", {
+    lotCount: 300,
+    createdAt: on("2026-01-01"),
+    heldOn: on("2026-12-01"),
+  });
+  const UNDATED = sale("Middling, undated", { lotCount: 40, createdAt: on("2026-02-01") });
+  const MIXED = [SMALL, BIG, UNDATED];
+
+  const names = (sort: LedgerQuery["sort"], events = MIXED): string[] =>
+    readLedger(events, W, { ...DEFAULT_QUERY, tab: ALL, sort }).rows.map((r) => r.event.name);
+
+  it("leaves the query's own order alone by default", () => {
+    // Newest-first is the SQL's answer (src/lib/data/events.ts orders by
+    // created_at desc). Writing the same rule again here is how two
+    // derivations of one fact start disagreeing, so the default sorts nothing.
+    expect(names("new")).toEqual(MIXED.map((e) => e.name));
+  });
+
+  it("puts the biggest first, by the count the column shows", () => {
+    expect(names("big")).toEqual([BIG.name, UNDATED.name, SMALL.name]);
+  });
+
+  it("puts the soonest first, and a sale with no date last", () => {
+    // A sale with no date has no deadline and cannot be the soonest. Read as
+    // the beginning of time it would lead the list, which is the opposite of
+    // what it means.
+    expect(names("soon")).toEqual([SMALL.name, BIG.name, UNDATED.name]);
+  });
+
+  it("keeps the order it was given where two sales tie", () => {
+    // `Array.prototype.sort` is stable, so the incoming newest-first order is
+    // the second key for free — and two sales of the same size do not swap
+    // places between two loads of the same page.
+    const tied = [
+      sale("A", { lotCount: 5, createdAt: on("2026-03-01") }),
+      sale("B", { lotCount: 5, createdAt: on("2026-02-01") }),
+      sale("C", { lotCount: 5, createdAt: on("2026-01-01") }),
+    ];
+    expect(names("big", tied)).toEqual(["A", "B", "C"]);
+    expect(names("soon", tied)).toEqual(["A", "B", "C"]);
+  });
+
+  it("changes nothing about which sales are in the list", () => {
+    // An order is not a filter. Whatever is on the ledger under one is on it
+    // under all of them.
+    for (const order of ORDERS) {
+      const out = readLedger(MIXED, W, { ...DEFAULT_QUERY, tab: ALL, sort: order });
+      expect(out.matched, order).toBe(MIXED.length);
+      expect([...out.rows].map((r) => r.event.name).sort()).toEqual(
+        MIXED.map((e) => e.name).sort(),
+      );
+    }
+  });
+
+  it("offers every order, marks the one in force, and names it", () => {
+    const out = readLedger(MIXED, W, { ...DEFAULT_QUERY, sort: "soon" });
+    expect(out.orders.map((o) => o.id)).toEqual([...ORDERS]);
+    expect(out.orders.filter((o) => o.current).map((o) => o.id)).toEqual(["soon"]);
+    // The word the result count uses, so "Showing 1–3 of 3, soonest first" is
+    // one fact rather than a sentence that can drift from the rows above it.
+    expect(out.orders.find((o) => o.current)?.first).toBe("soonest");
+  });
+
+  it("sends a change of order back to page one", () => {
+    // Page seven of the newest is not page seven of the biggest — the same
+    // reason a tab resets the page, and the same bug if it does not.
+    const out = readLedger(MIXED, W, { ...DEFAULT_QUERY, page: 3 });
+    for (const order of out.orders) expect(order.href).not.toContain("page=");
+  });
+
+  it("rides along with the search, the tab and the page", () => {
+    // Every other control keeps it, so a sorted ledger survives being narrowed
+    // — which is the whole reason it is in the URL rather than in a click.
+    const out = readLedger(MIXED, W, { q: "a", tab: ALL, sort: "big", page: 1 });
+    for (const tab of out.tabs) expect(tab.href).toContain("sort=big");
+    expect(out.orders.map((o) => o.href).every((h) => h.includes("q=a"))).toBe(true);
+  });
+
+  it("orders what the tab left, before the page is cut off it", () => {
+    // The order is of the WHOLE filtered list, not of the page — otherwise
+    // page one is the newest twenty-five sorted by size, which is neither
+    // answer.
+    const many = Array.from({ length: PAGE_SIZE + 5 }, (_, i) =>
+      sale(`Sale ${String(i).padStart(3, "0")}`, { lotCount: i }),
+    );
+    const first = readLedger(many, W, { ...DEFAULT_QUERY, tab: ALL, sort: "big" });
+    expect(first.rows[0]!.event.lotCount).toBe(PAGE_SIZE + 4);
+    expect(first.rows).toHaveLength(PAGE_SIZE);
+    const last = readLedger(many, W, { ...DEFAULT_QUERY, tab: ALL, sort: "big", page: 2 });
+    // The smallest sale in the org is on the last page of "biggest first", and
+    // it is the sale with no lots at all.
+    expect(last.rows[last.rows.length - 1]!.event.lotCount).toBe(0);
   });
 });
 

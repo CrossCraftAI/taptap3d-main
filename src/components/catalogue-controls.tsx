@@ -44,6 +44,24 @@ import { logAction } from "@/lib/log/client";
  * new and `useState` reads the server's answer as its initial value. That is the
  * React-idiomatic reset, and it is why there is no effect here syncing a prop
  * into state — which is both a lint error and the slower of the two paths.
+ *
+ * ── EVERY CONTROL CARRIES `--tap`, AND THAT IS THE TOKEN AND NOT A NUMBER ────
+ *
+ * `--tap` (globals.css) is 28px with a precise pointer and 44px under
+ * `@media (pointer: coarse)`, because a condition check happens on a tablet in
+ * a warehouse, one-handed (DFD.md §1). The ledger's tabs, search and pager have
+ * read it since they were written; this form did not, so the screen a
+ * specialist spends the day on was the one screen where nothing was reachable.
+ * The fix is the ledger's, not a second convention: `min-h-[var(--tap)]`
+ * replaces the vertical padding, so the box IS the token rather than a number
+ * that happens to agree with it today.
+ *
+ * WHAT IT COSTS THE PAGE, AND WHY THAT IS ACCEPTABLE HERE. Docked at `lg` and
+ * above this is a COLUMN, so a taller control takes column height and none of
+ * the canvas — the sheet is height-bound, and this strip is beside it rather
+ * than above it (catalogue-workspace.tsx does that arithmetic). Below `lg` it
+ * is a strip across the top and a taller control does cost the sheet; that is
+ * the coarse-pointer case, which is the case the token exists for.
  */
 export function CatalogueControls({
   eventId,
@@ -104,7 +122,7 @@ export function CatalogueControls({
           name="template"
           value={template.id}
           onChange={(e) => chooseTemplate(e.target.value)}
-          className="border border-rule bg-paper px-2 py-1 text-[13px] lg:w-full"
+          className="min-h-[var(--tap)] border border-rule bg-paper px-2 text-[13px] lg:w-full"
         >
           {templates.map((t) => (
             <option key={t.id} value={t.id}>
@@ -122,7 +140,7 @@ export function CatalogueControls({
           onChange={(e) => change({ perPage: Number(e.target.value) })}
           // One density is a fact about the template, not a choice to make.
           disabled={template.densities.length < 2}
-          className="border border-rule bg-paper px-2 py-1 text-[13px] disabled:text-muted lg:w-full"
+          className="min-h-[var(--tap)] border border-rule bg-paper px-2 text-[13px] disabled:text-muted lg:w-full"
         >
           {template.densities.map((density) => (
             <option key={density} value={density}>
@@ -144,7 +162,7 @@ export function CatalogueControls({
               })
             }
             disabled={template.placements.length < 2}
-            className="border border-rule bg-paper px-2 py-1 text-[13px] disabled:text-muted lg:w-full"
+            className="min-h-[var(--tap)] border border-rule bg-paper px-2 text-[13px] disabled:text-muted lg:w-full"
           >
             {template.placements.includes("above") && (
               <option value="above">above the caption</option>
@@ -166,14 +184,20 @@ export function CatalogueControls({
           onChange={(e) =>
             change({ fit: e.target.value as CatalogueParams["fit"] })
           }
-          className="border border-rule bg-paper px-2 py-1 text-[13px] lg:w-full"
+          className="min-h-[var(--tap)] border border-rule bg-paper px-2 text-[13px] lg:w-full"
         >
           <option value="page">符合頁面 · whole page</option>
           <option value="width">符合寬度 · page width</option>
         </select>
       </label>
 
-      <label className="flex items-center gap-2 text-[13px]">
+      {/* THE TARGET IS THE LABEL, NOT THE BOX. A checkbox is 13×13 by the
+          browser's own stylesheet and there is no honest way to make that
+          square 44px — a tick the size of a button reads as a button, and
+          beside four selects it would be the loudest thing in the column. The
+          floor goes on the `<label>`, which already wraps the words, so the
+          whole line "Print the reference" is what a finger presses. */}
+      <label className="flex min-h-[var(--tap)] items-center gap-2 text-[13px]">
         <input
           type="checkbox"
           name="showRef"
@@ -206,7 +230,7 @@ export function CatalogueControls({
           to apply a change in one that did not. */}
       <button
         type="submit"
-        className="ml-auto border border-ruleStrong px-2.5 py-1 text-[12px] hover:bg-sunk lg:ml-0 lg:w-full"
+        className="ml-auto min-h-[var(--tap)] border border-ruleStrong px-2.5 text-[12px] hover:bg-sunk lg:ml-0 lg:w-full"
       >
         Apply
       </button>

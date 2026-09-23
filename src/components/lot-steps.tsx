@@ -107,7 +107,7 @@ export function LotSteps({
     // items-stretch: the buttons take the height of whatever else the header's
     // action row holds, so a change to that row's padding needs no change
     // here. BOX carries a min-height and not a height, which is what makes the
-    // stretch possible — the 30px is a floor for the case where these are the
+    // stretch possible — `--tap` is a floor for the case where these are the
     // only things in the row, not the size they are.
     <nav aria-label="Step between lots" className="flex items-stretch gap-1">
       <Step eventId={eventId} to={step.prev} back />
@@ -122,8 +122,13 @@ export function LotSteps({
   );
 }
 
+// THE HOUSE FLOOR, not a number of its own. This was `min-h-[30px] w-[28px]`,
+// which is 28 wide on every device — and on a tablet at a viewing, which is
+// the case `--tap` exists for, a 28px chevron is the control a registrar
+// misses. Both axes now read the token: 28px with a mouse, which is what the
+// 30 was approximating, and 44 under a coarse pointer.
 const BOX =
-  "flex min-h-[30px] w-[28px] items-center justify-center border border-ruleStrong bg-paper text-muted";
+  "flex min-h-[var(--tap)] min-w-[var(--tap)] items-center justify-center border border-ruleStrong bg-paper text-muted";
 
 function Step({
   eventId,

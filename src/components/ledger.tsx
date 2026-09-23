@@ -14,6 +14,28 @@ import {
 /**
  * One ledger, across every sale.
  *
+ * ── THE INTERFACE SAYS "EVENT". THIS COMMENT MAY SAY "SALE" ─────────────────
+ *
+ * Every user-facing string on this screen is the schema's noun — event — and
+ * that is a decision, not an oversight. "Sale" is one tenant's word for it:
+ * the vocabulary layer (Phase 10, deferred; src/components/top-bar.tsx holds
+ * the same note about the select that would drive it) substitutes a house's
+ * own word for the neutral one at render time, and the whole point of that
+ * layer is that the code carries the neutral noun. A screen that hard-codes
+ * the auction house's word is work Phase 10 has to undo before it can start.
+ *
+ * This screen had six strings saying "sale" against five saying "event",
+ * because two tranches wrote copy from two sources — the schema's noun and the
+ * drawing's. The drawing is right about the auction house and wrong about the
+ * code.
+ *
+ * The PROSE in these comments still says "sale", deliberately: it describes
+ * the world the first customers work in, it is the word the rest of the
+ * repository argues in, and no vocabulary layer relabels a comment.
+ *
+ * Nothing here should reach the printed page in any case — templates.ts and
+ * `CORE_FIELDS` are where a tenant's words genuinely print.
+ *
  * ── THE ROW IS THE SCREEN ───────────────────────────────────────────────────
  *
  * Four columns: which sale, how big it is, where it has got to, and the one
@@ -68,6 +90,9 @@ function formatDate(value: Date | null): string {
 
 export function Ledger({ view }: { view: LedgerView }): React.ReactElement {
   const { query, rows } = view;
+  // One of the orders is always current: `readQuery` is total over the
+  // parameter, so an unknown one has already fallen back to the default.
+  const order = view.orders.find((o) => o.current) ?? view.orders[0]!;
 
   return (
     <>
@@ -83,7 +108,7 @@ export function Ledger({ view }: { view: LedgerView }): React.ReactElement {
       <div
         className="mt-4 flex flex-wrap gap-px border-b border-rule"
         role="group"
-        aria-label="Filter by where a sale has got to"
+        aria-label="Filter by where an event has got to"
       >
         {view.tabs.map((tab) => (
           <Link
@@ -105,46 +130,60 @@ export function Ledger({ view }: { view: LedgerView }): React.ReactElement {
       </div>
 
       <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-        {/* A PLAIN GET FORM, so the search works before the bundle lands and
-            the result is an address somebody can send. The tab rides along as
-            a hidden field — searching inside "Photographed" stays there — but
-            only when it is not the default, so a plain search gives a plain
-            URL. The page deliberately does not ride along: a new search starts
-            at the beginning. */}
-        <form method="get" action="/" className="flex items-center gap-2">
-          <label className="flex items-center gap-2">
-            <span className="sr-only">Search sales by name</span>
-            <input
-              type="search"
-              name={PARAM.q}
-              defaultValue={query.q}
-              placeholder="Find a sale by name"
-              className="min-h-[var(--tap)] w-64 max-w-[50vw] border border-rule bg-paper px-2.5 text-[13px] placeholder:text-faint"
-            />
-          </label>
-          {query.tab !== DEFAULT_QUERY.tab && (
-            <input type="hidden" name={PARAM.tab} value={query.tab} />
-          )}
-          <button
-            type="submit"
-            className="min-h-[var(--tap)] border border-ruleStrong bg-paper px-3 text-[12px] font-medium hover:bg-sunk"
-          >
-            Search
-          </button>
-          {query.q !== "" && (
-            <Link
-              href={ledgerHref(query, { q: "", page: 1 })}
-              className="text-[12px] text-muted underline hover:text-ink"
+        <div className="flex flex-wrap items-center gap-3">
+          {/* A PLAIN GET FORM, so the search works before the bundle lands and
+              the result is an address somebody can send. The tab and the order
+              ride along as hidden fields — searching inside "Photographed"
+              stays there, and searching a ledger sorted by size keeps the size
+              — but only when they are not the default, so a plain search gives
+              a plain URL. The page deliberately does not ride along: a new
+              search starts at the beginning. */}
+          <form method="get" action="/" className="flex items-center gap-2">
+            <label className="flex items-center gap-2">
+              <span className="sr-only">Search events by name</span>
+              <input
+                type="search"
+                name={PARAM.q}
+                defaultValue={query.q}
+                placeholder="Find an event by name"
+                className="min-h-[var(--tap)] w-64 max-w-[50vw] border border-rule bg-paper px-2.5 text-[13px] placeholder:text-faint"
+              />
+            </label>
+            {query.tab !== DEFAULT_QUERY.tab && (
+              <input type="hidden" name={PARAM.tab} value={query.tab} />
+            )}
+            {query.sort !== DEFAULT_QUERY.sort && (
+              <input type="hidden" name={PARAM.sort} value={query.sort} />
+            )}
+            <button
+              type="submit"
+              className="min-h-[var(--tap)] border border-ruleStrong bg-paper px-3 text-[12px] font-medium hover:bg-sunk"
             >
-              Clear
-            </Link>
-          )}
-        </form>
+              Search
+            </button>
+            {query.q !== "" && (
+              <Link
+                href={ledgerHref(query, { q: "", page: 1 })}
+                className="text-[12px] text-muted underline hover:text-ink"
+              >
+                Clear
+              </Link>
+            )}
+          </form>
 
+          <Ordering view={view} />
+        </div>
+
+        {/* THE COUNT NAMES THE ORDER, and now it is the order's own word
+            rather than "newest first" hard-coded under a list that could not
+            be sorted. It repeats what the pressed control above already shows,
+            on purpose: the control says what you can change, the sentence says
+            what you are looking at, and the sentence is the half a screen
+            reader is given when the page changes under it. */}
         <p className="text-[12px] text-muted" data-numeric role="status">
           {view.matched === 0
             ? "Nothing here"
-            : `Showing ${view.from}–${view.to} of ${view.matched}, newest first`}
+            : `Showing ${view.from}–${view.to} of ${view.matched}, ${order.first} first`}
         </p>
       </div>
 
@@ -163,9 +202,9 @@ export function Ledger({ view }: { view: LedgerView }): React.ReactElement {
           no sentence — so the line length is capped rather than the words cut,
           because the length is what was wrong. */}
       <p id="ledger-note" className="mt-4 max-w-prose text-[12px] leading-relaxed text-faint">
-        Where a sale has got to is read from its lots, photographs, catalogues
-        and exports. Nobody files a status, so nobody can forget to — and where
-        a person has overruled the reading, the row says so.
+        Where an event has got to is read from its lots, photographs,
+        catalogues and exports. Nobody files a status, so nobody can forget to
+        — and where a person has overruled the reading, the row says so.
       </p>
 
       <div className="mt-2 border border-rule bg-paper">
@@ -216,7 +255,7 @@ export function Ledger({ view }: { view: LedgerView }): React.ReactElement {
           >
             <thead>
               <tr className="border-b border-rule text-left text-[10px] tracking-wide text-muted">
-                <th className="px-4 py-2 font-medium">Sale</th>
+                <th className="px-4 py-2 font-medium">Event</th>
                 <th className="w-24 px-4 py-2 text-right font-medium">Lots</th>
                 <th className="w-60 px-4 py-2 font-medium">Where it has got to</th>
                 <th className="w-44 px-4 py-2 text-right font-medium">Next</th>
@@ -256,10 +295,18 @@ export function Ledger({ view }: { view: LedgerView }): React.ReactElement {
                       <>
                         <span className="block">{event.lotCount}</span>
                         {/* The lot count is what the column promises; the plate
-                            tally under it is the one number that says whether the
-                            current step is half done, and the stage label above
-                            cannot — "Recorded" reads the same at 1 of 200 and at
-                            199 of 200. */}
+                            tally under it says how much of the shoot is done.
+                            IT USED TO BE THE ANSWER TO THE STAGE COLUMN'S
+                            SHORTCOMING — "Recorded" reads the same at 1 of 200
+                            and at 199 of 200 — which put the quantifier two
+                            columns from the question. The stage cell answers
+                            that itself now (src/components/stage.tsx), and this
+                            is back to being what the Lots column is about.
+                            It is not the same number under another name: the
+                            plate tally is a fact about the inventory and stands
+                            whatever a house's workflow is, while the stage
+                            cell's shortfall is about the NEXT STEP, which for a
+                            gallery's workflow has nothing to do with plates. */}
                         <span
                           title={`${event.photographedCount} of ${event.lotCount} photographed`}
                           className={`mt-0.5 block text-[12px] ${
@@ -274,6 +321,13 @@ export function Ledger({ view }: { view: LedgerView }): React.ReactElement {
                     )}
                   </td>
 
+                  {/* The cell is a state and a shortfall now, so it is the
+                      widest thing in a narrow column and the shortfall can
+                      take a second line. That costs the table no height: the
+                      name column is already a name over a date and the lot
+                      column a count over a tally, so every row is two lines
+                      tall whatever this says. It is worth a glance in a
+                      browser pass, which a unit test cannot give it. */}
                   <td className="px-4 py-2.5 align-top">
                     <StageCell reading={reading} />
                   </td>
@@ -307,6 +361,54 @@ export function Ledger({ view }: { view: LedgerView }): React.ReactElement {
 }
 
 /**
+ * Which way round the ledger is read.
+ *
+ * ── LINKS, NOT A SELECT ─────────────────────────────────────────────────────
+ *
+ * Every other control on this screen is a URL — the tab, the page, the search
+ * — and the order is the same kind of thing: a specialist looking at the
+ * biggest sales still being photographed can send that address to somebody. A
+ * `<select>` inside the search form would also survive with no JavaScript, but
+ * only by making the order a two-press control (choose, then Search), and
+ * auto-submitting it on change is the JavaScript this screen does not
+ * otherwise need.
+ *
+ * Rejected: sorting by pressing a column header, which is the spreadsheet
+ * convention and a poor fit here. Only one of the three has a column to press.
+ * "Newest" is the date a sale was taken on, which this table prints nowhere —
+ * the date under each name is the date it is HELD — so two of the three orders
+ * would have had no header to live on, and the one that did would have taught
+ * a rule the others break.
+ *
+ * THE CURRENT ONE IS STILL A LINK, as the current tab is: it is the address of
+ * the screen you are on, which is what a person copies.
+ */
+function Ordering({ view }: { view: LedgerView }): React.ReactElement {
+  return (
+    <nav
+      aria-label="Order the events"
+      className="flex flex-wrap items-center gap-px text-[12px]"
+    >
+      <span className="pr-1.5 text-muted">Order</span>
+      {view.orders.map((order) => (
+        <Link
+          key={order.id}
+          href={order.href}
+          aria-current={order.current ? "true" : undefined}
+          className={`flex min-h-[var(--tap)] items-center border px-2.5 ${
+            order.current
+              ? "border-ruleStrong bg-sunk font-medium text-ink"
+              : "border-transparent text-muted hover:text-ink"
+          }`}
+        >
+          {order.label}
+        </Link>
+      ))}
+    </nav>
+  );
+}
+
+/**
  * The three ways this table is empty, told apart.
  *
  * The mockup never drew one (§7 of the artefact manifest: "states the mockup
@@ -324,14 +426,14 @@ function Nothing({ view }: { view: LedgerView }): React.ReactElement {
   if (total === 0) {
     return (
       <p className="px-4 py-10 text-center text-[13px] leading-relaxed text-muted">
-        Name the sale you are cataloguing on the line above, and the lots go in
-        next.
+        Name the event you are cataloguing on the line above, and the lots go
+        in next.
       </p>
     );
   }
 
   const tab = tabs.find((t) => t.current);
-  // Named so the sentence reads: "No sale …" — "still in production", "at
+  // Named so the sentence reads: "No event …" — "still in production", "at
   // Photographed", or nothing at all when the tab is everything.
   const where =
     !tab || tab.id === ALL
@@ -344,10 +446,10 @@ function Nothing({ view }: { view: LedgerView }): React.ReactElement {
     <div className="px-4 py-10 text-center text-[13px] leading-relaxed text-muted">
       <p>
         {query.q === "" ? (
-          <>No sale is{where || " here"} just now.</>
+          <>No event is{where || " here"} just now.</>
         ) : (
           <>
-            No sale{where} is named{" "}
+            No event{where} is named{" "}
             <span className="font-medium text-ink">“{query.q}”</span>.
           </>
         )}
@@ -369,7 +471,7 @@ function Nothing({ view }: { view: LedgerView }): React.ReactElement {
             href={ledgerHref(query, { q: "", tab: ALL, page: 1 })}
             className="underline hover:text-ink"
           >
-            Look at every sale
+            Look at every event
           </Link>
         )}
       </p>

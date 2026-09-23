@@ -1,11 +1,32 @@
 import Link from "next/link";
 
-import { placeHref, placeIsFile, type StageReading } from "@/lib/workflow";
+import { placeHref, placeIsFile, shortfallOf, type StageReading } from "@/lib/workflow";
 
 /**
- * Where a sale is, in one cell: how far along the ordered stages it is, and the
- * stage's name. Read wherever events are listed, so every ledger in the system
- * says the same thing about the same sale.
+ * Where a sale is, in one cell: how far along the ordered stages it is, the
+ * stage's name, and what the next stage is still waiting for. Read wherever
+ * events are listed, so every ledger in the system says the same thing about
+ * the same sale.
+ *
+ * ── THE NAME IS HALF A CELL ─────────────────────────────────────────────────
+ *
+ * This file used to argue at length about the indicator's colour and not once
+ * about the label, and the label was the half that was wrong: a stage is a
+ * STATE, so "Recorded" reads identically for a sale with one plate of two
+ * hundred and one with a hundred and ninety-nine. The drawing never said only
+ * the state — its cell was "Receive · 87 without a condition check" — and the
+ * quantifier had ended up two columns away in the lot counts, where it is
+ * about the inventory and not about the step.
+ *
+ * So the shortfall is appended, and it is DERIVED (`shortfallOf`,
+ * src/lib/workflow.ts) from the next stage's own conditions rather than
+ * written per stage here: a house authors its own workflow, and a sentence
+ * that only fits the built-in is a sentence that breaks the day one does.
+ *
+ * THE STAGE NAME KEEPS ITS OWN ELEMENT, which is not cosmetic. It is the thing
+ * a person scans down the column and the thing a driven test addresses by
+ * exact text; a cell whose only text node is "Recorded · 6 without a
+ * photograph" has no stage name in it to find.
  *
  * ── THE INDICATOR COUNTS STEPS, AND SAYS WHICH ARE DONE ─────────────────────
  *
@@ -42,13 +63,25 @@ import { placeHref, placeIsFile, type StageReading } from "@/lib/workflow";
 export function StageCell({ reading }: { reading: StageReading }): React.ReactElement {
   const steps = reading.workflow.stages.length - 1;
   const complete = reading.index === steps;
+  const shortfall = shortfallOf(reading);
   const title = reading.overridden
     ? `Set by hand. From the data alone it would read ${reading.derived.label.en}.`
-    : `Stage ${reading.index + 1} of ${steps + 1}, read from the sale's lots, photographs, catalogue and exports.`;
+    : `Stage ${reading.index + 1} of ${steps + 1}, read from the event's lots, photographs, catalogue and exports.`;
   return (
     <span className="inline-flex items-center gap-2" title={title}>
       <StageSegments filled={reading.index} of={steps} />
-      <span className={complete ? "text-ink" : "text-muted"}>{reading.stage.label.en}</span>
+      {/* The name and its shortfall wrap together, inside one box beside the
+          segments — so a shortfall too long for the column takes a second line
+          under the words and never leaves the indicator stranded on a line of
+          its own. */}
+      <span>
+        <span className={complete ? "text-ink" : "text-muted"}>{reading.stage.label.en}</span>
+        {/* 12px is the scale's quiet line (test/house-style.test.ts): the state
+            is what the column is, the shortfall is what it costs. */}
+        {shortfall !== null && (
+          <span className="text-[12px] text-muted"> · {shortfall}</span>
+        )}
+      </span>
       {reading.overridden && <ByHand />}
     </span>
   );

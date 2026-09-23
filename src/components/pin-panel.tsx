@@ -42,6 +42,22 @@ export interface PinPanelPin {
  * person fixes the selection rather than the whole thing again. The first
  * version keyed only the list, and a refusal's message then outlived two
  * density changes in the footer — seen in a screenshot, not in a test.
+ *
+ * ── TWO TARGETS TO A ROW, AND NEITHER MAY SWALLOW THE OTHER ──────────────────
+ *
+ * Each lot row does two different things: tick it for a pin, or open it to
+ * correct it. Both need `--tap` (globals.css: 28px, 44px under a coarse
+ * pointer), and the obvious way to give the tick its floor — grow the box, or
+ * wrap the whole row in the label — puts one target on top of the other, so a
+ * finger aimed at the lot ticks it instead. Two overlapping targets are worse
+ * than one small one, because the small one at least fails visibly.
+ *
+ * So the row is a flex line of two SIBLINGS, each carrying the floor and
+ * neither overlapping: a square label around the tick, and the link taking the
+ * rest of the width. The row's own vertical padding is gone and the token sets
+ * the height instead, the way the ledger's tabs do — otherwise the row would
+ * be the token PLUS the padding and the list would be half again as long as it
+ * needs to be on the screen where it is longest.
  */
 export function PinPanel({
   eventId,
@@ -81,7 +97,10 @@ export function PinPanel({
             {pins.map((pin) => (
               <li
                 key={pin.id}
-                className="flex items-center justify-between gap-3 py-1 text-[12px]"
+                // No `py` of its own: Unpin carries the floor and the row is
+                // as tall as the floor. Padding on top of it would make the
+                // row the token plus eight.
+                className="flex items-center justify-between gap-3 text-[12px]"
               >
                 <span className="min-w-0 truncate" data-numeric>
                   {pin.refs.join(" · ")}
@@ -92,7 +111,10 @@ export function PinPanel({
                 >
                   <button
                     type="submit"
-                    className="shrink-0 text-[12px] text-muted underline hover:text-seal"
+                    // Underlined text is a small target however wide the word
+                    // is: the floor is what makes the LINE pressable rather
+                    // than the five letters.
+                    className="min-h-[var(--tap)] shrink-0 px-1 text-[12px] text-muted underline hover:text-seal"
                   >
                     Unpin
                   </button>
@@ -145,28 +167,51 @@ function PinBody({
         {lots.map((lot) => (
           <li
             key={lot.id}
-            className="flex items-center gap-2 border-b border-rule px-3 py-1.5 text-[12px] last:border-b-0 hover:bg-sunk"
+            // No left padding and no `py`: the tick's own square supplies the
+            // inset and the two targets supply the height (see the header).
+            // `items-center` and NOT `items-stretch`, which was tried and is
+            // wrong — the override and pinned chips are flex items too, and
+            // stretching them turns two small marks into two coloured columns
+            // the height of the row.
+            className="flex items-center gap-2 border-b border-rule pr-3 text-[12px] last:border-b-0 hover:bg-sunk"
           >
-            <input
-              type="checkbox"
-              name="lotId"
-              value={lot.id}
-              checked={selected.has(lot.id)}
-              onChange={() => toggle(lot.id)}
-              // Already in a pin: the server would refuse, so the box says so first.
-              disabled={lot.pinned}
-              aria-label={`Select ${lot.ref ?? lot.title}`}
-              className="shrink-0 accent-seal"
-            />
+            {/* A SQUARE OF NOTHING, and that is the point: it paints no border
+                and no ground, so the row still reads as a 13px tick beside a
+                title while the thing a finger hits is `--tap` on both axes.
+                `min-w` as well as `min-h`, because a checkbox is small in both
+                directions and a 44×13 target is still a miss. */}
+            <label className="flex min-h-[var(--tap)] min-w-[var(--tap)] shrink-0 cursor-pointer items-center justify-center">
+              <input
+                type="checkbox"
+                name="lotId"
+                value={lot.id}
+                checked={selected.has(lot.id)}
+                onChange={() => toggle(lot.id)}
+                // Already in a pin: the server would refuse, so the box says so first.
+                disabled={lot.pinned}
+                aria-label={`Select ${lot.ref ?? lot.title}`}
+                className="accent-seal"
+              />
+            </label>
             <Link
               href={`/events/${eventId}/lots/${lot.id}`}
-              className="min-w-0 flex-1 truncate hover:text-seal hover:underline"
+              className="flex min-h-[var(--tap)] min-w-0 flex-1 items-center hover:text-seal hover:underline"
               title={lot.title}
             >
-              <span className="font-medium" data-numeric>
-                {lot.ref ?? "—"}
-              </span>{" "}
-              <span className="text-muted">{lot.title || "untitled"}</span>
+              {/* THE TRUNCATION MOVED INWARDS WITH THE FLOOR. `truncate` is
+                  `overflow-hidden` + `text-ellipsis` + `nowrap`, and an
+                  ellipsis is a property of a block's INLINE content — put
+                  `flex` on the same element and the two spans become flex
+                  items, the inline formatting context goes, and a long title
+                  is cut off square instead of trailing off. So the link is
+                  the flex box that centres the line at the token's height and
+                  this span is the block that still trails off. */}
+              <span className="min-w-0 truncate">
+                <span className="font-medium" data-numeric>
+                  {lot.ref ?? "—"}
+                </span>{" "}
+                <span className="text-muted">{lot.title || "untitled"}</span>
+              </span>
             </Link>
             {lot.overrides > 0 && (
               <span
@@ -200,7 +245,7 @@ function PinBody({
         <button
           type="submit"
           disabled={pending || selected.size < 2}
-          className="shrink-0 border border-ruleStrong bg-paper px-2.5 py-1 text-[12px] font-medium hover:bg-sunk disabled:opacity-50"
+          className="min-h-[var(--tap)] shrink-0 border border-ruleStrong bg-paper px-2.5 text-[12px] font-medium hover:bg-sunk disabled:opacity-50"
         >
           Pin together
         </button>

@@ -30,7 +30,12 @@ export function PageHeader<T extends string>({
         {parent && (
           <Link
             href={parent.href}
-            className="text-[12px] text-muted hover:text-seal hover:underline"
+            // Floored like every other control. It is the way back out of a
+            // lot, it was fifteen pixels tall, and with a mouse `--tap` is
+            // 28px so this costs a few pixels above a title that has its own
+            // margin. `inline-flex` because `min-h` does nothing to an inline
+            // box — the class alone would have been a green test and no change.
+            className="inline-flex min-h-[var(--tap)] items-center text-[12px] text-muted hover:text-seal hover:underline"
           >
             {parent.label}
           </Link>

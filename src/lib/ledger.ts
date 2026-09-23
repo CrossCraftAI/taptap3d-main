@@ -67,20 +67,43 @@ export const OPEN = "open";
 /** The tab that is not a filter at all. The archive is in here. */
 export const ALL = "all";
 
+/**
+ * The orders a ledger can be read in. The first is the default.
+ *
+ * ── WHY THREE, AND WHY THESE ────────────────────────────────────────────────
+ *
+ * The screen is comparative — sixty sales, which needs me today — and search,
+ * filter and pagination all shipped while the order stayed fixed at
+ * newest-first with the result count saying so. Newest answers "what did we
+ * just take on"; it does not answer "which is biggest" or "which is soonest",
+ * and those are the other two questions a specialist asks of a column of
+ * sixty. Nothing else here is a question about the whole list: the way to a
+ * sale you can NAME is the search box, which is also why there is no sort by
+ * name.
+ *
+ * Every one of them is a URL, like the tab and the page, so a sorted ledger is
+ * a link somebody can send. What the control looks like is argued where it is
+ * drawn (src/components/ledger.tsx).
+ */
+export const ORDERS = ["new", "soon", "big"] as const;
+export type Order = (typeof ORDERS)[number];
+
 export interface LedgerQuery {
   /** What was typed in the search box, trimmed and folded. "" for none. */
   q: string;
   /** `OPEN`, `ALL`, or a stage id of the workflow in force. */
   tab: string;
+  /** Which of `ORDERS` the rows are in. */
+  sort: Order;
   /** 1-based, before clamping. */
   page: number;
 }
 
 /** The default view: what is still in production, newest first, page one. */
-export const DEFAULT_QUERY: LedgerQuery = { q: "", tab: OPEN, page: 1 };
+export const DEFAULT_QUERY: LedgerQuery = { q: "", tab: OPEN, sort: "new", page: 1 };
 
 /** What a `<form method="get">` and a `<Link>` call each of these. */
-export const PARAM = { q: "q", tab: "stage", page: "page" } as const;
+export const PARAM = { q: "q", tab: "stage", sort: "sort", page: "page" } as const;
 
 type RawParams = Record<string, string | string[] | undefined>;
 
@@ -105,14 +128,22 @@ export function readQuery(raw: RawParams, workflow: Workflow): LedgerQuery {
   const known =
     wanted === OPEN || wanted === ALL || workflow.stages.some((s) => s.id === wanted);
   const page = Number.parseInt(one(raw, PARAM.page), 10);
+  const sort = one(raw, PARAM.sort);
   return {
     // Folded here rather than at every comparison, so the search is
     // case-insensitive in one place. `toLowerCase` is a no-op on Chinese, which
     // is why one pass covers a name written in both scripts.
     q: one(raw, PARAM.q).trim(),
     tab: known ? wanted : DEFAULT_QUERY.tab,
+    // An order this build does not have is a stale bookmark, not an error —
+    // the same reading as an unknown tab, and for the same reason.
+    sort: isOrder(sort) ? sort : DEFAULT_QUERY.sort,
     page: Number.isFinite(page) && page > 0 ? page : 1,
   };
+}
+
+function isOrder(value: string): value is Order {
+  return (ORDERS as readonly string[]).includes(value);
 }
 
 /**
@@ -136,6 +167,7 @@ export function ledgerHref(
   const search = new URLSearchParams();
   if (next.q) search.set(PARAM.q, next.q);
   if (next.tab !== DEFAULT_QUERY.tab) search.set(PARAM.tab, next.tab);
+  if (next.sort !== DEFAULT_QUERY.sort) search.set(PARAM.sort, next.sort);
   if (next.page > 1) search.set(PARAM.page, String(next.page));
   const qs = search.toString();
   return qs ? `/?${qs}` : "/";
@@ -160,10 +192,21 @@ export interface LedgerTab {
   href: "/" | `/?${string}`;
 }
 
+export interface LedgerOrder {
+  id: Order;
+  /** The control's word: Newest, Soonest, Biggest. */
+  label: string;
+  /** How the result count says it: "…, newest first". */
+  first: string;
+  current: boolean;
+  href: "/" | `/?${string}`;
+}
+
 export interface LedgerView {
   query: LedgerQuery;
   tabs: LedgerTab[];
-  /** This page's rows, in the order the query returned them. */
+  orders: LedgerOrder[];
+  /** This page's rows, in the order the query asked for. */
   rows: LedgerRow[];
   /** Every sale the org has, before the search and the tab. */
   total: number;
@@ -209,6 +252,54 @@ function matches(name: string, q: string): boolean {
 }
 
 /**
+ * The three orders, with the word each one puts in the count sentence.
+ *
+ * NEWEST HAS NO COMPARATOR ON PURPOSE. `listEvents` already orders by
+ * `created_at` descending, so re-sorting here would be the same rule written a
+ * second time in a second place — which is the disagreement this file's own
+ * header refuses for the stage and src/lib/data/events.ts warns about for the
+ * counts. The default is therefore "as the query returned it", and the test
+ * that proves it hands `readLedger` a deliberately un-ordered list and asserts
+ * it comes back untouched.
+ *
+ * THE OTHER TWO SORT A COPY, STABLY. `Array.prototype.sort` has been required
+ * to be stable since ES2019, so two sales of the same size or the same date
+ * keep the order they arrived in — which is newest-first, and is a better
+ * second key than anything that could be invented here.
+ */
+const ORDER: Record<
+  Order,
+  { label: string; first: string; by: ((a: LedgerRow, b: LedgerRow) => number) | null }
+> = {
+  new: { label: "Newest", first: "newest", by: null },
+  soon: { label: "Soonest", first: "soonest", by: bySoonest },
+  big: { label: "Biggest", first: "biggest", by: byBiggest },
+};
+
+/**
+ * Nearest date held first, undated last.
+ *
+ * ASCENDING, WHICH PUTS A DATE ALREADY PAST AT THE TOP, and that is the right
+ * end for it: the default tab is the sales still in production, and one of
+ * those whose date has gone is the most urgent row on the screen, not the
+ * least. A sale with no date has no deadline and cannot be the soonest, so it
+ * sorts after every sale that has one — never mixed in as "the beginning of
+ * time", which is what a null read as zero would do.
+ */
+function bySoonest(a: LedgerRow, b: LedgerRow): number {
+  const x = a.event.heldOn?.getTime() ?? Number.POSITIVE_INFINITY;
+  const y = b.event.heldOn?.getTime() ?? Number.POSITIVE_INFINITY;
+  // Written as a comparison rather than `x - y`, because two undated sales
+  // would otherwise subtract two infinities and hand the sort a NaN.
+  return x === y ? 0 : x < y ? -1 : 1;
+}
+
+/** Most lots first. The count is the one measure of size this screen has. */
+function byBiggest(a: LedgerRow, b: LedgerRow): number {
+  return b.event.lotCount - a.event.lotCount;
+}
+
+/**
  * The ledger the URL asks for.
  *
  * PURE: sales in, a view out, no database and no request — so the paging
@@ -219,6 +310,12 @@ function matches(name: string, q: string): boolean {
  * their names. A house-authored workflow with three stages gets three stage
  * tabs, in its own words, with no change here — which is the same promise the
  * progress column already makes.
+ *
+ * SEARCH, THEN TAB, THEN ORDER, THEN PAGE, and each step is in that place for
+ * its own reason: a tab's count has to be of what the search left, the order
+ * has to be of what the tab left or page two is a page of a different list,
+ * and the page is a cut taken last — which is the only sequence in which
+ * "Showing 1–25 of 60, biggest first" is a true sentence.
  */
 export function readLedger(
   events: EventSummary[],
@@ -226,9 +323,8 @@ export function readLedger(
   query: LedgerQuery,
 ): LedgerView {
   const all: LedgerRow[] = events.map((event) => {
-    const facts = factsOf(event);
-    const reading = readStage(workflow, facts, event.stageOverride);
-    return { event, reading, midJob: isMidJob(reading, facts) };
+    const reading = readStage(workflow, factsOf(event), event.stageOverride);
+    return { event, reading, midJob: isMidJob(reading) };
   });
 
   // The search narrows first, so every tab's count says what pressing it would
@@ -253,7 +349,19 @@ export function readLedger(
     href: ledgerHref(query, { tab: id, page: 1 }),
   }));
 
-  const matched = found.filter((row) => inTab(row, query.tab));
+  // The order changes what is on page one, so pressing one starts again at
+  // page one — the same rule as a tab, and the same paging bug avoided.
+  const orders: LedgerOrder[] = ORDERS.map((id) => ({
+    id,
+    label: ORDER[id].label,
+    first: ORDER[id].first,
+    current: id === query.sort,
+    href: ledgerHref(query, { sort: id, page: 1 }),
+  }));
+
+  const inThisTab = found.filter((row) => inTab(row, query.tab));
+  const by = ORDER[query.sort].by;
+  const matched = by ? [...inThisTab].sort(by) : inThisTab;
   const pages = Math.max(1, Math.ceil(matched.length / PAGE_SIZE));
   // CLAMPED, not refused. A stale link to page nine of a view that has since
   // shrunk to four shows page four, because the sales are what somebody came
@@ -265,6 +373,7 @@ export function readLedger(
   return {
     query,
     tabs,
+    orders,
     rows,
     total: events.length,
     open: all.filter((row) => isOpen(row.reading)).length,
