@@ -113,19 +113,51 @@ export function handlePoint(rect: OverlayRect, handle: ResizeHandle): Point {
  *
  * Corners are tested BEFORE edges: at a corner the two hit boxes overlap, and a
  * human aiming at the corner of a picture means the corner.
+ *
+ * ── THE REACH IS CAPPED BY THE BOX, AND THAT IS NOT A REFINEMENT ────────────
+ *
+ * A caption row is about sixteen pixels tall. With a flat eight-pixel reach,
+ * the north and south handles are each eight pixels from the row's own CENTRE
+ * — so every press anywhere on a caption was a resize, and a caption could not
+ * be moved at all. The gesture the whole phase exists for stopped working, on
+ * the commonest part in the product, and it did so silently: the ring stayed
+ * put and the drag looked ignored.
+ *
+ * So a handle may claim at most a third of the box on each axis. At a third,
+ * the middle third of every box is always a move, whatever its size — the
+ * property worth holding, because "the middle of a thing is the thing" is what
+ * a hand assumes. On a large plate the cap is inert and the reach is the
+ * caller's; on a caption it shrinks to five pixels and the row stays draggable.
+ *
+ * NEAREST WINS, rather than first-in-order. The order still decides a true tie
+ * — corners before edges, which is the rule above — but where two reaches
+ * overlap without tying, the one the pointer is actually closer to is the one
+ * a hand meant. First-in-order gave a short box's `e` to a press plainly
+ * nearer its `se`.
  */
 export function hitHandle(
   rect: OverlayRect,
   point: Point,
   radius: number,
 ): ResizeHandle | null {
+  const reachX = Math.min(radius, rect.w / 3);
+  const reachY = Math.min(radius, rect.h / 3);
+  let best: ResizeHandle | null = null;
+  let bestDistance = Infinity;
   for (const handle of RESIZE_HANDLES) {
     const p = handlePoint(rect, handle);
-    if (Math.abs(point.x - p.x) <= radius && Math.abs(point.y - p.y) <= radius) {
-      return handle;
+    const dx = Math.abs(point.x - p.x);
+    const dy = Math.abs(point.y - p.y);
+    if (dx > reachX || dy > reachY) continue;
+    // Squared, because nothing here needs the root and a comparison does not
+    // care. Strictly less than, so an exact tie keeps the declared order.
+    const distance = dx * dx + dy * dy;
+    if (distance < bestDistance) {
+      best = handle;
+      bestDistance = distance;
     }
   }
-  return null;
+  return best;
 }
 
 /** Is a point inside a rectangle? */

@@ -11,6 +11,7 @@ import {
   currentPageIndex,
   fitZoom,
   FRAME_BASE_W,
+  frameWidth,
   pageFitZoom,
   pageScrollTop,
   revealPlan,
@@ -75,6 +76,30 @@ describe("zoom", () => {
     // canvas on the machine uses.
     expect(wheelZoom(1, 100)).toBeLessThan(1);
     expect(wheelZoom(1, -100)).toBeGreaterThan(1);
+  });
+});
+
+describe("frameWidth", () => {
+  // STILL UNCALLED. Tested anyway, because the number is the load-bearing part
+  // of a spread and the comment above it is where the argument lives: a
+  // narrower column would halve the type and re-break every CJK line, which is
+  // the layout the specialist pressed the toggle to judge. What is missing is
+  // in the renderer — this renderer stacks sheets one per row — and is written
+  // down beside the function.
+  it("is one sheet's footprint at one-up and exactly two at two-up", () => {
+    expect(frameWidth(false)).toBe(FRAME_BASE_W);
+    expect(frameWidth(true)).toBe(FRAME_BASE_W * 2);
+  });
+
+  it("keeps 100% honest in both arrangements", () => {
+    // `zoom = 1` means the arrangement at its physical size. A4 at the CSS
+    // reference 96dpi is 210/25.4*96 = 793.7px, and the preview's body gives
+    // the sheet 16px of air a side — so a one-up frame reaches the cap with
+    // 32px to spare and a two-up frame reaches it twice.
+    const A4_PX = (210 / 25.4) * 96;
+    expect(frameWidth(false) - 32).toBeGreaterThanOrEqual(A4_PX);
+    expect(frameWidth(false) - 32 - A4_PX).toBeLessThan(1);
+    expect(fitZoom(frameWidth(true), frameWidth(true))).toBe(1);
   });
 });
 

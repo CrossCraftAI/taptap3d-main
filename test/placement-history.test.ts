@@ -9,13 +9,17 @@
 import { describe, expect, it } from "vitest";
 
 import type { PageFrame } from "@/lib/editor/drag-geometry";
+import { roundFrame } from "@/lib/engine/frame";
 import {
+  dropLast,
   entryFor,
+  forget,
   HISTORY_LIMIT,
   last,
   record,
   redoPatch,
   sameFrame,
+  stillApplies,
   undoPatch,
   type PlacementEntry,
 } from "@/lib/editor/placement-history";
@@ -129,5 +133,128 @@ describe("redoPatch", () => {
     const e = entry(WAS, NOW);
     expect(redoPatch(e).frame).toEqual(NOW);
     expect(undoPatch(e).frame).toEqual(WAS);
+  });
+});
+
+// ── The half of undo that stops it lying ─────────────────────────────────────
+
+describe("stillApplies", () => {
+  it("accepts an entry the document still agrees with", () => {
+    // The ordinary case: nobody has touched the part since it was placed, so
+    // `data-page-frame` reads back exactly what the entry wrote.
+    expect(stillApplies(entry(WAS, NOW), { ...NOW })).toBe(true);
+  });
+
+  it("refuses an entry whose part has been moved since", () => {
+    // A second tab, a colleague, or the same person in the lot form. Undoing
+    // here would put the part back to a position that was replaced an hour
+    // ago, with nothing on screen to say a correction nobody made had landed.
+    expect(stillApplies(entry(WAS, NOW), { ...NOW, x: NOW.x + 0.01 })).toBe(false);
+  });
+
+  it("refuses an entry whose part has been handed back to the engine", () => {
+    // `Reset placement`, or the row cleared from the lot page: the renderer
+    // publishes no `data-page-frame` at all, which parses to null.
+    expect(stillApplies(entry(WAS, NOW), null)).toBe(false);
+  });
+
+  it("compares the STORED numbers, not a re-measured box", () => {
+    // The whole reason `parsePageFrame` reads the attribute rather than the
+    // painted rectangle. A box measured off the page and converted back
+    // differs from the stored value by the renderer's rounding on its way to a
+    // CSS percentage — four decimals, against six stored — so a check built on
+    // a measurement would clear the stack on every second undo.
+    const rounded = { ...NOW, x: Math.round(NOW.x * 1e4) / 1e4 + 1e-6 };
+    expect(stillApplies(entry(WAS, NOW), rounded)).toBe(false);
+  });
+});
+
+describe("dropLast", () => {
+  it("takes the newest entry off and leaves the rest in order", () => {
+    const one = entry(null, WAS, 1);
+    const two = entry(WAS, NOW, 2);
+    const stack = record(record([], one), two);
+    expect(dropLast(stack)).toEqual([one]);
+    expect(last(dropLast(stack))).toEqual(one);
+  });
+
+  it("is safe on an empty stack", () => {
+    // Reached by an undo whose verification cleared the history a moment
+    // earlier, which is the path that matters: the two happen on one press.
+    expect(dropLast([])).toEqual([]);
+  });
+
+  it("does not mutate the stack it was handed", () => {
+    // The canvas holds the history in a ref and re-reads it on the next
+    // measurement pass; a mutating pop would change what a render in flight
+    // had already been told.
+    const stack = [entry(null, WAS, 1), entry(WAS, NOW, 2)];
+    dropLast(stack);
+    expect(stack).toHaveLength(2);
+  });
+});
+
+describe("forget", () => {
+  const OTHER: PreviewSelection = { lotId: "lot-b", field: "images" };
+  const otherEntry = entryFor(OTHER, null, NOW, 3)!;
+
+  it("takes out one part's entries and leaves every other lot's alone", () => {
+    // What `Reset placement` owes the stack. `stillApplies` would catch the
+    // staleness and then clear EVERYTHING, because a verification failure
+    // means "somebody changed this behind me". Here we are the somebody, and
+    // we know exactly which entries we invalidated.
+    const stack = [entry(null, WAS, 1), otherEntry, entry(WAS, NOW, 2)];
+    expect(forget(stack, selectionKey(SEL))).toEqual([otherEntry]);
+  });
+
+  it("is keyed the way a ring is", () => {
+    // `selectionKey`'s JSON, so "the same part" means what it means everywhere
+    // else in this layer — and in particular is injective, which a naive
+    // `${lotId}-${field}` join is not.
+    const stack = [entry(null, WAS, 1)];
+    expect(forget(stack, selectionKey(OTHER))).toEqual(stack);
+    expect(forget(stack, selectionKey(SEL))).toEqual([]);
+  });
+
+  it("does not mutate the stack it was handed", () => {
+    const stack = [entry(null, WAS, 1), otherEntry];
+    forget(stack, selectionKey(SEL));
+    expect(stack).toHaveLength(2);
+  });
+});
+
+describe("an entry is recorded at the resolution the page publishes", () => {
+  // THE DEFECT THIS CLOSES, and it made undo unusable rather than wrong at the
+  // margin. `after` arrives from the pointer at full precision; the document
+  // publishes the STORED frame, which `overrideFromValue` has rounded. With an
+  // exact comparison in `stillApplies`, the two never matched — so every undo
+  // took the "this part has changed since it was placed" branch, cleared the
+  // stack, and left the placement exactly where it was.
+  const sel = { lotId: "lot-a", field: "title" };
+  const raw = { x: 0.1234567891, y: 0.5, w: 0.4320071234, h: 0.0189889999 };
+
+  it("matches the frame the renderer prints, not the one the pointer computed", () => {
+    const entry = entryFor(sel, null, raw, 1)!;
+    expect(entry).not.toBeNull();
+    // What the page will carry: the same frame through the same rounding.
+    const published = roundFrame(raw);
+    expect(stillApplies(entry, published)).toBe(true);
+    // And the raw number is NOT what was kept — that is the whole point.
+    expect(entry.after).toEqual(published);
+  });
+
+  it("still refuses when the part really did move", () => {
+    const entry = entryFor(sel, null, raw, 1)!;
+    const moved = { ...roundFrame(raw), y: 0.6 };
+    expect(stillApplies(entry, moved)).toBe(false);
+  });
+
+  it("calls a gesture that rounds to where it started no gesture at all", () => {
+    // Under the rounding, a move of less than the renderer's own resolution is
+    // not a move — recording it would put an entry on the stack whose undo a
+    // person could not see happen.
+    const before = roundFrame(raw);
+    const nudged = { ...before, x: before.x + 1e-9 };
+    expect(entryFor(sel, before, nudged, 1)).toBeNull();
   });
 });

@@ -2,17 +2,79 @@
 // floating toolbar may stand, and how to bring a box onto the glass.
 //
 // PORTED WHOLE from the predecessor's (editor)/projects/[id]/editor/canvas-geometry.ts
-// (v0.2.2 session 4, E5) and WIRED IN PART. What tranche 1 reads is the
-// page-tracking half — `currentPageIndex` and `pageScrollTop`, which put a
-// reader back on the page they were on after the preview reloads with the
-// server's answer. The zoom half describes a canvas that scales the frame
-// with a CSS transform; this editor does not do that yet (its "fit" is a
-// stored catalogue parameter the renderer honours by sizing the page — see
-// CatalogueParams.fit), so at zoom = 1 the transform half is the identity and
-// every screen constant divided by the zoom is unchanged. It is here, tested,
-// so that the transform canvas arrives as a wiring change and not a rewrite,
-// and so that the toolbar's placement rule — which has already been wrong in
-// four photographed ways — does not have to be rediscovered.
+// (v0.2.2 session 4, E5) and WIRED IN PART. `toolbarSpot` and `ToolbarSide` are
+// read by src/components/preview-canvas.tsx, which places the selection bar with
+// them at a zoom of exactly 1. Everything else here is still waiting.
+//
+// ── TWO CORRECTIONS TO WHAT THIS HEADER USED TO CLAIM ────────────────────────
+//
+// 1. IT SAID `currentPageIndex` AND `pageScrollTop` WERE WIRED. They are not,
+//    and were not when that was written: the only mention of either outside
+//    this file is a comment. What actually keeps a reader on their page across
+//    a commit is preview-canvas.tsx copying `scrollTop` from the outgoing
+//    buffer to the incoming one — no page index is computed anywhere. The two
+//    functions are correct and tested and have never had a caller. Left
+//    standing because a page rail and a "go to page N" both want them; the
+//    claim is what was wrong, not the code.
+//
+// 2. IT SAID THE TRANSFORM CANVAS "ARRIVES AS A WIRING CHANGE". Against THIS
+//    renderer it does not, and the reason is two `vh` lengths in a file this
+//    tranche may not touch. See below.
+//
+// ── WHY THE ZOOM HALF IS STILL UNWIRED, AND WHAT WOULD UNBLOCK IT ────────────
+//
+// A transform canvas lays the frame out at a FIXED width for the arrangement
+// (FRAME_BASE_W, or twice it for a spread) and a height of `canvasHeight / zoom`,
+// then scales it by `zoom`. `anchoredScroll`'s vertical term is written for
+// exactly that arrangement — `top + cursor.y - cursor.y * from.zoom / toZoom` is
+// the correction for a child viewport whose height changes with the zoom — and
+// it is what keeps ONE vertical scroller (the child's own, over a 43-page flow)
+// while the parent scrolls horizontally.
+//
+// That works when nothing in the child's layout depends on the frame's HEIGHT.
+// In the predecessor nothing did: its page was `width: calc(100% - 32px)` capped
+// at `210mm` and its type scale came from a container query on that width, both
+// functions of the frame's width alone, which the transform never changes.
+//
+// This renderer's two sizes are both functions of the frame's HEIGHT:
+//
+//   src/lib/render/html.ts, `pageSize` — at fit:page the sheet is
+//     `height: calc(100vh - 32px)`, i.e. the frame's viewport height.
+//   src/lib/render/html.ts, `bodyType` — the body size is
+//     `clamp(7px, <template>vh, <cap>px)`, likewise the frame's viewport height.
+//     The built-in catalogue is 1.1vh capped at 12px, so between roughly 636px
+//     and 1091px of frame height the clamp is in its FLUID range and the type
+//     moves with the frame.
+//
+// So dividing the frame's height by the zoom does two things the transform
+// exists to prevent. At fit:page the page's on-screen height comes out as
+// `canvasHeight - 32 * zoom` — the scale is cancelled exactly, and zooming in
+// makes the sheet very slightly SMALLER. At either fit the type is re-resolved
+// and CJK line breaking re-runs, which is the layout the specialist is judging
+// changing while they zoom into it — objection 2 below, arriving through the
+// height instead of the width.
+//
+// The alternatives were worked through and each fails on something measurable.
+// A frame whose layout box does not change (so the child's layout is stable)
+// cannot reach the end of the document: the child's scroll tops out with the
+// last page's foot at the bottom of a viewport that is now partly off the glass,
+// and the only fixes are a second vertical scroller in the parent or a
+// scroll-jacking composite of the two. Resizing the frame instead of scaling it
+// makes the page's size a function of the frame in the one axis that is capped
+// and the type's size a function of the other, so the two stop agreeing.
+//
+// WHAT WOULD UNBLOCK IT is a renderer whose page size and type scale are
+// functions of the frame's WIDTH — a container query on `.page`, which is the
+// shape the predecessor's was — or a preview route that accepts the layout box
+// as a parameter so the frame's own height stops being the reference. Either is
+// a change to src/lib/render/html.ts and belongs to whoever owns it.
+//
+// It is here, tested, so that the transform canvas arrives as a wiring change
+// on the day that lands, and so that the toolbar's placement rule — which has
+// already been wrong in four photographed ways — does not have to be
+// rediscovered. At zoom = 1 the transform half is the identity and every screen
+// constant divided by the zoom is unchanged, which is why `toolbarSpot` can be
+// wired today with a literal 1.
 //
 // SEPARATE FROM THE COMPONENT for the reason drag-geometry.ts and
 // selection-geometry.ts already state: vitest here runs in a node environment
@@ -97,6 +159,16 @@ export const FRAME_BASE_W = 826;
  * One-up is FRAME_BASE_W. Two-up is twice it, and not one pixel less — see the
  * note above: a narrower column would shrink the type and re-break the lines,
  * which is the layout the specialist is judging.
+ *
+ * STILL UNCALLED, and the reason is not the transform. Widening the frame is
+ * necessary for a spread and nowhere near sufficient: this renderer stacks its
+ * sheets one per row — `.page { margin: 0 auto 16px }` in src/lib/render/html.ts
+ * — so a frame of 1652 would centre one 794px page in it and leave 858px of
+ * grey, not two pages side by side. Facing pages are a change to that
+ * stylesheet (a two-column grid on the body, with the first sheet alone in the
+ * right-hand column so leaf 2 and 3 face each other) plus this width plus the
+ * transform, and the stylesheet belongs to the renderer. It is tested here so
+ * the number is not re-guessed on the day the other two land.
  */
 export function frameWidth(twoUp: boolean): number {
   return twoUp ? FRAME_BASE_W * SPREAD_COLUMNS : FRAME_BASE_W;

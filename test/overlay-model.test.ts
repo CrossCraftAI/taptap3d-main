@@ -15,9 +15,16 @@ import { describe, expect, it } from "vitest";
 import {
   ATTR,
   clipMarks,
+  gestureFrame,
+  handlesFor,
+  HANDLE_HIT_PX,
+  HANDLE_SIZE_PX,
   overlapMarks,
   OVERLAP_MIN_PX,
+  pressMode,
+  sameGuides,
   sameOverlaps,
+  snapContext,
   clipOverflow,
   DRAG_THRESHOLD_PX,
   isDrag,
@@ -31,7 +38,14 @@ import {
   sameClips,
   type MeasuredPart,
 } from "@/lib/editor/overlay-model";
-import { fromPageFrame } from "@/lib/editor/drag-geometry";
+import {
+  fromPageFrame,
+  guidesFor,
+  snapDelta,
+  HANDLE_CURSOR,
+  MIN_SIZE_PX,
+  RESIZE_HANDLES,
+} from "@/lib/editor/drag-geometry";
 import {
   identityFrom,
   type OverlayRect,
@@ -340,6 +354,56 @@ describe("clipMarks", () => {
     // The worse of the two, so the number names the cut a person will notice.
     expect(clipMarks([placed])[0]!.overflowPx).toBe(60);
   });
+
+  // ── THE GESTURE THAT ACTUALLY MAKES THIS STATE ───────────────────────────
+  //
+  // The mark shipped with the DRAG, on the argument that a move freezes the
+  // box's size as a fraction of the page while the type scale goes on moving —
+  // a part nobody touches, starting to cut. True, and indirect. A RESIZE cuts
+  // the text on purpose and immediately: the specialist pulls the `s` handle
+  // up and the last line goes, with nothing on the screen or the paper to say
+  // so, because `.placed` carries `overflow: hidden` and the caption's own
+  // "there is more" fade is keyed to `.caption`, which a lifted part is not in
+  // (src/lib/render/html.ts).
+  //
+  // Nothing in `clipMarks` had to change for it, and THAT is what is held
+  // here: the mark is a function of the measured box against its own ink, so
+  // it does not care which gesture made the box small. The case is written
+  // down so a later change cannot narrow it to the drag without failing.
+  it("marks a box a HANDLE shrank, and marks the box rather than the missing ink", () => {
+    // 200 × 40 of ink in a box the `s` handle has pulled down to 22.
+    const shrunk = part(
+      "lot-a",
+      "title",
+      { x: 10, y: 20, w: 200, h: 22 },
+      { placed: true, fit: { scrollW: 200, scrollH: 40, clientW: 200, clientH: 22 } },
+    );
+    const marks = clipMarks([shrunk]);
+    expect(marks).toHaveLength(1);
+    expect(marks[0]!.axis).toBe("y");
+    expect(marks[0]!.overflowPx).toBe(18);
+    // THE WHOLE BOX, which is the opposite of GrowthMark's choice and is the
+    // same reasoning read the other way: a clipped box's overflow is nowhere —
+    // it was never painted — and the box is what the specialist has to make
+    // bigger again.
+    expect(marks[0]!.rect).toEqual(shrunk.rect);
+  });
+
+  it("marks a box a handle shrank to the floor, where the cut is certain", () => {
+    // `MIN_SIZE_PX` is where `dragRect` stops, and at 8px nothing this
+    // renderer sets in `clamp(7px, …)` fits with its leading. A resize can
+    // always reach this state, so the mark must always be able to report it.
+    const floored = part(
+      "lot-a",
+      "title",
+      { x: 10, y: 20, w: MIN_SIZE_PX, h: MIN_SIZE_PX },
+      {
+        placed: true,
+        fit: { scrollW: 180, scrollH: 34, clientW: MIN_SIZE_PX, clientH: MIN_SIZE_PX },
+      },
+    );
+    expect(clipMarks([floored])[0]!.axis).toBe("both");
+  });
 });
 
 describe("sameClips", () => {
@@ -417,6 +481,178 @@ describe("placementFrame", () => {
     // zeros toPageFrame answers with instead — would store a frame nothing can
     // ever paint or clear.
     expect(placementFrame(start, { x: 0, y: 0, w: 0, h: 0 }, 10, 10)).toBeNull();
+  });
+
+  it("is `gestureFrame` in the move case, to the number", () => {
+    // The two must not be two conversions. A resize that rounded differently
+    // from a drag would move a part by a hair every time it was resized, and
+    // nothing on screen or on paper would say which of the two did it.
+    expect(placementFrame(start, PAGE, 61, -13)).toEqual(
+      gestureFrame(start, PAGE, "move", 61, -13),
+    );
+  });
+});
+
+describe("gestureFrame — the resize commits through the same boundary", () => {
+  const start: OverlayRect = { x: 140, y: 160, w: 400, h: 200 };
+
+  it("moves the dragged edge and leaves the opposite one where it was", () => {
+    // `se` grows width and height from the top-left; the stored x and y are
+    // therefore unchanged, which is the property a resize must have and a
+    // move must not.
+    const frame = gestureFrame(start, PAGE, "se", 60, 30)!;
+    expect(frame.x).toBeCloseTo(100 / 800, 10);
+    expect(frame.y).toBeCloseTo(100 / 1131, 10);
+    expect(frame.w).toBeCloseTo(460 / 800, 10);
+    expect(frame.h).toBeCloseTo(230 / 1131, 10);
+  });
+
+  it("moves the origin when the north-west corner is the one being dragged", () => {
+    const frame = gestureFrame(start, PAGE, "nw", 40, 20)!;
+    expect(frame.x).toBeCloseTo(140 / 800, 10);
+    expect(frame.y).toBeCloseTo(120 / 1131, 10);
+    expect(frame.w).toBeCloseTo(360 / 800, 10);
+    expect(frame.h).toBeCloseTo(180 / 1131, 10);
+  });
+
+  it("stops at the minimum size rather than turning the box inside out", () => {
+    // Past the far edge an unclamped `w = start.w - dx` reappears on the other
+    // side of the pointer. `MIN_SIZE_PX` exists because a part resized to
+    // nothing can never be selected again — there is no handle left to grab
+    // and no box left to click, so the reset it needs is unreachable.
+    const frame = gestureFrame(start, PAGE, "e", -5000, 0)!;
+    expect(frame.w).toBeCloseTo(MIN_SIZE_PX / 800, 10);
+    expect(frame.w).toBeGreaterThan(0);
+  });
+
+  it("refuses a resize that has taken the box off the paper", () => {
+    // The same gate as a drag: the browser must not post what the server would
+    // refuse, and `committable` is the server's own predicate.
+    expect(gestureFrame(start, PAGE, "e", -5000, 0)).not.toBeNull();
+    expect(gestureFrame({ ...start, x: PAGE.x + PAGE.w + 50 }, PAGE, "se", 10, 10)).toBeNull();
+  });
+});
+
+// ── The handles ──────────────────────────────────────────────────────────────
+
+describe("handlesFor", () => {
+  const BOX: OverlayRect = { x: 100, y: 200, w: 300, h: 150 };
+
+  it("gives eight handles, each on its own point, each with a cursor", () => {
+    const handles = handlesFor(BOX);
+    expect(handles.map((h) => h.key)).toEqual([...RESIZE_HANDLES]);
+    expect(handles.find((h) => h.key === "nw")!.at).toEqual({ x: 100, y: 200 });
+    expect(handles.find((h) => h.key === "se")!.at).toEqual({ x: 400, y: 350 });
+    for (const handle of handles) {
+      expect(handle.cursor).toBe(HANDLE_CURSOR[handle.key]);
+    }
+  });
+
+  it("paints nothing when there is nothing selected", () => {
+    expect(handlesFor(null)).toEqual([]);
+  });
+
+  it("paints all eight on a box too small to hold them apart", () => {
+    // A 1-up caption row is a handful of pixels tall, so its nw, w and sw
+    // squares overlap — and they are painted anyway, because the alternative
+    // is a selection offering no way to resize exactly the parts a specialist
+    // resizes most. `hitHandle` tests corners first for the same reason.
+    expect(handlesFor({ x: 0, y: 0, w: 300, h: 14 })).toHaveLength(8);
+  });
+
+  it("keeps the hit box wider than the square it paints", () => {
+    // The relationship, not either number: the grip is 2 × HANDLE_HIT_PX
+    // across against a HANDLE_SIZE_PX paint, so aiming at a corner does not
+    // have to be precise. Bigger and the n/s hit boxes of a caption row would
+    // swallow the whole box and a press in the middle could never mean "move".
+    expect(2 * HANDLE_HIT_PX).toBeGreaterThan(HANDLE_SIZE_PX);
+    expect(2 * HANDLE_HIT_PX).toBeLessThan(2 * HANDLE_SIZE_PX + MIN_SIZE_PX);
+  });
+});
+
+describe("pressMode", () => {
+  const BOX: OverlayRect = { x: 100, y: 200, w: 300, h: 150 };
+
+  it("reads a press on a corner as that corner and not as a move", () => {
+    // The ordering IS the gesture's meaning: a corner handle sits ON the box,
+    // so `contains` is true there too, and asking it first would make every
+    // corner a move and the handles unreachable.
+    expect(pressMode(BOX, { x: 102, y: 202 })).toBe("nw");
+    expect(pressMode(BOX, { x: 250, y: 275 })).toBe("move");
+  });
+
+  it("reads a press just OUTSIDE a corner as that corner", () => {
+    // Half of every corner square hangs outside the box, and the whole of its
+    // hit box does. Without this a press there lands on the lot underneath and
+    // selects the neighbour instead of resizing what the hand is holding.
+    expect(pressMode(BOX, { x: 95, y: 195 })).toBe("nw");
+    expect(pressMode(BOX, { x: 405, y: 355 })).toBe("se");
+  });
+
+  it("answers null off the box and its grips, and null with no selection", () => {
+    expect(pressMode(BOX, { x: 20, y: 20 })).toBeNull();
+    expect(pressMode(null, { x: 102, y: 202 })).toBeNull();
+  });
+});
+
+// ── What a gesture may align to ──────────────────────────────────────────────
+
+describe("snapContext", () => {
+  const A = sel("lot-a", "title");
+  const SLOT: OverlayRect = { x: 80, y: 100, w: 300, h: 400 };
+  const MINE: OverlayRect = { x: 100, y: 120, w: 200, h: 20 };
+  const THEIRS: OverlayRect = { x: 400, y: 600, w: 200, h: 20 };
+
+  it("leaves the moving part out of its own neighbours", () => {
+    // Left in, every gesture would align to where the part already is at a
+    // distance of zero — closer than any real target — so nothing would ever
+    // snap and no guide would ever be drawn.
+    const ctx = snapContext(A, PAGE, SLOT, [
+      part("lot-a", "title", MINE),
+      part("lot-b", "title", THEIRS),
+    ]);
+    expect(ctx.neighbours).toEqual([THEIRS]);
+  });
+
+  it("drops parts on another sheet", () => {
+    // A part forty pages down the flow is at overlay coordinates this page
+    // also uses; aligning to it would be aligning to a coincidence.
+    const elsewhere = { ...PAGE, y: PAGE.y + PAGE.h + 24 };
+    const ctx = snapContext(A, PAGE, SLOT, [
+      part("lot-b", "title", THEIRS, { page: elsewhere }),
+    ]);
+    expect(ctx.neighbours).toEqual([]);
+  });
+
+  it("reads an absent slot as the page rather than as a box at the origin", () => {
+    // A part somebody has already placed is emitted as a child of `.page` and
+    // has no slot to find. A zero-sized box would put three phantom targets at
+    // the overlay's origin, and a part dragged near the canvas's top-left
+    // corner would snap to nothing visible.
+    expect(snapContext(A, PAGE, null, []).slot).toEqual(PAGE);
+  });
+
+  it("produces a context the snap and the guides both act on", () => {
+    // The pair is the point: `snapDelta` pulls the edge onto the neighbour and
+    // `guidesFor` then finds the alignment in the FINAL rectangle, so the line
+    // is drawn if and only if the snap actually landed.
+    const neighbour: OverlayRect = { x: 300, y: 900, w: 150, h: 40 };
+    const moving: OverlayRect = { x: 303, y: 500, w: 200, h: 20 };
+    const ctx = snapContext(A, PAGE, SLOT, [part("lot-b", "title", neighbour)]);
+    const delta = snapDelta(moving, "move", ctx);
+    expect(delta.x).toBeCloseTo(-3, 10);
+    const snapped = { ...moving, x: moving.x + delta.x };
+    expect(guidesFor(snapped, "move", ctx).some((g) => g.axis === "x" && g.at === 300)).toBe(true);
+  });
+});
+
+describe("sameGuides", () => {
+  const one = { axis: "x" as const, at: 300, from: 100, to: 900 };
+  it("is quiet when the paint would not change, and not when it would", () => {
+    expect(sameGuides([one], [{ ...one }])).toBe(true);
+    expect(sameGuides([one], [{ ...one, at: 301 }])).toBe(false);
+    expect(sameGuides([one], [])).toBe(false);
+    expect(sameGuides([], [])).toBe(true);
   });
 });
 

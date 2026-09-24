@@ -26,7 +26,21 @@
 
 import { frameFromValue } from "@/lib/engine/frame";
 
-import { boxesDiffer, committable, dragRect, toPageFrame, type PageFrame } from "./drag-geometry";
+import {
+  boxesDiffer,
+  committable,
+  contains,
+  dragRect,
+  handlePoint,
+  hitHandle,
+  toPageFrame,
+  HANDLE_CURSOR,
+  RESIZE_HANDLES,
+  type DragMode,
+  type PageFrame,
+  type ResizeHandle,
+  type SnapContext,
+} from "./drag-geometry";
 import {
   sameSelection,
   selectionKey,
@@ -491,13 +505,178 @@ export function isDrag(dx: number, dy: number, threshold = DRAG_THRESHOLD_PX): b
  * zero size, which `committable` refuses for the same reason it refuses a part
  * dragged off the paper. Either way there is nothing to save and the caller
  * puts the part back.
+ *
+ * ── ONE FUNCTION FOR THE MOVE AND THE SEVEN-AND-A-HALF OTHER GESTURES ────────
+ *
+ * `mode` arrives because a resize commits exactly the same way a move does and
+ * must not get a second boundary of its own: the two differ in one argument to
+ * `dragRect` and in nothing else that touches the database. A second converter
+ * for resize is how the drag's rounding and the resize's rounding end up
+ * disagreeing about the same rectangle, and the disagreement is invisible —
+ * both produce a plausible page on screen.
  */
+export function gestureFrame(
+  start: OverlayRect,
+  page: OverlayRect,
+  mode: DragMode,
+  dx: number,
+  dy: number,
+): PageFrame | null {
+  const frame = toPageFrame(dragRect(start, mode, dx, dy), page);
+  return committable(frame) ? frame : null;
+}
+
+/** `gestureFrame` for the gesture this layer had before it had handles. */
 export function placementFrame(
   start: OverlayRect,
   page: OverlayRect,
   dx: number,
   dy: number,
 ): PageFrame | null {
-  const frame = toPageFrame(dragRect(start, "move", dx, dy), page);
-  return committable(frame) ? frame : null;
+  return gestureFrame(start, page, "move", dx, dy);
+}
+
+// ── The handles ──────────────────────────────────────────────────────────────
+
+/**
+ * Painted size of a resize handle, in overlay pixels.
+ *
+ * Nine, which is the predecessor's, and it is a size rather than a taste: an
+ * odd number has a centre pixel, so a square centred on a corner lands on the
+ * corner instead of half a pixel off it, and eight of them at nine pixels is
+ * the smallest grid a mouse can distinguish without the squares reading as a
+ * dotted border.
+ */
+export const HANDLE_SIZE_PX = 9;
+
+/**
+ * Half-width of a handle's HIT box, in overlay pixels — larger than the square
+ * it paints, because aiming at a corner should not require precision.
+ *
+ * Eight, the predecessor's, and the relationship to the square is the number
+ * that matters rather than either alone: the hit box is 16px across against a
+ * 9px paint, so the grabbable area is nearly twice what is drawn. Bigger and
+ * the `n` and `s` hit boxes of a caption row — 14px tall on this renderer's
+ * 1-up page — would swallow the whole box and a press in the middle could never
+ * mean "move".
+ */
+export const HANDLE_HIT_PX = 8;
+
+/** One handle, ready to paint: where its centre is and what the cursor says. */
+export interface PaintedHandle {
+  key: ResizeHandle;
+  /** The centre, in overlay pixels. The component draws the square around it. */
+  at: { x: number; y: number };
+  /** `HANDLE_CURSOR`'s answer, carried so the component holds no second copy. */
+  cursor: string;
+}
+
+/**
+ * The eight handles for a box, or none when there is no box.
+ *
+ * ── PAINTED IN THE OVERLAY AND HIT-TESTED IN CODE, WHICH IS THE WHOLE RULE ───
+ *
+ * Eight live squares would be eight small dead zones over a 43-page flow, and
+ * the wheel stopping over them is the predecessor's most expensive interface
+ * defect (ARCHITECTURE.md, lessons carried). So these are `pointer-events:
+ * none` like every other mark on the layer, and `hitHandle` answers the press
+ * from the coordinates the child document already reports.
+ *
+ * WHAT THAT COSTS, STATED RATHER THAN HIDDEN: there is no hover cursor. A
+ * cursor is a property of the element under the pointer, the element under the
+ * pointer is inside the iframe, and this layer may not write into that
+ * document. `HANDLE_CURSOR` therefore reaches the screen on the CAPTURE LAYER,
+ * which exists for the life of a gesture — so the specialist learns the axis
+ * from the square and confirms it the moment they press. The alternative is a
+ * canvas that cannot be scrolled, which is not a trade.
+ *
+ * NO MINIMUM BOX. A 1-up caption row is about fourteen pixels tall on this
+ * renderer, so its `nw`, `w` and `sw` squares overlap — and they are painted
+ * anyway, because the alternative is a selection that offers no way to resize
+ * exactly the parts a specialist resizes most. `hitHandle` tests the corners
+ * first for the same reason: where two hit boxes overlap, a human aiming at a
+ * corner means the corner.
+ */
+export function handlesFor(rect: OverlayRect | null): PaintedHandle[] {
+  if (!rect) return [];
+  return RESIZE_HANDLES.map((key) => ({
+    key,
+    at: handlePoint(rect, key),
+    cursor: HANDLE_CURSOR[key],
+  }));
+}
+
+/**
+ * What a press on the selection means: grab a handle, move the box, or neither.
+ *
+ * ORDERED, and the order is the gesture's meaning. A corner handle sits ON the
+ * box, so `contains` is true there too — asking it first would make every
+ * corner a move and the handles unreachable. Outside both, the answer is null
+ * and the press goes on to select whatever is under it.
+ */
+export function pressMode(
+  rect: OverlayRect | null,
+  point: { x: number; y: number },
+  radius = HANDLE_HIT_PX,
+): DragMode | null {
+  if (!rect) return null;
+  const handle = hitHandle(rect, point, radius);
+  if (handle) return handle;
+  return contains(rect, point) ? "move" : null;
+}
+
+/**
+ * What a gesture may align to: its page, its slot, and its neighbours.
+ *
+ * ── THE MOVING PART IS NOT ITS OWN NEIGHBOUR, AND THAT IS NOT PEDANTRY ───────
+ * A part's own painted box is in `parts` — it is the selection, and `measure`
+ * always measures the selection. Left in, every gesture would snap to where the
+ * part already was at a distance of zero, which is closer than any real target,
+ * so nothing would ever snap to anything and no guide would ever be drawn.
+ *
+ * ── THE SAME SHEET, COMPARED BY BOX ─────────────────────────────────────────
+ * A part forty pages down the flow is at overlay coordinates that this page
+ * also uses, and aligning to it would be aligning to a coincidence. The page's
+ * own rectangle is the comparison, for the reason `overlapMarks` gives: this
+ * layer measures boxes and never reads the child's ids.
+ *
+ * ── AN ABSENT SLOT IS THE PAGE, NOT AN EMPTY BOX ────────────────────────────
+ * `SnapContext.slot` is the engine's own suggestion for where the part goes,
+ * and a part lifted onto the page has left the slot it came from — the renderer
+ * emits it as a child of `.page` (src/lib/render/html.ts), so `closest('.slot')`
+ * finds nothing. Handing the page in its place adds no target at all (the page
+ * is already one) and removes a branch from every caller. A zero-sized box
+ * would instead put three phantom targets at the origin of the overlay, and a
+ * part dragged near the canvas's top-left corner would snap to nothing visible.
+ */
+export function snapContext(
+  sel: PreviewSelection,
+  page: OverlayRect,
+  slot: OverlayRect | null,
+  parts: readonly MeasuredPart[],
+): SnapContext {
+  const neighbours: OverlayRect[] = [];
+  for (const other of parts) {
+    if (sameSelection(other.sel, sel)) continue;
+    if (other.page.x !== page.x || other.page.y !== page.y) continue;
+    neighbours.push(other.rect);
+  }
+  return { page, slot: slot ?? page, neighbours };
+}
+
+/** Would painting these guides change anything? Same reasoning as `sameRings`. */
+export function sameGuides(
+  a: readonly { axis: "x" | "y"; at: number; from: number; to: number }[],
+  b: readonly { axis: "x" | "y"; at: number; from: number; to: number }[],
+): boolean {
+  if (a.length !== b.length) return false;
+  return a.every((guide, i) => {
+    const other = b[i]!;
+    return (
+      guide.axis === other.axis &&
+      guide.at === other.at &&
+      guide.from === other.from &&
+      guide.to === other.to
+    );
+  });
 }

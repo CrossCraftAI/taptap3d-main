@@ -7,6 +7,7 @@ import {
   createPin,
   deletePin,
   ensureCatalogue,
+  getCatalogue,
   updateCatalogueParams,
 } from "@/lib/data/catalogues";
 import { getLot } from "@/lib/data/lots";
@@ -136,6 +137,57 @@ export async function placePartAction(
   field: string,
   frame: OverrideFrame,
 ): Promise<PlaceResult> {
+  return writeFrame(eventId, lotId, field, frame);
+}
+
+/**
+ * Put a part back: to where it was before one placement, or to the engine.
+ *
+ * ── ONE WRITER, TWO SENTENCES ───────────────────────────────────────────────
+ *
+ * Undo and Reset are the same write with two different arguments, and they are
+ * one action for the reason `placePartAction` is one function: the patch is the
+ * dangerous part, and a second copy of "send `frame` and nothing else" is how a
+ * later change to one of them quietly starts erasing the typo somebody fixed on
+ * the same (lot, field). The caller decides the value; this decides nothing.
+ *
+ *   frame  — the rectangle this part occupied before the placement being undone
+ *   null   — no rectangle at all, i.e. hand the part back to the engine
+ *
+ * NULL IS EXPLICIT AND IS NOT THE SAME AS ABSENT. `mergeOverride` deletes a key
+ * whose patch value is null and ignores one that is undefined
+ * (src/lib/data/overrides.ts), so `{ frame: null }` is the only way to say "the
+ * engine places this again" — and when it is the last judgement in the row, the
+ * row goes with it and the lot stops carrying an override it no longer has.
+ *
+ * THE ROW IS NOT ENSURED HERE, and that is the difference from a placement.
+ * Clearing a frame is not a layout decision; it is the withdrawal of one. A
+ * catalogue that does not exist has no frame to clear, so there is nothing to
+ * make and nothing to say beyond a refusal the caller can print.
+ */
+export async function restorePartFrameAction(
+  eventId: string,
+  lotId: string,
+  field: string,
+  frame: OverrideFrame | null,
+): Promise<PlaceResult> {
+  return writeFrame(eventId, lotId, field, frame);
+}
+
+/**
+ * The one place a frame is written, for both of the exported actions above.
+ *
+ * Not exported: a `"use server"` module's exports are POST endpoints, and this
+ * takes a nullable frame that means "clear". Two named actions in front of it
+ * are two sentences a caller can read; one endpoint taking a nullable would be
+ * an endpoint whose meaning depends on a value.
+ */
+async function writeFrame(
+  eventId: string,
+  lotId: string,
+  field: string,
+  frame: OverrideFrame | null,
+): Promise<PlaceResult> {
   const trimmed = typeof field === "string" ? field.trim() : "";
   if (!trimmed || trimmed.length > MAX_FIELD) {
     return { ok: false, message: "That part has no field to save against." };
@@ -145,8 +197,8 @@ export async function placePartAction(
   // can arrive here. `frameFromValue` takes `unknown`, returns the four numbers
   // or nothing, and drops every other key on the way through, so a `hidden`
   // riding in on the back of a drag never reaches the patch.
-  const placed = frameFromValue(frame);
-  if (!placed || !intersectsPage(placed)) {
+  const placed = frame === null ? null : frameFromValue(frame);
+  if (frame !== null && (!placed || !intersectsPage(placed))) {
     return { ok: false, message: "That would put the part off the page, so nothing was saved." };
   }
 
@@ -171,11 +223,29 @@ export async function placePartAction(
   // those two both make the row for exactly that reason. The rule that comes
   // out of this is the clean one: the row is made by the gestures that ARE
   // layout decisions, and by no read at all.
-  const catalogue = await ensureCatalogue(orgId, eventId);
+  //
+  // CLEARING IS THE EXCEPTION, and it is the same rule read backwards. Undo and
+  // Reset withdraw a layout decision rather than making one, so they READ the
+  // row: a sale with no catalogue has no frame to clear, and making one in
+  // order to clear nothing would be a GET-shaped write arriving through a
+  // button — the defect ../page.tsx's header describes, by a different door.
+  const catalogue =
+    placed === null
+      ? await getCatalogue(orgId, eventId)
+      : await ensureCatalogue(orgId, eventId);
+  if (!catalogue) {
+    return { ok: false, message: "This sale has no catalogue, so there is nothing to put back." };
+  }
 
   const decidedBy = await currentActorId(orgId);
   const done = await setOverride(orgId, catalogue.id, lotId, trimmed, { frame: placed }, decidedBy);
-  if (!done) return { ok: false, message: "That part could not be placed in this catalogue." };
+  // A CLEAR THAT FOUND NOTHING IS NOT A FAILURE. `setOverride` answers false
+  // when the row was already absent — which is exactly the state a reset is
+  // asking for — so only a write that was meant to leave something behind can
+  // report that it did not.
+  if (!done && placed !== null) {
+    return { ok: false, message: "That part could not be placed in this catalogue." };
+  }
 
   // The editor re-derives from the row, and the lot page lists what this
   // catalogue decides about the lot.

@@ -12,6 +12,7 @@ import {
   fromPageFrame,
   guidesFor,
   handlePoint,
+  HANDLE_CURSOR,
   hitHandle,
   MIN_SIZE_PX,
   nudgeDelta,
@@ -103,6 +104,29 @@ describe("handles", () => {
   it("contains() answers for the move gesture", () => {
     expect(contains(BOX, { x: 101, y: 201 })).toBe(true);
     expect(contains(BOX, { x: 99, y: 201 })).toBe(false);
+  });
+
+  // WIRED AT LAST, and only now worth a test. The cursor reaches the screen on
+  // the capture layer the canvas mounts for the life of a gesture
+  // (src/components/preview-canvas.tsx): an overlay that takes no pointer has
+  // no hover cursor to give, so that layer is the map's one consumer and this
+  // pairing is its one guarantee.
+  it("names a cursor for every handle, and pairs the opposite corners", () => {
+    for (const handle of RESIZE_HANDLES) {
+      expect(HANDLE_CURSOR[handle]).toMatch(/-resize$/);
+    }
+    // A handle's identity IS which edges it moves, so which diagonal it sits
+    // on is a property of the compass point rather than a lookup somebody
+    // chose. One of these backwards puts a ↗ cursor on a ↘ corner, which reads
+    // as the box being about to go the other way.
+    expect(HANDLE_CURSOR.nw).toBe(HANDLE_CURSOR.se);
+    expect(HANDLE_CURSOR.ne).toBe(HANDLE_CURSOR.sw);
+    expect(HANDLE_CURSOR.n).toBe(HANDLE_CURSOR.s);
+    expect(HANDLE_CURSOR.e).toBe(HANDLE_CURSOR.w);
+    // And the two diagonals are not the same cursor — the failure the pairing
+    // above cannot catch on its own.
+    expect(HANDLE_CURSOR.nw).not.toBe(HANDLE_CURSOR.ne);
+    expect(HANDLE_CURSOR.n).not.toBe(HANDLE_CURSOR.e);
   });
 });
 
@@ -442,5 +466,40 @@ describe("a turned box snaps its CENTRE and nothing else", () => {
     // At 90° a 150 × 60 box occupies 60 × 150, so it reaches 45px further up
     // than its frame does: from 455 rather than from 500.
     expect(turned.find((g) => g.axis === "x")?.from).toBeCloseTo(455, 6);
+  });
+});
+
+describe("a handle never swallows the box it belongs to", () => {
+  // THE REGRESSION THIS CLOSES. A caption row is about sixteen pixels tall, so
+  // with a flat eight-pixel reach the north and south handles each reached its
+  // CENTRE — every press was a resize and the row could not be moved at all.
+  // The drag is the gesture the editor exists for and it failed silently: the
+  // ring stayed where it was and the gesture looked ignored.
+  const caption = { x: 100, y: 200, w: 253, h: 16 };
+  const plate = { x: 100, y: 200, w: 260, h: 220 };
+
+  it("leaves the middle of a short row to the move", () => {
+    const middle = { x: caption.x + caption.w / 2, y: caption.y + caption.h / 2 };
+    expect(hitHandle(caption, middle, 8)).toBeNull();
+    expect(contains(caption, middle)).toBe(true);
+  });
+
+  it("still gives that row its corners", () => {
+    expect(hitHandle(caption, { x: caption.x, y: caption.y }, 8)).toBe("nw");
+    expect(hitHandle(caption, { x: caption.x + caption.w, y: caption.y + caption.h }, 8)).toBe("se");
+  });
+
+  it("does not shrink the reach on a box big enough for it", () => {
+    // A third of 220 is far more than eight, so the cap is inert here and the
+    // caller's radius is what applies — a plate behaves exactly as before.
+    expect(hitHandle(plate, { x: plate.x + 8, y: plate.y + 8 }, 8)).toBe("nw");
+    expect(hitHandle(plate, { x: plate.x + 9, y: plate.y + 9 }, 8)).toBeNull();
+  });
+
+  it("gives an overlapping press to the handle it is nearest", () => {
+    // On a short box `e` and `se` both reach a press near the bottom-right.
+    // First-in-order handed it to `e`; a hand aiming there meant the corner.
+    const nearCorner = { x: caption.x + caption.w, y: caption.y + caption.h - 1 };
+    expect(hitHandle(caption, nearCorner, 8)).toBe("se");
   });
 });

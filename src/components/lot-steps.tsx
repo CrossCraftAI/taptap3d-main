@@ -50,15 +50,33 @@ import { logAction } from "@/lib/log/client";
  * ends the key still does whatever the browser does with it rather than
  * silently dying.
  *
- * ALREADY CLAIMED, AND THE CLASH IS DATED. src/lib/editor/drag-geometry.ts
- * `nudgeDelta` maps a bare arrow to a 1px nudge of the selected part and
- * Shift+arrow to 10px (landed at b300787, wired to nothing yet). The stepper
- * refuses every modifier, so the coarse nudge survives the collision and the
- * fine one does not: when the editor's pointer layer arrives, a bare arrow has
- * to mean the selection when there is one and the sale when there is not, and
- * that decision belongs to whoever wires the overlay, not to a guess made
- * here. The field guard below does not help — a canvas selection is not a
- * field.
+ * ── THE CLASH WITH THE EDITOR'S NUDGE, AND HOW IT WAS SETTLED ────────────────
+ *
+ * src/lib/editor/drag-geometry.ts `nudgeDelta` maps a bare arrow to a 1px nudge
+ * of the selected part and Shift+arrow to 10px. The stepper refuses every
+ * modifier, so the coarse nudge never collided; the fine one did, and this is
+ * how it was resolved when the editor's pointer layer wired it:
+ *
+ *   A BARE ARROW MEANS THE SELECTION WHEN THERE IS ONE, AND THE SALE WHEN
+ *   THERE IS NOT.
+ *
+ * NOTHING IN THIS FILE IMPLEMENTS THAT, and that is the point of the mechanism.
+ * src/components/preview-canvas.tsx binds its key handler on `window` with
+ * `capture: true` and calls `preventDefault()` only when it has actually moved
+ * something — so it runs before this listener whatever order the two mounted
+ * in, and the `defaultPrevented` guard below is the whole of this side of the
+ * bargain. "There is no selection" and "the editor is not on this screen" are
+ * therefore the same case here, which is why the stepper still works exactly as
+ * it did on every screen that has no canvas.
+ *
+ * Rejected: ordering the two by mount order, which is a render detail — the
+ * stepper would win or lose depending on which screen the person came from.
+ * Rejected: a shared "is anything selected" store, which is a second source of
+ * truth for a fact the editor already holds and this file has no use for.
+ *
+ * The field guard below does not help with any of it — a canvas selection is
+ * not a field — and preview-canvas.tsx carries the same note. Neither file is
+ * allowed to be the only copy.
  *
  * Focus is deliberately NOT chased across the step. When the last step lands
  * on lot 1 the Previous link becomes a disabled button and focus falls to the

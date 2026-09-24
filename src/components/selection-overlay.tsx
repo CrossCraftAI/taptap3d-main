@@ -1,6 +1,12 @@
 "use client";
 
-import type { ClipMark, OverlapMark } from "@/lib/editor/overlay-model";
+import type { Guide } from "@/lib/editor/drag-geometry";
+import {
+  HANDLE_SIZE_PX,
+  type ClipMark,
+  type OverlapMark,
+  type PaintedHandle,
+} from "@/lib/editor/overlay-model";
 import type { OverlayRect, SelectionRing } from "@/lib/editor/selection-geometry";
 
 /**
@@ -48,6 +54,8 @@ import type { OverlayRect, SelectionRing } from "@/lib/editor/selection-geometry
  */
 export function SelectionOverlay({
   rings,
+  handles,
+  guides,
   clips,
   overlaps,
   note,
@@ -55,6 +63,15 @@ export function SelectionOverlay({
   placements,
 }: {
   rings: readonly SelectionRing[];
+  /**
+   * The eight grips on the selection — PAINTED here and hit-tested in code.
+   *
+   * `overlay-model.ts`'s `handlesFor` says why, and it is the same rule as the
+   * layer's: eight live squares would be eight dead zones over a 43-page flow.
+   */
+  handles: readonly PaintedHandle[];
+  /** The alignments a running gesture has found. Empty the rest of the time. */
+  guides: readonly Guide[];
   clips: readonly ClipMark[];
   /** Hand-placed parts sitting on another lot's ink. */
   overlaps: readonly OverlapMark[];
@@ -72,6 +89,8 @@ export function SelectionOverlay({
       data-clip-count={clips.length}
       data-overlap-count={overlaps.length}
       data-placements={placements}
+      data-handle-count={handles.length}
+      data-guide-count={guides.length}
       // CLIPPED TO THE CANVAS. A ring around a part that has been scrolled off
       // the top is drawn at a negative offset, and without this it would paint
       // over the toolbar above the frame.
@@ -85,6 +104,56 @@ export function SelectionOverlay({
           data-ring-scope={ring.scope ?? undefined}
           className="pointer-events-none absolute"
           style={{ ...box(ring.rect), ...RING[ring.kind], ...turn(ring.rotationDeg) }}
+        />
+      ))}
+      {/* THE GUIDES GO UNDER THE HANDLES AND OVER THE RINGS. A guide is a claim
+          about a gesture in flight — the loudest thing on the layer for as long
+          as it lasts — but a handle is what the hand is on, and a hairline
+          drawn across the square the specialist is holding reads as the square
+          having moved. */}
+      {guides.map((guide) => (
+        <div
+          key={`${guide.axis}|${guide.at}|${guide.from}`}
+          data-guide={guide.axis}
+          data-guide-at={Math.round(guide.at)}
+          className="pointer-events-none absolute bg-seal"
+          style={
+            guide.axis === "x"
+              ? // ON the coordinate, not beside it: the line IS the alignment,
+                // so it is drawn at the value and given its width by a
+                // transform rather than by an offset nobody can re-derive.
+                {
+                  left: guide.at,
+                  top: guide.from,
+                  width: 1,
+                  height: Math.max(1, guide.to - guide.from),
+                }
+              : {
+                  left: guide.from,
+                  top: guide.at,
+                  width: Math.max(1, guide.to - guide.from),
+                  height: 1,
+                }
+          }
+        />
+      ))}
+      {/* Centred ON the point, which is what `handlePoint` returns and what
+          `hitHandle` tests against — so what is painted and what is grabbable
+          share one origin rather than two roundings. Half of a corner square
+          therefore hangs outside the box, which is correct: the grip is on the
+          corner, not inside it. */}
+      {handles.map((handle) => (
+        <div
+          key={handle.key}
+          data-handle={handle.key}
+          data-handle-cursor={handle.cursor}
+          className="pointer-events-none absolute border border-seal bg-paper"
+          style={{
+            left: handle.at.x - HANDLE_SIZE_PX / 2,
+            top: handle.at.y - HANDLE_SIZE_PX / 2,
+            width: HANDLE_SIZE_PX,
+            height: HANDLE_SIZE_PX,
+          }}
         />
       ))}
       {clips.map((mark) => (

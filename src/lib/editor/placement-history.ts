@@ -33,7 +33,7 @@
 // two gestures touched different tables. This stack holds placements, which are
 // the gestures a pointer makes and the ones a hand slips on.
 
-import type { OverrideFrame } from "@/lib/engine/frame";
+import { roundFrame, type OverrideFrame } from "@/lib/engine/frame";
 
 import type { PageFrame } from "./drag-geometry";
 import { selectionKey, type PreviewSelection } from "./selection-geometry";
@@ -85,8 +85,23 @@ export function entryFor(
   after: PageFrame,
   at: number,
 ): PlacementEntry | null {
-  if (sameFrame(before, after)) return null;
-  return { key: selectionKey(sel), lotId: sel.lotId, field: sel.field, before, after, at };
+  // AT THE RENDERER'S OWN RESOLUTION, and this is what makes undo work at all.
+  //
+  // `after` arrives from the pointer as a full-precision fraction. What the
+  // document then publishes as `data-page-frame` is that number stored — which
+  // `overrideFromValue` rounds to `FRAME_PRECISION` — and printed at six
+  // decimals. `stillApplies` compares the two exactly, so an entry holding the
+  // raw number never matched the page it described: every undo reported "this
+  // part has changed since it was placed", cleared the stack, and did nothing.
+  // The button was unusable and said so in a sentence about somebody else.
+  //
+  // Rounding HERE rather than loosening the comparison is the honest half. The
+  // history's job is to say what the system stored, not what the hand asked
+  // for; a tolerance would also make the guard weaker against the case it
+  // exists for — a part genuinely moved by someone else since.
+  const kept = roundFrame(after);
+  if (sameFrame(before, kept)) return null;
+  return { key: selectionKey(sel), lotId: sel.lotId, field: sel.field, before, after: kept, at };
 }
 
 /**
@@ -112,6 +127,70 @@ export function record(
 /** The most recent placement, or null on an untouched session. */
 export function last(history: readonly PlacementEntry[]): PlacementEntry | null {
   return history.length === 0 ? null : history[history.length - 1]!;
+}
+
+/** The stack with its newest entry taken off, after that entry has been undone. */
+export function dropLast(history: readonly PlacementEntry[]): PlacementEntry[] {
+  return history.slice(0, Math.max(0, history.length - 1));
+}
+
+/**
+ * The stack without any entry for one part.
+ *
+ * ── WHAT `Reset placement` OWES THE STACK ───────────────────────────────────
+ *
+ * A reset clears the frame, so every entry describing where that part used to
+ * be now claims an `after` the document no longer has. `stillApplies` would
+ * catch it — and would then clear the WHOLE stack, because a verification
+ * failure means "somebody changed this behind me and I cannot tell what else
+ * they touched". Here we are the somebody, and we know precisely which entries
+ * we invalidated: the ones for this part, and no others.
+ *
+ * So the reset takes them out itself and leaves every other lot's history
+ * usable. Throwing away an afternoon's undo because one part was reset is the
+ * kind of over-correction a person notices and works around by never pressing
+ * the button.
+ *
+ * KEYED THE WAY A RING IS, on `selectionKey`, so "the same part" means exactly
+ * what it means everywhere else in this layer.
+ */
+export function forget(
+  history: readonly PlacementEntry[],
+  key: string,
+): PlacementEntry[] {
+  return history.filter((entry) => entry.key !== key);
+}
+
+/**
+ * Is the document still the one this entry was recorded against?
+ *
+ * ── THE STACK IS IN A TAB AND THE TRUTH IS IN A TABLE ───────────────────────
+ *
+ * This history lives in one component's ref for the life of one open editor,
+ * and the placement it describes lives in a row that anything may have changed
+ * since: the same specialist in a second tab, a colleague on the same sale, a
+ * lot form clearing the override, or the same person choosing a template, which
+ * re-derives everything. An undo that posted `before` without looking would put
+ * the part back to a position that was replaced an hour ago, silently, and the
+ * screen would show a correction nobody made.
+ *
+ * So an entry is checked against what the renderer says is there NOW, read off
+ * `data-page-frame` — the value that was STORED rather than the box that was
+ * painted, which is the distinction `parsePageFrame` exists for. `after` is
+ * exactly what this entry wrote; if the document no longer agrees, this entry
+ * is not the last thing that happened to that part and the whole stack behind
+ * it is equally suspect.
+ *
+ * NULL ON BOTH SIDES IS A MATCH and is a real state: an entry whose `after` was
+ * cleared by a later undo is not a case this can meet (the undo drops it), but
+ * a caller that has re-read the document and found no frame at all is asking a
+ * legitimate question and gets a truthful no.
+ */
+export function stillApplies(
+  entry: PlacementEntry,
+  current: PageFrame | null,
+): boolean {
+  return sameFrame(entry.after, current);
 }
 
 /**
