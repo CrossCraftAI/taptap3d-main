@@ -8,7 +8,7 @@ import { PreviewCanvas } from "@/components/preview-canvas";
 import { getCatalogue, listPins } from "@/lib/data/catalogues";
 import { getEvent } from "@/lib/data/events";
 import { listLotsWithImages } from "@/lib/data/lots";
-import { currentOrgId } from "@/lib/data/org";
+import { currentOrgId, fieldPolicyOf } from "@/lib/data/org";
 import { listOverrides } from "@/lib/data/overrides";
 import { asText, derive, normaliseParams } from "@/lib/engine/derive";
 import { BUILT_IN_TEMPLATES, templateChoice } from "@/lib/engine/templates";
@@ -73,6 +73,12 @@ export default async function CataloguePage({
   const [pins, overrides] = catalogue
     ? await Promise.all([listPins(orgId, catalogue.id), listOverrides(orgId, catalogue.id)])
     : [[], []];
+  // The same policy the preview route and the print route read. This page
+  // derives only to count pages and to say which page each lot landed on, and
+  // it must count the SAME document the frame beside it paints — a page count
+  // taken without the policy would differ from the frame the moment a whole
+  // column is withheld from a table.
+  const policy = await fieldPolicyOf(orgId);
 
   const layoutParams = normaliseParams(catalogue?.params);
   // Zero for a sale with no catalogue row yet: nothing about it can have changed.
@@ -98,7 +104,7 @@ export default async function CataloguePage({
   // Derived here only to say how many pages it came to, and which page each lot
   // landed on for the list beside the preview. The frame derives it again from
   // the same inputs — one engine, so the two cannot disagree.
-  const document = derive(lots, layoutParams, pins, overrides);
+  const document = derive(lots, layoutParams, pins, overrides, BUILT_IN_TEMPLATES, policy);
   const empty = lots.length === 0;
 
   const pageOf = new Map<string, number>();

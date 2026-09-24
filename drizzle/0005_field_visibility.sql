@@ -1,0 +1,61 @@
+-- Which of the house's fields may leave the building.
+--
+-- A field key against one of three named levels — `public | internal | house`
+-- (src/lib/engine/visibility.ts) — read by the engine against the audience the
+-- output was made for. Until this column exists the only thing keeping a
+-- reserve or a consignor's name off a printed page is that nobody typed one
+-- into a field the template happens to name, which is not a control.
+--
+-- ── NULLABLE, AND WITH NO DEFAULT ──────────────────────────────────────────
+--
+-- The two together are what make this migration a no-op for every row it
+-- touches, and both were argued for.
+--
+-- NULL MEANS "THE HOUSE HAS SAID NOTHING", which reads as every field public,
+-- which is what every field in every existing database already is. So an org
+-- carried across by docker/migrate-from-tap3d.mjs, and an org seeded before
+-- today, print exactly what they printed yesterday — byte for byte, which
+-- test/golden.test.ts holds to account over four whole documents.
+--
+-- Rejected: `DEFAULT '{}'::jsonb`. It reads identically to null through
+-- `policyFor`, and it would rewrite every row in the table to say the same
+-- thing null already says. Worse, it makes "this house has never been asked"
+-- indistinguishable from "this house was asked and named no field", which is
+-- the distinction a settings screen will need the day one exists.
+-- Rejected: `NOT NULL DEFAULT '{}'`. Same, plus a rewrite on a column that
+-- would then have to be widened again the first time a house wants to clear
+-- its policy rather than empty it.
+-- Rejected: a `field_visibility` table keyed (org, field). src/db/schema.ts's
+-- own rule — a table arrives with its first writer — and there is no writer
+-- inside the system yet. There is also nothing to join to: a lot's field set is
+-- the customer's, discovered at import into `lots.fields`, so there is no
+-- `fields` table for rows to reference and the "table" would be a key-value
+-- pair per tenant with a foreign key to nothing.
+--
+-- ── NO BACKFILL, DELIBERATELY ──────────────────────────────────────────────
+--
+-- It is tempting to guess: `price`, `reserve`, `底價` and `委託人` look like
+-- fields a house would hold back, and a migration could mark them. It must not.
+-- `price` in this system is the ESTIMATE and prints in every catalogue in the
+-- trade (src/lib/import/fields.ts names it so and every built-in template
+-- carries it), so guessing would silently delete the estimate from every
+-- customer's next print run. The house's own columns are worse: they arrive
+-- under whatever header the customer's spreadsheet used, and no list of words
+-- written here can know which of them is a secret. A policy is a decision a
+-- specialist makes about their own data, and inventing one on their behalf is
+-- exactly the "automatic value the human cannot reach" ARCHITECTURE.md
+-- principle 9 refuses.
+
+-- ── RENUMBERED FROM 0004, AND THAT IS WHY THE SQL WAS REGENERATED ──────────
+--
+-- Two tranches were built in parallel worktrees and both generated a `0004`:
+-- this one and the custody tables beside it. Drizzle numbers by folder order
+-- and chains each snapshot to the previous one's id, so two 0004s are not a
+-- naming clash that can be renamed away — the later one's snapshot describes a
+-- schema that never existed, one with this column and without `movements`.
+--
+-- So this file was regenerated from the MERGED schema rather than moved, and
+-- its snapshot chains to 0004's. The reasoning above is the original author's
+-- and is unchanged; only the number and the chain are new.
+
+ALTER TABLE "orgs" ADD COLUMN "field_policy" jsonb;

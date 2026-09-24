@@ -154,8 +154,8 @@ test("an event's own group appears, and marks the innermost place", async ({
   const nav = rail(page);
 
   await expect(nav.getByRole("button", { name: "This event" })).toBeVisible();
-  // Four places now: the event's two and the house's two.
-  await expect(nav.getByRole("link")).toHaveCount(HOUSE.length + 2);
+  // Six places now: the event's four and the house's two.
+  await expect(nav.getByRole("link")).toHaveCount(HOUSE.length + 4);
 
   // THE INNERMOST CLAIM WINS. An editor path is honestly both this event's
   // Editor and the house's Events; marking both would leave a person unable to

@@ -19,9 +19,10 @@ import { notFound } from "next/navigation";
 import { getCatalogue, listPins } from "@/lib/data/catalogues";
 import { getEvent } from "@/lib/data/events";
 import { listLotsWithImages } from "@/lib/data/lots";
-import { currentOrgId } from "@/lib/data/org";
+import { currentOrgId, fieldPolicyOf } from "@/lib/data/org";
 import { listOverrides } from "@/lib/data/overrides";
 import { derive, normaliseParams } from "@/lib/engine/derive";
+import { BUILT_IN_TEMPLATES } from "@/lib/engine/templates";
 import { PREVIEW_CSP, renderCatalogue } from "@/lib/render/html";
 
 export const runtime = "nodejs";
@@ -42,15 +43,26 @@ export async function GET(
   // made here would be read by the workflow as a sale already catalogued).
   // Absent a row, the document is the defaults over no lots: one blank sheet.
   const catalogue = await getCatalogue(orgId, id);
-  // Lots, pins AND overrides: the same three inputs the PDF route reads, so the
-  // two consumers cannot disagree about what a correction did.
-  const [lots, pins, overrides] = await Promise.all([
+  // Lots, pins, overrides AND the house's field policy: the same four inputs the
+  // PDF route reads, so the two consumers cannot disagree about what a
+  // correction did or about what may leave the building. The preview IS the
+  // catalogue; a field visible here and absent from the print would make that
+  // sentence false in the most expensive direction.
+  const [lots, pins, overrides, policy] = await Promise.all([
     listLotsWithImages(orgId, id),
     catalogue ? listPins(orgId, catalogue.id) : [],
     catalogue ? listOverrides(orgId, catalogue.id) : [],
+    fieldPolicyOf(orgId),
   ]);
 
-  const document = derive(lots, normaliseParams(catalogue?.params), pins, overrides);
+  const document = derive(
+    lots,
+    normaliseParams(catalogue?.params),
+    pins,
+    overrides,
+    BUILT_IN_TEMPLATES,
+    policy,
+  );
 
   return new Response(renderCatalogue(document), {
     headers: {

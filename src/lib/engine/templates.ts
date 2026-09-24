@@ -348,7 +348,105 @@ export const TEARSHEET: Template = templateSchema.parse({
   ],
 } satisfies TemplateInput);
 
+/**
+ * A condition report — one lot to a page: who looked, under what light, what
+ * they found, numbered.
+ *
+ * ── WHY IT IS A TEMPLATE AT ALL ─────────────────────────────────────────────
+ *
+ * Because principle 6 leaves no alternative. A report painted by a function of
+ * its own would be a second renderer by another name, and the predecessor's
+ * preview stopped resembling its deliverable in exactly that way. The report is
+ * a sheet of (label, value) lines over a plate, which is a shape this
+ * vocabulary already says; the record it is derived from is composed from the
+ * examination rather than read from `lots.fields`
+ * (src/lib/data/examinations.ts, `conditionReportLot`).
+ *
+ * The MARKS arrive as the house's own columns — `Mark front 1`, `Mark base 2` —
+ * where `*` puts them, labelled, because the label is what numbers them on
+ * paper. That is the same mechanism a house's own spreadsheet column prints
+ * through, which is the point: no new vocabulary, no new switch in the
+ * renderer.
+ *
+ * ── WHAT THIS TEMPLATE CANNOT SAY, AND WHY IT IS NOT WIDENED ────────────────
+ *
+ * THE ANNOTATED VIEW. The screen's whole idea is a photograph with numbered
+ * rings standing where the faults are, and that cannot be expressed here: the
+ * vocabulary has a plate, and a plate is one picture. Marks over it would need
+ * a coordinate space inside a printed entry, which is the box-geometry language
+ * this file rejected, and a renderer switch that is not a fourth ARRANGEMENT —
+ * src/lib/render/html.ts says a fourth switch means a fourth arrangement of the
+ * same entry, and "a picture with points on it" is not that. So the printed
+ * report carries the reference view UNANNOTATED and the marks as numbered
+ * prose, and the annotated view stays on the screen. Widening the renderer for
+ * one output is how a house ends up with two.
+ *
+ * ── WHY IT IS NOT IN `BUILT_IN_TEMPLATES` ───────────────────────────────────
+ *
+ * That list is what a CATALOGUE may be laid out on, and the editor's template
+ * control offers every member of it. A sale laid out as condition reports would
+ * print a page per lot of fields no lot record has — a template offered where
+ * it means nothing, which is worse than one that is hard to find. `derive`
+ * takes its library as an argument for exactly this, and the report route
+ * passes `REPORT_TEMPLATES`.
+ */
+export const CONDITION_REPORT: Template = templateSchema.parse({
+  id: "condition-report",
+  name: { zh: "狀況報告", en: "Condition report" },
+  purpose:
+    "One lot to a page: who examined it, under what light, and every mark in order.",
+  arrangement: "sheet",
+  page: { size: "A4", orientation: "portrait", margin: 7 },
+  type: { body: 1.05, cap: 12 },
+  // ONE DENSITY, and the budgets are wide on purpose. A report that dropped a
+  // mark to fit a page would be a report that hides a fault — the one failure
+  // this document cannot have. Sixty fields is the schema's ceiling and is nine
+  // named lines plus fifty-one marks; a lot with more faults than that needs a
+  // conservator, not a bigger budget.
+  densities: [{ perPage: 1, fields: 60, lines: 200, units: 20_000 }],
+  defaultPerPage: 1,
+  // Smaller than a tearsheet's plate: the picture is here to say which object
+  // this is, and the page belongs to the prose.
+  plate: { above: 0.38 },
+  fields: [
+    { key: "ref" },
+    { key: "title", priority: 1 },
+    { key: "maker", priority: 2 },
+    // Labelled, every one: a bare date and a bare name in a column would leave
+    // a reader guessing which was the examiner and which the custodian.
+    { key: "Examined", priority: 3, label: true },
+    { key: "Examiner", priority: 4, label: true },
+    { key: "Light", priority: 5, label: true },
+    { key: "Occasion", priority: 6, label: true },
+    { key: "Summary", priority: 7 },
+    // The marks, labelled — the label is what numbers them and names their
+    // view, because on paper there is no switcher to say which view is
+    // showing. They print after the overall reading and before the appendix,
+    // which is where a registrar looks for them.
+    { key: "*", priority: 8, label: true },
+    // The public half of the custody chain, as the catalogue would print it.
+    // The one place in this phase where the print path reads the movement
+    // table, and it reads it through the same function the movement screen
+    // shows (src/lib/data/movements.ts, `provenanceText`). LAST in print order
+    // and last to survive a short page: it is context, and a condition report
+    // that dropped a mark to keep a provenance line would be the wrong
+    // document.
+    { key: "Provenance", priority: 9, label: true },
+  ],
+} satisfies TemplateInput);
+
 export const BUILT_IN_TEMPLATES: readonly Template[] = [CATALOGUE, PRICE_LIST, TEARSHEET];
+
+/**
+ * Templates that are not catalogues.
+ *
+ * A separate library rather than a flag on the template, because `derive`
+ * already takes the library as an argument and a flag would mean every caller
+ * of `templateFor` learning to filter. Passed by the route that prints a
+ * report; `BUILT_IN_TEMPLATES` stays the answer to "what may this catalogue
+ * look like".
+ */
+export const REPORT_TEMPLATES: readonly Template[] = [CONDITION_REPORT];
 
 export const DEFAULT_TEMPLATE_ID = CATALOGUE.id;
 

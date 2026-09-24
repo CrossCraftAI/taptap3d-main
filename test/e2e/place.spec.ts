@@ -134,8 +134,16 @@ test("a caption line goes where a person drags it, and stays there", async ({ pa
   await page.mouse.move(title.x + title.w / 2 + dx, title.y + title.h / 2 + dy, { steps: 12 });
   // The ring follows the pointer while the ink has not moved — nothing is
   // written into the preview, so the ring is the only thing that can.
-  const ringMid = await page.locator('[data-ring-kind="selected"]').boundingBox();
-  expect(ringMid!.y).toBeGreaterThan(title.y + dy / 2);
+  // POLLED, because "the ring follows the pointer" is eventually true and this
+  // sampled it once. The overlay measures at most once per painted frame — a
+  // deliberate rule, since re-reading every box per event is what makes a
+  // preview stutter — so a read taken straight after the last `mouse.move` can
+  // land a frame early. Chromium usually got there first and WebKit usually
+  // did not, which is how a timing assumption reads as an engine difference.
+  // It still fails if the ring never moves: the poll has a deadline.
+  await expect
+    .poll(async () => (await page.locator('[data-ring-kind="selected"]').boundingBox())?.y ?? 0)
+    .toBeGreaterThan(title.y + dy / 2);
   await page.screenshot({ path: shot("81-place-dragging") });
   await page.mouse.up();
 

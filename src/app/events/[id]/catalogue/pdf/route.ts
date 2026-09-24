@@ -11,9 +11,10 @@ import { getAssetStore } from "@/lib/assets/store";
 import { ensureCatalogue, listPins, markExported } from "@/lib/data/catalogues";
 import { getEvent } from "@/lib/data/events";
 import { listLotsWithImages } from "@/lib/data/lots";
-import { currentOrgId } from "@/lib/data/org";
+import { currentOrgId, fieldPolicyOf } from "@/lib/data/org";
 import { listOverrides } from "@/lib/data/overrides";
 import { derive, normaliseParams } from "@/lib/engine/derive";
+import { BUILT_IN_TEMPLATES } from "@/lib/engine/templates";
 import { renderCatalogue } from "@/lib/render/html";
 import { NoBrowserError, renderPdf } from "@/lib/render/pdf";
 import { assets, getDb } from "@/db";
@@ -46,13 +47,24 @@ export async function GET(
   if (!event) notFound();
 
   const catalogue = await ensureCatalogue(orgId, id, `${event.name} catalogue`);
-  const [lots, pins, overrides] = await Promise.all([
+  const [lots, pins, overrides, policy] = await Promise.all([
     listLotsWithImages(orgId, id),
     listPins(orgId, catalogue.id),
     listOverrides(orgId, catalogue.id),
+    // THE FILE THAT ACTUALLY LEAVES THE BUILDING. The engine drops what this
+    // audience may not have; nothing downstream of here could, because by then
+    // the plates have been inlined and the document is on its way to a printer.
+    fieldPolicyOf(orgId),
   ]);
 
-  const document = derive(lots, normaliseParams(catalogue.params), pins, overrides);
+  const document = derive(
+    lots,
+    normaliseParams(catalogue.params),
+    pins,
+    overrides,
+    BUILT_IN_TEMPLATES,
+    policy,
+  );
 
   // ── The plates, read once and carried inline ──────────────────────────────
   const wanted = [

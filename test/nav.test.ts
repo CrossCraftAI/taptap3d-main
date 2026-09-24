@@ -81,8 +81,33 @@ describe("the rail is two groups of what is built", () => {
     expect(NAV.map((item) => item.label)).toEqual(["Events", "Photographs"]);
   });
 
-  it("names the event's two places, in this order", () => {
-    expect(saleNav(EVENT).map((item) => item.label)).toEqual(["Editor", "Lots"]);
+  it("names the event's four places, in this order", () => {
+    // Editor and Lots first because they are about the SALE; Condition and
+    // Movement after, because they are about one object in it and are reached
+    // from a row. The order is pinned here rather than left to the array,
+    // because `currentItem` takes the first matcher that claims a path — so
+    // this list's order is behaviour and not presentation.
+    expect(saleNav(EVENT).map((item) => item.label)).toEqual([
+      "Editor",
+      "Lots",
+      "Condition",
+      "Movement",
+    ]);
+  });
+
+  it("marks a register from a lot's own copy of it as well as the sale's", () => {
+    // Each register exists at two altitudes. A person who followed a row down
+    // into one lot is still in Condition, and the rail has to say so or it
+    // marks Lots and contradicts the heading.
+    const groups = navGroups(EVENT);
+    for (const tail of ["condition", "movement"] as const) {
+      const label = tail === "condition" ? "Condition" : "Movement";
+      expect(currentItem(groups, `/events/${EVENT}/${tail}`)?.label).toBe(label);
+      expect(currentItem(groups, `/events/${EVENT}/lots/xyz/${tail}`)?.label).toBe(label);
+    }
+    // And the thing they were carved out of still claims everything else.
+    expect(currentItem(groups, `/events/${EVENT}/lots/xyz`)?.label).toBe("Lots");
+    expect(currentItem(groups, `/events/${EVENT}/import`)?.label).toBe("Lots");
   });
 
   it("has no event group at all when no event is open", () => {

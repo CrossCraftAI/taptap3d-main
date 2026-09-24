@@ -132,8 +132,11 @@ describe("parameters resolve against the template, not against the engine", () =
 
   it("a row written before templates existed is a catalogue", () => {
     // catalogues.params from the previous version: no template key at all.
+    // `audience` is the same case one key later — a row written before THAT
+    // existed names no readership, and the answer is the one every catalogue
+    // in every database already had (src/lib/engine/visibility.ts).
     const params = normaliseParams({ perPage: 9, imagePlacement: "beside", showRef: false, fit: "width" });
-    expect(params).toEqual({ template: "catalogue", perPage: 9, imagePlacement: "beside", showRef: false, fit: "width" });
+    expect(params).toEqual({ template: "catalogue", perPage: 9, imagePlacement: "beside", showRef: false, audience: "public", fit: "width" });
     expect(normaliseParams({ template: "nonsense" }).template).toBe("catalogue");
   });
 

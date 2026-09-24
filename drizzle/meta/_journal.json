@@ -29,6 +29,20 @@
       "when": 1789985814251,
       "tag": "0003_carried_decisions",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1790150335385,
+      "tag": "0004_custody_and_condition",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1790155098645,
+      "tag": "0005_field_visibility",
+      "breakpoints": true
     }
   ]
 }

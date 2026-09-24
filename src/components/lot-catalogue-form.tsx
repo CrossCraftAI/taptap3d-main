@@ -3,6 +3,8 @@
 import { useActionState } from "react";
 
 import { setLotOverridesAction } from "@/app/events/[id]/lots/[lotId]/actions";
+import { LEVEL_WORDS, Reach } from "@/app/events/[id]/lots/[lotId]/reach";
+import type { Audience } from "@/lib/engine/visibility";
 import { IDLE_LOT_FORM, type LotFormState } from "@/lib/forms";
 import { logAction } from "@/lib/log/client";
 
@@ -28,6 +30,30 @@ export interface OverrideRowSpec {
   placed: boolean;
   /** The plate is a content hash: it can be hidden but not retyped. */
   hideOnly?: boolean;
+  /**
+   * The house's level for this field when that level keeps it OUT of this
+   * catalogue, and null when nothing does.
+   *
+   * ── WHY THE ROW SAYS THIS AT ALL ────────────────────────────────────────
+   *
+   * Without it the row lies by omission: the Record column shows 底價, the
+   * Prints as column shows 底價, the box is unticked — and the engine drops
+   * the field before it reaches a page, because this catalogue is made for
+   * the public and the house marked that field `house`. A person would go
+   * looking for the bug in the template.
+   *
+   * ── IT IS NOT THE SAME THING AS `hidden`, AND BOTH MAY BE TRUE ──────────
+   *
+   * They agree about the outcome — the field does not print — and they differ
+   * in the two things a person needs to know. REACH: an override is this
+   * catalogue's and a level is the house's, so un-ticking the box does not
+   * bring a withheld field back, and would be a maddening five minutes if the
+   * row did not say so. REVERSIBILITY: the tick is undone here; a level is
+   * undone where the house's policy lives. So the row shows both when both
+   * are set, and the withholding is shown FIRST, because it is the one that
+   * decides.
+   */
+  withheld: Audience | null;
 }
 
 /**
@@ -38,6 +64,13 @@ export interface OverrideRowSpec {
  * record holds, what will actually print, and — when they differ — a mark that
  * says so. Un-ticking the box or clearing the text is the reversal; nothing else
  * has to be found.
+ *
+ * A FOURTH THING CAN STOP A FIELD PRINTING and it is not a correction at all:
+ * the house's own answer for that field, against the audience THIS catalogue
+ * was made for (src/lib/engine/visibility.ts). It is not reversible here, and
+ * the row says so rather than showing a value that will not appear on the page
+ * — which is the same defect principle 9 names, arrived at from the other
+ * side: a person must be able to see that something was withheld and why.
  *
  * Same mechanics as the record's form: uncontrolled inputs, the body remounted
  * on the catalogue's version, the status line outside it.
@@ -59,6 +92,7 @@ export function LotCatalogueForm({
   lotId,
   catalogueId,
   catalogueName,
+  audience,
   rows,
   version,
 }: {
@@ -67,6 +101,8 @@ export function LotCatalogueForm({
   /** Null until a decision makes the row; the save is one. See ../app/.../actions.ts. */
   catalogueId: string | null;
   catalogueName: string;
+  /** Who this catalogue is made for — the reason a row can be withheld. */
+  audience: Audience;
   rows: OverrideRowSpec[];
   version: number;
 }): React.ReactElement {
@@ -77,6 +113,18 @@ export function LotCatalogueForm({
   // THE SAME SET THE HEADER COUNTS. Anything less makes the two numbers on
   // this page disagree, which is how a person learns to believe neither.
   const overridden = rows.filter((r) => r.hidden || r.text || r.placed).length;
+  // COUNTED APART FROM THE OVERRIDES, because they are not overrides. Folding
+  // them into one number would say "5 fields overridden" of a catalogue where
+  // a specialist made two decisions and the house made three, and the person
+  // reading it would go looking for three ticks that are not there.
+  //
+  // ONLY WHERE THE RECORD ACTUALLY HOLDS SOMETHING, which is the same set the
+  // "Where this prints" box above counts over. A row is still MARKED when the
+  // field is empty — it is a true thing about the field and about anything
+  // typed into it later — but a marked empty field holds nothing back, and
+  // counting it here would put a different number beside the same words
+  // ninety pixels apart.
+  const held = rows.filter((r) => r.withheld !== null && r.record !== "").length;
 
   return (
     <form
@@ -88,6 +136,11 @@ export function LotCatalogueForm({
         <p className="text-[12px] text-muted">
           These decisions belong to <span className="text-ink">{catalogueName}</span> only.
           The record is untouched, and the engine re-applies them at every density.
+          {/* WHO IT IS FOR, on the panel that says what it prints. The audience
+              is a property of THIS output — the same sale may have a public
+              catalogue and an internal schedule — so it is stated here rather
+              than anywhere that would read as a fact about the house. */}
+          {" "}Made for <span className="text-ink">{LEVEL_WORDS[audience].name}</span>.
         </p>
         <p className="text-[12px]" data-numeric>
           {overridden === 0 ? (
@@ -95,6 +148,12 @@ export function LotCatalogueForm({
           ) : (
             <span className="text-seal">
               {overridden} {overridden === 1 ? "field" : "fields"} overridden
+            </span>
+          )}
+          {held > 0 && (
+            <span className="text-seal">
+              {" · "}
+              {held} held back
             </span>
           )}
         </p>
@@ -136,7 +195,12 @@ function OverridesBody({ rows }: { rows: OverrideRowSpec[] }): React.ReactElemen
         </thead>
         <tbody>
           {rows.map((row) => {
-            const prints = row.hidden ? null : row.text || row.record;
+            // THE WITHHOLDING DECIDES FIRST, because the engine applies it
+            // last and nothing after it can put the field back — not a hide
+            // that has been un-ticked, and not a replacement somebody typed
+            // into the box on the right. The cell reads in the order the
+            // engine does.
+            const prints = row.withheld !== null ? null : row.hidden ? null : row.text || row.record;
             const marked = row.hidden || row.text !== "";
             return (
               <tr key={row.key} className="border-b border-rule last:border-b-0">
@@ -154,9 +218,20 @@ function OverridesBody({ rows }: { rows: OverrideRowSpec[] }): React.ReactElemen
                 </td>
                 <td className="max-w-0 truncate px-4 py-1.5 align-top" title={prints ?? ""}>
                   {prints === null ? (
-                    <span className="text-faint">hidden</span>
+                    <span className="text-faint">
+                      {row.withheld !== null ? "held back" : "hidden"}
+                    </span>
                   ) : (
                     prints || <span className="text-faint">—</span>
+                  )}
+                  {/* SAID, NOT SILENTLY OMITTED — ARCHITECTURE.md principle 9:
+                      a person must be able to see that something was withheld
+                      and why. The badge names the level, which is the why, and
+                      its title says what that level means. It sits before the
+                      "overridden" mark because when both are present the level
+                      is what decides. */}
+                  {row.withheld !== null && (
+                    <Reach level={row.withheld} className="ml-2 align-middle" />
                   )}
                   {marked && (
                     <span className="ml-2 bg-sealSoft px-1 py-px text-[10px] font-medium text-seal">
@@ -190,7 +265,21 @@ function OverridesBody({ rows }: { rows: OverrideRowSpec[] }): React.ReactElemen
                     text and the input beside it. The horizontal padding goes
                     for the reason the header gives. */}
                 <td className="align-top">
-                  <label className="flex min-h-[var(--tap)] min-w-[var(--tap)] cursor-pointer items-start justify-center pt-1.5">
+                  {/* STILL LIVE ON A WITHHELD ROW, and not disabled. The tick
+                      is a decision about THIS catalogue and the level is the
+                      house's; they are two statements and the person may make
+                      theirs either way. Disabling it would also lose the
+                      decision the day the house makes the field public again —
+                      and a disabled input is blurred by the browser, which is
+                      how the predecessor ate `-1.37`. */}
+                  <label
+                    title={
+                      row.withheld === null
+                        ? undefined
+                        : `${row.label} is held back from this catalogue by the house's own answer for it. Ticking this hides it in this catalogue as well; un-ticking does not bring it back.`
+                    }
+                    className="flex min-h-[var(--tap)] min-w-[var(--tap)] cursor-pointer items-start justify-center pt-1.5"
+                  >
                     <input
                       type="checkbox"
                       name={`hide:${row.key}`}

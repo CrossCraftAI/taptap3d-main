@@ -297,14 +297,62 @@ export function saleNav(eventId: string): readonly NavItem[] {
       href: base,
       label: "Lots",
       count: "lots",
-      // The event and everything under it EXCEPT its catalogue — its import and
-      // its individual lots are the event; the catalogue is the editor above.
+      // The event and everything under it EXCEPT its catalogue and the two
+      // registers — its import and its individual lots are the event; the
+      // catalogue is the editor above; condition and movement are their own
+      // places below. `currentItem` takes the first hit in array order, and
+      // Lots is drawn before them, so without these two exclusions it would
+      // claim both registers and the rail would mark the wrong row.
+      //
+      // Rejected: reordering the list so the registers come first. It works
+      // and it changes the rail's display order, which is a product decision
+      // pinned by test/nav.test.ts — the order is Editor, Lots, and then the
+      // places you visit about a lot rather than about the sale.
       match: (p) =>
         p === base ||
-        (p.startsWith(`${base}/`) && !p.startsWith(`${base}/catalogue`)),
+        (p.startsWith(`${base}/`) &&
+          !p.startsWith(`${base}/catalogue`) &&
+          !claims(base, "condition")(p) &&
+          !claims(base, "movement")(p)),
+    },
+    {
+      route: "/events/[id]/condition",
+      href: `${base}/condition`,
+      label: "Condition",
+      match: claims(base, "condition"),
+    },
+    {
+      route: "/events/[id]/movement",
+      href: `${base}/movement`,
+      label: "Movement",
+      match: claims(base, "movement"),
     },
   ];
 }
+
+/**
+ * Each register exists at TWO ALTITUDES, and one matcher has to know both.
+ *
+ * `/events/{id}/condition` is the sale's register — every lot, and how many
+ * have been examined. `/events/{id}/lots/{lotId}/condition` is one lot's own,
+ * reached from a row of it. They are the same PLACE in the rail's sense, so
+ * the rail marks the same row from either, and a person who has followed a row
+ * down into a lot can still read where they are.
+ *
+ * NO COUNTS ON EITHER, and the reason is measured rather than aesthetic. The
+ * rail's numbers come from the root layout (see the note above `NAV`), which
+ * cannot know which sale is open — so a per-sale count would have to be two
+ * more correlated subqueries for EVERY sale in the org on EVERY request.
+ * `listEventChoices` already runs one per event row; on an org of a few
+ * hundred sales that is several hundred extra subqueries to print two numbers
+ * about one of them. Each register carries its own count on its own meta line,
+ * where it costs one query about one sale.
+ */
+const claims =
+  (base: string, tail: "condition" | "movement") =>
+  (p: string): boolean =>
+    p === `${base}/${tail}` ||
+    (p.startsWith(`${base}/lots/`) && p.endsWith(`/${tail}`));
 
 /** The rail, as the groups it draws. The sale's own places come first. */
 export function navGroups(eventId: string | null): readonly NavGroup[] {

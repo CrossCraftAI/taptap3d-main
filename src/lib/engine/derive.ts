@@ -38,6 +38,13 @@ import {
   type Template,
   type TemplateField,
 } from "./templates";
+import {
+  audienceFor,
+  EMPTY_POLICY,
+  withheldAt,
+  type Audience,
+  type FieldPolicy,
+} from "./visibility";
 
 export interface CatalogueParams {
   /**
@@ -57,6 +64,20 @@ export interface CatalogueParams {
   /** Whether the house's own reference prints. Some houses do not use one. */
   showRef: boolean;
   /**
+   * WHO THIS OUTPUT IS FOR, and therefore which of the house's fields may
+   * appear in it at all (src/lib/engine/visibility.ts).
+   *
+   * A PARAMETER OF THE OUTPUT, not of the house. One sale has a public
+   * catalogue and an internal valuation schedule on the same day, from the same
+   * records and the same corrections; what differs is the readership, so it
+   * belongs here beside the template and the density rather than on the org
+   * row, which could only ever hold one answer for a house that needs two.
+   *
+   * `public` is the default and is what every catalogue written before this key
+   * existed already is.
+   */
+  audience: Audience;
+  /**
    * How the preview sizes a page: a whole page in the frame, or the page filled
    * to the frame's width.
    *
@@ -75,6 +96,7 @@ export const DEFAULT_PARAMS: CatalogueParams = {
   perPage: 4,
   imagePlacement: "above",
   showRef: true,
+  audience: "public",
   fit: "page",
 };
 
@@ -98,6 +120,11 @@ export function normaliseParams(
     perPage: densityFor(template, source.perPage).perPage,
     imagePlacement: placementFor(template, source.imagePlacement),
     showRef: source.showRef !== false,
+    // NOT resolved against the template. Every other answer here is — a density
+    // the template does not offer falls to the one it does — because those are
+    // facts about a page. Who may read the page is not, and a template that
+    // could narrow or widen it would be a layout choosing a readership.
+    audience: audienceFor(source.audience),
     fit: source.fit === "width" ? "width" : DEFAULT_PARAMS.fit,
   };
 }
@@ -485,21 +512,38 @@ function captionFor(lot: EngineLot, template: Template, density: Density): Capti
  * Widths are resolved here from the template's weights so the renderer emits a
  * share and computes nothing — the plate takes its declared share of the row
  * and the text columns divide the rest.
+ *
+ * ── THE ONE PLACE THE AUDIENCE HAS TO BE ASKED TWICE ────────────────────────
+ *
+ * Everywhere else a withheld field is simply gone from the lot before it is
+ * looked at, so nothing downstream can find it. A table is the exception,
+ * because its named columns come from the TEMPLATE and not from the records:
+ * `namedCandidates(template, null)` offers every field the template declares
+ * whether or not any lot in the document still carries it. Without the filter
+ * below, a price list made for the public would print an estimate column,
+ * headed, ruled and empty in every row — which does not leak the number, and
+ * announces to the reader that there is one. The house's own columns need no
+ * filter here; they are the UNION of what the printed lots carry, and the
+ * withholding already removed them from those.
  */
 function tableColumns(
   template: Template,
   density: Density,
   lots: EngineLot[],
   showRef: boolean,
+  withheld: ReadonlySet<string>,
 ): DocColumn[] {
   const candidates = [
-    ...namedCandidates(template, null),
+    ...namedCandidates(template, null).filter((c) => !withheld.has(c.key)),
     ...customCandidates(template, lots.map((l) => l.fields), named(template)),
   ];
   const kept = choose(candidates, density.fields);
 
   const refField = template.fields.find((f) => f.key === "ref");
-  const plateShare = template.plate?.beside ?? 0;
+  // A plate this audience may not have is not a narrow empty column — it is no
+  // column, and the text takes the whole row back.
+  const plate = withheld.has("images") ? null : template.plate;
+  const plateShare = plate?.beside ?? 0;
   const text: { key: string; label: string; weight: number }[] = [];
   if (refField && showRef) text.push({ key: "ref", label: labelFor("ref"), weight: refField.width });
   for (const c of kept) text.push({ key: c.key, label: c.label, weight: c.width });
@@ -511,7 +555,7 @@ function tableColumns(
     label: c.label,
     width: (textShare * c.weight) / total,
   }));
-  if (template.plate) {
+  if (plate) {
     const at = refField && showRef ? 1 : 0;
     columns.splice(at, 0, { key: "images", label: "", width: plateShare });
   }
@@ -565,6 +609,56 @@ function applyOverrides(lot: EngineLot, own: EngineOverride[]): EngineLot {
     else if (override.field !== "images") fields[override.field] = override.text;
   }
   return { id: lot.id, ref, fields, images };
+}
+
+/**
+ * The lot as an output for THIS AUDIENCE may carry it: the corrected lot with
+ * every field the audience does not permit removed.
+ *
+ * ── WHY THIS IS IN THE ENGINE AND NOWHERE ELSE ──────────────────────────────
+ *
+ * The same reason overrides are applied here rather than by the caller. A check
+ * in the renderer is a check one output obeys; a check in the lot form is a
+ * check one screen obeys. Both are advisory, because the next caller — the
+ * listing projection (ROADMAP D2), the per-lot embed (D3), whatever the AI chat
+ * bar (D7) learns to export — is written by somebody who did not read the
+ * component that had the rule in it. There is one function every output passes
+ * through, and the field is gone before it leaves it.
+ *
+ * ── AFTER THE OVERRIDES, AND THAT ORDER IS THE POINT ────────────────────────
+ *
+ * An override may put a value into a field the record does not have (`text` on
+ * an absent maker is how a catalogue prints one), so applying the policy first
+ * would let a correction re-introduce a field the audience may not see. Applied
+ * last, nothing can put it back: a house field does not reach a public output
+ * even if the template names it, even if a specialist typed a replacement for
+ * it, and even if the record never had it.
+ *
+ * ── HOW IT COMPOSES WITH A `hidden` OVERRIDE ────────────────────────────────
+ *
+ * They cannot disagree, because they do the same thing to the same shape and
+ * this one runs second. A field both hidden in this catalogue and marked
+ * `house` is absent once, not twice. What differs is REACH and REVERSIBILITY,
+ * and that difference is the lot record's to show (see the lot page): the
+ * override is one catalogue's and is undone by un-ticking a box; the level is
+ * the house's and holds for every output made for that audience.
+ *
+ * `ref` and `images` are handled by name for the same reason `applyOverrides`
+ * handles them by name — they are not entries in `fields`, and a house asking
+ * for its reference or its plate to stay inside the building is asking the same
+ * question about the same two things.
+ */
+function withhold(lot: EngineLot, withheld: ReadonlySet<string>): EngineLot {
+  const fields: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(lot.fields)) {
+    if (!withheld.has(key)) fields[key] = value;
+  }
+  return {
+    id: lot.id,
+    ref: withheld.has("ref") ? null : lot.ref,
+    fields,
+    images: withheld.has("images") ? [] : lot.images,
+  };
 }
 
 /**
@@ -623,6 +717,16 @@ function applyOverrides(lot: EngineLot, own: EngineOverride[]): EngineLot {
  *
  * `library` is the templates that exist. The built-ins by default; the day a
  * house authors one, the data layer appends it here and nothing else changes.
+ *
+ * `policy` is what the house has said about which of its fields may leave the
+ * building, read against `params.audience` — who this output is for
+ * (src/lib/engine/visibility.ts). The default is an EMPTY policy, so a caller
+ * that passes neither derives exactly the document it derived before either
+ * existed: nothing is withheld, and the code below takes the same branch it
+ * always did. It is the last argument and not part of `params` because the two
+ * belong to different owners — the audience is this output's, the policy is
+ * the org's — and folding them together would make one catalogue able to
+ * change the house's mind about a field.
  */
 export function derive(
   lots: EngineLot[],
@@ -630,14 +734,23 @@ export function derive(
   pins: EnginePin[] = [],
   overrides: EngineOverride[] = [],
   library: readonly Template[] = BUILT_IN_TEMPLATES,
+  policy: FieldPolicy = EMPTY_POLICY,
 ): CatalogueDocument {
   const template = templateFor(params.template, library);
   const density = densityFor(template, params.perPage);
   const perPage = density.perPage;
   const imagePlacement = placementFor(template, params.imagePlacement);
+  // Resolved here as well as in `normaliseParams`, because `derive` is called
+  // with hand-built params too and every other answer in this block is
+  // re-resolved for the same reason: the engine is total over its inputs.
+  const audience = audienceFor(params.audience);
+  const withheld = withheldAt(policy, audience);
   // A template that does not name the reference prints none; this catalogue
-  // may then also choose not to. Either way the slot says null.
-  const showRef = params.showRef && template.fields.some((f) => f.key === "ref");
+  // may then also choose not to. Either way the slot says null. And an audience
+  // that may not have the reference gets none, whatever the template and the
+  // catalogue say — the narrowest of the three wins, here and everywhere.
+  const showRef =
+    params.showRef && template.fields.some((f) => f.key === "ref") && !withheld.has("ref");
 
   const overridesByLot = new Map<string, EngineOverride[]>();
   for (const override of overrides) {
@@ -647,11 +760,16 @@ export function derive(
   }
   // Every lot as this catalogue prints it, BEFORE anything is arranged: a
   // table's columns are the union of what the printed lots carry, so a hidden
-  // field must already be gone when the columns are chosen.
+  // or withheld field must already be gone when the columns are chosen.
+  //
+  // Both passes skip themselves when there is nothing to do, so a lot with no
+  // override in a house with no policy is the SAME OBJECT the caller handed in
+  // — which is what it was before either existed.
   const printedOf = new Map<string, EngineLot>();
   for (const lot of lots) {
     const own = overridesByLot.get(lot.id);
-    printedOf.set(lot.id, own ? applyOverrides(lot, own) : lot);
+    const corrected = own ? applyOverrides(lot, own) : lot;
+    printedOf.set(lot.id, withheld.size === 0 ? corrected : withhold(corrected, withheld));
   }
   const printedLots = lots.map((lot) => printedOf.get(lot.id)!);
 
@@ -670,7 +788,7 @@ export function derive(
 
   const columns =
     template.arrangement === "table"
-      ? tableColumns(template, density, printedLots, showRef)
+      ? tableColumns(template, density, printedLots, showRef, withheld)
       : [];
   const linesFor = (printed: EngineLot): CaptionLine[] =>
     template.arrangement === "table"
@@ -728,7 +846,7 @@ export function derive(
   flush();
 
   return {
-    params: { ...params, template: template.id, perPage, imagePlacement },
+    params: { ...params, template: template.id, perPage, imagePlacement, audience },
     template,
     density,
     columns,

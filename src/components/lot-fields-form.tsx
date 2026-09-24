@@ -3,6 +3,8 @@
 import { useActionState } from "react";
 
 import { saveLotFieldsAction } from "@/app/events/[id]/lots/[lotId]/actions";
+import { Reach } from "@/app/events/[id]/lots/[lotId]/reach";
+import type { Audience } from "@/lib/engine/visibility";
 import { IDLE_LOT_FORM, type LotFormState } from "@/lib/forms";
 import { logAction } from "@/lib/log/client";
 
@@ -19,6 +21,16 @@ export interface FieldRow {
    * sale arrives under whatever column the house happened to call it.
    */
   long: boolean;
+  /**
+   * How far this value goes: the house's own answer for this field key
+   * (src/lib/engine/visibility.ts), or `public` because it has not given one.
+   *
+   * SHOWN HERE AND ENFORCED SOMEWHERE ELSE. This badge is a label, not a
+   * control and not a check — the engine drops the field, on every output, on
+   * every derivation. If this line were the guard it would be a guard one
+   * screen obeys, which is exactly the shape the engine exists to refuse.
+   */
+  level: Audience;
 }
 
 /**
@@ -136,6 +148,14 @@ function FieldsBody({ rows }: { rows: FieldRow[] }): React.ReactElement {
                 className="min-h-[var(--tap)] min-w-0 flex-1 border border-rule bg-paper px-2 text-[13px]"
               />
             )}
+            {/* AFTER the field, not inside the label column. That column is
+                `w-28` and truncates, so "Never leaves the building" would have
+                arrived as "Never lea…" on the one row where it matters most.
+                Here it renders at its full width on the rare marked row and
+                is not rendered at all on every other — the record of a house
+                with no policy is the record it was before this landed, gap
+                included. */}
+            <Reach level={row.level} className="mt-1.5" />
           </div>
         );
       })}
