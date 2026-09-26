@@ -4,13 +4,18 @@
 // tests, which is how a product ends up with a menu item that 404s. The rail was
 // seven categories filed as a menu — a sequence of four and three "not yet"
 // labels — and the owner rejected it; it was then four flat places, because four
-// items about one subject do not need a filing system. It is now SIX places in
-// two groups, two of them about the event you have open, and this asserts what
+// items about one subject do not need a filing system. It is now SEVEN places in
+// two groups, four of them about the event you have open, and this asserts what
 // that regrouping can get wrong and a unit test cannot see: that every one of
-// the six is a real page, that the groups genuinely collapse and are remembered,
+// them is a real page, that the groups genuinely collapse and are remembered,
 // that exactly one row is ever marked, that the switcher changes which sale is
 // open, and — hardest and most important — that nothing in this chrome is a
 // control that does nothing.
+//
+// AND THAT THE RAIL HAS THREE WIDTHS NOW. The icon rail's failure mode is not
+// that it looks wrong, it is that a place becomes a square nobody can name, so
+// the assertions about it are about names and titles rather than pixels —
+// except the two that ARE the feature.
 //
 // The screenshots are the point. ARCHITECTURE.md principle 10: "the tests pass"
 // is not evidence that an interface exists.
@@ -28,16 +33,36 @@ const palette = (page: Page): Locator =>
   page.getByRole("complementary", { name: "What you can add" });
 
 // The house's places, in the order they are drawn, with the heading each one
-// lands on. The same two are held in test/nav.test.ts; change both on purpose.
+// lands on. The same three are held in test/nav.test.ts; change both on
+// purpose.
 //
-// TWO, not four. `/catalogues` and `/exports` were one component over the same
-// rows as this ledger with a different verb, and the verb is now the row's own
-// next action — so the rail listed two extra doors into a table it already had
-// a door to. Both screens are gone; neither capability is.
+// `/catalogues` and `/exports` were here and are gone: they were one component
+// over the same rows as this ledger with a different verb, and the verb is now
+// the row's own next action, so the rail listed two extra doors into a table it
+// already had a door to. Both screens are gone; neither capability is.
+//
+// SETTINGS ARRIVED FOR THE OPPOSITE REASON — a capability with no door at all.
+// `orgs.field_policy` decides which of a house's fields may be printed, the
+// engine has enforced it since Phase 3, and until now the only way to set it
+// was a hand-written UPDATE against the database.
 const HOUSE: [string, string][] = [
   ["Events", "Events"],
   ["Photographs", "Photographs"],
+  ["Settings", "Settings"],
 ];
+
+// The rail's two widths, in pixels. Written out rather than imported, the way
+// HOUSE above is: nothing else in this directory reaches into `src`, and
+// src/lib/chrome.ts `RAIL_WIDE` / `RAIL_ICONS` are the other copy and carry
+// the argument for the numbers.
+const RAIL_WIDE = 224;
+const RAIL_ICONS = 44;
+
+/** The rail's own width right now, measured rather than read off a class. */
+async function railWidth(page: Page): Promise<number> {
+  const box = await page.locator("#rail").boundingBox();
+  return Math.round(box?.width ?? 0);
+}
 
 // What the rail must NOT say any more. "Import" is here because importing is an
 // action and lives in the palette; the rail holds places.
@@ -60,9 +85,11 @@ test("the rail is two groups of what is built, and nothing else", async ({
   await expect(nav.getByRole("button", { name: "The house" })).toBeVisible();
   await expect(nav.getByRole("button", { name: "This event" })).toHaveCount(0);
 
-  // Exactly the four house places, in order. The count beside a name is part
-  // of the link's text, so every trailing number is stripped before comparing
-  // — Photographs carries two, the unassigned badge and the total.
+  // Exactly the house's places, in order. The count beside a name is part of
+  // the link's text, so every trailing number is stripped before comparing —
+  // Photographs carries two, the unassigned badge and the total, and Settings
+  // carries none because "how many fields has the house marked" is a number
+  // about that screen rather than about the house.
   const links = nav.getByRole("link");
   await expect(links).toHaveCount(HOUSE.length);
   const names = (await links.allInnerTexts()).map((t) =>
@@ -94,6 +121,91 @@ test("the rail is two groups of what is built, and nothing else", async ({
   // something anyone can actually read in a full-page capture. By id: there are
   // two <aside> elements in the shell now.
   await page.locator("#rail").screenshot({ path: shot("30-rail-detail") });
+});
+
+test("the rail narrows to icons, and every place is still a place", async ({
+  page,
+}) => {
+  // ── WHAT THIS IS FOR ─────────────────────────────────────────────────────
+  //
+  // `--rail` had two widths in the drawing and the product shipped one: 224
+  // pixels or nothing at all. The middle state is the mode a specialist
+  // laying out pages is meant to work in — the window back, the places still
+  // reachable — and the way it fails is not that it looks wrong. It is that a
+  // row becomes a square nobody can name.
+  //
+  // So the assertions are about NAMES and not about pixels, except for the
+  // two that are the feature. An icon that needs a hover to be understood is
+  // decoration with a click handler.
+  await page.goto("/photographs");
+  const nav = rail(page);
+  const narrow = page.getByRole("button", { name: "Icons only" });
+
+  await expect(narrow).toHaveAttribute("aria-pressed", "false");
+  expect(await railWidth(page)).toBe(RAIL_WIDE);
+  await expect(nav.getByRole("link", { name: /^Photographs/ })).toContainText(
+    "Photographs",
+  );
+
+  await narrow.click();
+  await expect(narrow).toHaveAttribute("aria-pressed", "true");
+  expect(await railWidth(page)).toBe(RAIL_ICONS);
+  await page.screenshot({ path: shot("38-rail-icons"), fullPage: true });
+  await page.locator("#rail").screenshot({ path: shot("38-rail-icons-detail") });
+
+  // EVERY ROW IS STILL A ROW, and can still be found by the name it had. The
+  // label is `sr-only` rather than gone, so the accessible name — the count
+  // included — survives the narrowing, and each row carries a `title` for the
+  // half of the audience that gets no accessible name read to them.
+  const links = nav.getByRole("link");
+  await expect(links).toHaveCount(HOUSE.length);
+  for (const [item] of HOUSE) {
+    const row = nav.getByRole("link", { name: new RegExp(`^${item}`) });
+    await expect(row).toBeVisible();
+    await expect(row).toHaveAttribute("title", new RegExp(`^${item}`));
+  }
+  // And the mark still says where the viewer is, which is the rail's one job
+  // and the thing a column of identical squares would otherwise lose.
+  await expect(nav.getByRole("link", { name: /^Photographs/ })).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
+  await expect(nav.locator("[aria-current]")).toHaveCount(1);
+
+  // THE GROUP HEADING KEEPS ITS CONTROL. Dropping it at this width is the
+  // trap: a group somebody had collapsed would have nothing left to reopen
+  // it, and the rail would come back permanently missing its places.
+  await expect(nav.getByRole("button", { name: "The house" })).toBeVisible();
+
+  // A place is still a place: clicked the way a person clicks it, landing on
+  // a page that says what it is.
+  await nav.getByRole("link", { name: /^Settings/ }).click();
+  await expect(page.getByRole("heading", { name: "Settings", exact: true })).toBeVisible();
+
+  // REMEMBERED, and applied before first paint — no flash of the wide rail on
+  // a hard load, which is what the `data-rail` attribute and its inline
+  // script exist for (src/lib/chrome.ts).
+  await page.reload();
+  expect(await railWidth(page)).toBe(RAIL_ICONS);
+  await expect(narrow).toHaveAttribute("aria-pressed", "true");
+
+  // ── THE THIRD STATE, AND WHY IT IS A SECOND CONTROL ──────────────────────
+  //
+  // Away is a momentary gesture and the width is a standing preference, so
+  // the shortcut must not overwrite the preference. This is that sentence as
+  // an assertion: put the navigation away, bring it back, and it comes back
+  // the width the viewer works in rather than the width the product prefers.
+  await page.keyboard.press("Control+\\");
+  await expect(page.locator("#rail")).toBeHidden();
+  await page.keyboard.press("Control+\\");
+  await expect(page.locator("#rail")).toBeVisible();
+  expect(await railWidth(page)).toBe(RAIL_ICONS);
+
+  // And back, which returns the labels in the same gesture.
+  await narrow.click();
+  await expect(narrow).toHaveAttribute("aria-pressed", "false");
+  expect(await railWidth(page)).toBe(RAIL_WIDE);
+  await expect(nav.getByRole("link", { name: /^Settings/ })).toContainText("Settings");
 });
 
 test("a group collapses, and is still collapsed after a reload", async ({

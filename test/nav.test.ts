@@ -68,8 +68,8 @@ describe("the rail is two groups of what is built", () => {
   // a pipeline as a menu. It was then four places and no categories, because
   // four items about one subject do not need a filing system.
   //
-  // It is now FOUR places in two groups, and what changed is the list rather
-  // than the taste: two of the four are about the one event you have open.
+  // It is now SEVEN places in two groups, and what changed is the list rather
+  // than the taste: four of the seven are about the one event you have open.
   //
   // The house lost two the same day it gained the groups. `/catalogues` and
   // `/exports` were one component over the same rows with a different verb,
@@ -77,8 +77,30 @@ describe("the rail is two groups of what is built", () => {
   // was offering two more doors into the table it already had a door to.
   // Changing this is a product decision; change it here and in
   // test/e2e/rail.spec.ts together, on purpose.
-  it("names the house's two places, in this order", () => {
-    expect(NAV.map((item) => item.label)).toEqual(["Events", "Photographs"]);
+  //
+  // SETTINGS IS THE HOUSE'S THIRD, and it is here rather than on a lot because
+  // what it sets is org-wide: `orgs.field_policy` answers for every lot of
+  // every sale at once, so a control on one lot's record would change every
+  // catalogue in the house from a screen that looks like it is about one
+  // object. src/lib/nav.ts carries that argument beside the row.
+  it("names the house's three places, in this order", () => {
+    expect(NAV.map((item) => item.label)).toEqual([
+      "Events",
+      "Photographs",
+      "Settings",
+    ]);
+  });
+
+  it("gives every place a glyph, and no two places the same one", () => {
+    // AT 44 PIXELS THE GLYPH IS THE ROW. The rail has an icon width now
+    // (src/lib/chrome.ts), and the failure this guards is the one a new row
+    // gets by forgetting rather than by choosing: a place that is a blank
+    // square, or two places that are the same square. The type makes the
+    // field required and makes a name with no drawing behind it a compile
+    // error; what it cannot say is that the seven drawings are seven.
+    const icons = EVERY.map((item) => item.icon);
+    expect(icons.filter(Boolean)).toHaveLength(EVERY.length);
+    expect(new Set(icons).size).toBe(EVERY.length);
   });
 
   it("names the event's four places, in this order", () => {
@@ -163,6 +185,7 @@ describe("which place a screen belongs to", () => {
     ["/events/abc/lots/def", "Events"],
     ["/photographs", "Photographs"],
     ["/photographs?filter=unassigned", "Photographs"],
+    ["/settings", "Settings"],
     // AN EVENT'S CATALOGUE IS THE EVENTS, now that there is no Catalogues to
     // be. This is the house list, which has no event open, so the editor has
     // only one honest home; the moment an event IS open its own Editor row
@@ -182,6 +205,7 @@ describe("which place a screen belongs to", () => {
       "/events/abc/import",
       "/events/abc/catalogue",
       "/photographs",
+      "/settings",
     ]) {
       const matched = NAV.filter((item) => item.match(pathname));
       expect(matched.map((item) => item.label), pathname).toHaveLength(1);
@@ -212,6 +236,7 @@ describe("exactly one mark, and it is the innermost true one", () => {
     // and the house's Events does.
     ["/events/other", "Events"],
     ["/photographs", "Photographs"],
+    ["/settings", "Settings"],
     ["/", "Events"],
   ])("%s is marked %s", (pathname, label) => {
     const groups = navGroups(EVENT);

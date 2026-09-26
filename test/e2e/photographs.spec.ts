@@ -19,10 +19,41 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { crc32, deflateSync } from "node:zlib";
 
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
+
+import { PAGE_SIZE } from "@/lib/photographs";
 
 import { createEvent } from "./sale";
 import { shot } from "./shots";
+
+/**
+ * The library's tiles, and the scope is the point.
+ *
+ * `button[aria-pressed]` was the whole document, and the rail grew a
+ * width toggle that carries the same attribute — so the count was one over
+ * everywhere, and the sentence "Showing 1–48" was compared against 49 tiles
+ * that were 48 tiles and a chrome control. Scoped to `main`, which the rail
+ * is not in.
+ */
+const tilesOf = (page: Page) => page.getByRole("main").locator("button[aria-pressed]");
+
+/**
+ * How many photographs the house holds, read off the count the screen prints.
+ *
+ * NOT THE TILES. The grid is a page of at most `PAGE_SIZE`, so on any library
+ * with more than that in it, uploading two more changes the total and leaves
+ * the tile count exactly where it was. Counting tiles to prove an upload
+ * landed asserts the page size and nothing else.
+ */
+async function heldBy(page: Page): Promise<number> {
+  // TOTAL over the empty state too. A query that matches nothing prints its
+  // own sentence instead of a count, so waiting for "Showing" there hangs for
+  // the whole test timeout and reports the wait rather than the emptiness.
+  const line = page.getByText(/^Showing /);
+  if ((await line.count()) === 0) return 0;
+  const text = (await line.first().textContent()) ?? "";
+  return Number(/of ([\d,]+)/.exec(text)?.[1]?.replace(/,/g, "") ?? "0");
+}
 
 const TEMP = join("test-results", "fixtures");
 mkdirSync(TEMP, { recursive: true });
@@ -117,11 +148,18 @@ test("photographs arrive unassigned, and are filed when someone gets to it", asy
   await page.screenshot({ path: shot("10-photographs-library"), fullPage: true });
 
   // ── Upload, with no lot in mind ──────────────────────────────────────────
-  const before = await page.locator("button[aria-pressed]").count();
+  const before = await heldBy(page);
   await page.locator('input[type="file"]').setInputFiles([PHOTO_A, PHOTO_B]);
-  await expect(page.locator("button[aria-pressed]")).toHaveCount(before + 2, {
-    timeout: 60_000,
-  });
+  // THE HOUSE HOLDS TWO MORE, which is what an upload means. The grid shows a
+  // page, so on a library already past that page the tile count cannot move
+  // and asserting it would be asserting `PAGE_SIZE`.
+  await expect
+    .poll(() => heldBy(page), { timeout: 60_000 })
+    .toBe(before + 2);
+  // And they are on the first page, because the order is newest first — which
+  // is the half that makes the upload usable rather than merely recorded.
+  await expect(page.getByText(`a-${RUN}.png`).first()).toBeVisible();
+  await expect(page.getByText(`b-${RUN}.png`).first()).toBeVisible();
 
   // They are HELD and visibly UNFILED — a state, not a failure.
   await expect(page.getByText("unassigned").first()).toBeVisible();
@@ -132,11 +170,15 @@ test("photographs arrive unassigned, and are filed when someone gets to it", asy
 
   // ── Filed later, by someone with the objects in front of them ───────────
   await page.goto("/photographs?filter=unassigned");
-  const cards = page.locator("button[aria-pressed]");
+  const cards = tilesOf(page);
   await cards.first().click();
-  // Shift extends the run, the way every file manager does.
+  // Shift extends the run, the way every file manager does. The bar says "on
+  // this page" once there is more than one, because the library is paged now
+  // and a selection that spanned pages would report a number over a grid that
+  // does not show them — so the sentence has two shapes and the match takes
+  // both rather than pinning the one it happened to see.
   await cards.nth(1).click({ modifiers: ["Shift"] });
-  await expect(page.getByText(/^\d+ selected$/)).toBeVisible();
+  await expect(page.getByText(/^\d+ selected( on this page)?$/)).toBeVisible();
   await page.screenshot({ path: shot("12-photographs-selected"), fullPage: true });
 
   await page.getByLabel("Assign to a lot").fill(REF_A);
@@ -179,7 +221,123 @@ test("photographs arrive unassigned, and are filed when someone gets to it", asy
   await expect(page.locator("figure").getByText("plate", { exact: true })).toBeVisible();
 
   await page.goto("/photographs");
-  await expect(page.locator("button[aria-pressed]")).toHaveCount(before + 2);
+  // The house still holds them both. Counting tiles here would assert the page
+  // size, not the upload — see `heldBy`.
+  expect(await heldBy(page)).toBe(before + 2);
+});
+
+test("the library is a page of what the query asks for", async ({ page }) => {
+  // ── WHAT THIS IS FOR, IN TWO NUMBERS ─────────────────────────────────────
+  //
+  // The library rendered every tile the house held into one document. Measured
+  // against a production build with 424 photographs in the org: 1,475,396
+  // bytes of served HTML, 775 of them per tile, taken as the median distance
+  // between two consecutive `/api/assets/` markers in the response — the way
+  // src/lib/nav.ts measured the switcher's rows.
+  //
+  // A driven test cannot assert a byte count that moves with the data, so it
+  // asserts the thing that produced it: the grid draws a bounded number of
+  // tiles however many the house holds, what it does not draw is reachable,
+  // and every control is an address somebody can send.
+  //
+  // ── AND WHAT THE PAGER DID TO THE SELECTION ──────────────────────────────
+  //
+  // Shift-click extends across what is on screen, and a pager changes what
+  // that means. The choice was that the selection IS what is on screen, and
+  // the last block here is that sentence as an assertion — because the way it
+  // silently goes wrong is a client-side navigation that re-renders the page
+  // without remounting the grid, leaving eleven photographs selected over
+  // tiles that no longer contain them.
+  await page.goto("/photographs");
+  await expect(page.getByRole("heading", { name: "Photographs" })).toBeVisible();
+
+  const tiles = tilesOf(page);
+  const count = await tiles.count();
+  const pager = page.getByRole("navigation", { name: "Pages of the library" });
+  const shown = page.getByText(/^Showing /);
+
+  // THE COUNT SAYS WHAT IS SHOWN OF WHAT EXISTS, and the two halves have to
+  // agree with the tiles actually in the document — a sentence that says 48
+  // over a grid of 424 is worse than no sentence.
+  await expect(shown).toContainText(new RegExp(`Showing 1–${count} of `));
+  await page.screenshot({ path: shot("16-photographs-page-one"), fullPage: true });
+
+  if (await pager.isVisible()) {
+    // More than a page's worth. The tiles on page two are not the tiles on
+    // page one — which is the only thing a pager has to get right, and the
+    // thing an unstable sort gets wrong by repeating a row across two pages.
+    const first = await tiles.first().innerText();
+    await pager.getByRole("link", { name: /Next/ }).click();
+    await expect(page).toHaveURL(/page=2/);
+    await expect(shown).toContainText(new RegExp(`Showing ${count + 1}–`));
+    await expect(pager).toContainText("Page 2 of");
+    expect(await tiles.first().innerText()).not.toBe(first);
+    await page.screenshot({ path: shot("17-photographs-page-two"), fullPage: true });
+
+    // A stale link to a page past the end shows the last page rather than an
+    // empty grid: the photographs are what somebody came for and the page
+    // number was never the point.
+    await page.goto("/photographs?page=9999");
+    await expect(tiles.first()).toBeVisible();
+    await expect(pager).not.toContainText("Page 9999");
+  } else {
+    // A house with less than a page's worth has no pager at all — a control
+    // whose only outcome is staying put is the dead control this suite is
+    // under standing instruction to refuse.
+    await expect(pager).toHaveCount(0);
+  }
+
+  // ── THE SEARCH IS A PLAIN GET FORM, so it is an address ──────────────────
+  //
+  // THE RUN IS IN THE TERM, and that is the same care the fixtures at the top
+  // of this file take. Searching "a-" would also find every earlier morning's
+  // `a-<run>.png` still in the store, so the count below would depend on how
+  // many times anybody had run this suite — and the tab assertion after it
+  // would be measuring the database's history rather than the product.
+  await page.goto("/photographs");
+  await page.getByPlaceholder("Find a photograph by filename").fill(`a-${RUN}`);
+  await page.getByRole("button", { name: "Search" }).click();
+  await expect(page).toHaveURL(new RegExp(`[?&]q=a-${RUN}`));
+  // The fixtures this file uploads are named `a-<run>.png` and `b-<run>.png`,
+  // so this finds one of them and not the other.
+  await expect(page.getByText(`a-${RUN}.png`).first()).toBeVisible();
+  await expect(page.getByText(`b-${RUN}.png`)).toHaveCount(0);
+  await page.screenshot({ path: shot("18-photographs-search"), fullPage: true });
+
+  // THE TABS COUNT WHAT THE SEARCH LEFT, not what the house holds. A tab
+  // reading "12" that lands on an empty grid is the defect a faceted count
+  // exists to prevent, and it is invisible until somebody presses it.
+  const onALot = page.getByRole("link", { name: /^On a lot/ });
+  const promised = Number((await onALot.innerText()).match(/(\d+)\s*$/)?.[1] ?? "-1");
+  await onALot.click();
+  await expect(page).toHaveURL(/filter=assigned/);
+  // The search rides along with the filter — searching inside a pile stays
+  // in that pile — so the grid is what the tab promised.
+  await expect(page).toHaveURL(new RegExp(`[?&]q=a-${RUN}`));
+  // What the tab promised, up to one page of it. The promise is about the
+  // whole filtered set and the grid shows a page, so the two agree only while
+  // the set fits — which is the honest comparison and the one that keeps
+  // working when this search matches more than forty-eight.
+  await expect(tilesOf(page)).toHaveCount(Math.min(promised, PAGE_SIZE));
+  expect(await heldBy(page)).toBe(promised);
+
+  // A word that is in no filename says so, and offers the two presses that
+  // undo it: a state the mockup never draws and the product must.
+  await page.getByPlaceholder("Find a photograph by filename").fill("nothing is called this");
+  await page.getByRole("button", { name: "Search" }).click();
+  await expect(page.getByText(/No photograph here is named/)).toBeVisible();
+  await page.screenshot({ path: shot("19-photographs-no-hits"), fullPage: true });
+  await page.getByRole("link", { name: "Look at every photograph" }).click();
+  await expect(page).toHaveURL(/\/photographs$/);
+
+  // ── THE SELECTION IS WHAT IS ON SCREEN ───────────────────────────────────
+  await page.goto("/photographs");
+  await tilesOf(page).first().click();
+  await expect(page.getByText(/^1 selected/)).toBeVisible();
+  // Any navigation that changes the query clears it, because what the Assign
+  // button writes must be what a person can see.
+  await page.getByRole("link", { name: /^Unassigned/ }).click();
+  await expect(page.getByText(/selected/)).toHaveCount(0);
 });
 
 test("a lot takes a photograph dropped straight onto it", async ({ page }) => {

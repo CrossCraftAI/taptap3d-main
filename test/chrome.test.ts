@@ -16,10 +16,16 @@ import {
   NAV_SALE,
   PALETTE,
   RAIL,
+  RAIL_ICONS,
+  RAIL_WIDE,
+  RAIL_WIDTH,
   TOP_BAR,
+  WIDTH_DEFAULT,
   applyBeforePaint,
+  applyWidthBeforePaint,
   isOpen,
   railDefault,
+  widthOf,
   type Collapsible,
 } from "@/lib/chrome";
 
@@ -170,6 +176,23 @@ describe("the before-paint script does exactly what the component does", () => {
     expect(RAIL.key).not.toBe(LOTS_PANEL.key);
   });
 
+  it("leaves the rail's width alone, because it is not its decision", () => {
+    // TWO CONTROLS, TWO KEYS — and the thing that proves they are independent
+    // is that neither script reads the other's key. A viewer who puts the
+    // navigation away and brings it back gets the width they work in, and
+    // that is only true while this holds.
+    const seen: string[] = [];
+    const storage = {
+      getItem(key: string) {
+        seen.push(key);
+        return null;
+      },
+    };
+    run(RAIL, true, storage);
+    expect(seen).toEqual([RAIL.key]);
+    expect(seen).not.toContain(RAIL_WIDTH.key);
+  });
+
   it("applies the same choice to the rail and the top bar", () => {
     // They are two elements on one key, so one stored answer has to leave both
     // in the same state — including the state the server did NOT render,
@@ -180,5 +203,157 @@ describe("the before-paint script does exactly what the component does", () => {
       expect(bar.hidden, String(stored)).toBe(rail.hidden);
       expect(bar.expanded, String(stored)).toBe(rail.expanded);
     }
+  });
+});
+
+// ── The rail's second decision ──────────────────────────────────────────────
+//
+// The rail has three states — away, icons, full — and two controls, and
+// src/lib/chrome.ts argues at length why it is not one control cycling three
+// ways: whether the navigation is HERE is a momentary gesture, how wide it is
+// when it is here is a standing preference, and putting both on one control
+// makes every momentary gesture overwrite the preference.
+//
+// What that costs is a second key and a second before-paint script, and the
+// two things that can go wrong with them are exactly what is held below: the
+// script and the reader disagreeing about a stored value, and the two
+// decisions leaking into each other.
+
+describe("the rail's width is its own decision", () => {
+  it("is a separate key, shared with nothing else", () => {
+    // A width stored under the rail's own key would be read by `isOpen` as
+    // neither "open" nor "closed" — the route default — so a viewer who chose
+    // the icon rail would find the whole navigation gone on the editor.
+    expect(PARTS.map((part) => part.key)).not.toContain(RAIL_WIDTH.key);
+  });
+
+  it("is the same element as the rail, on purpose", () => {
+    // There is one rail. The width is a value it carries rather than a second
+    // thing beside it, so the two scripts write two different attributes onto
+    // the one element — and the two controls stay two buttons.
+    expect(RAIL_WIDTH.id).toBe(RAIL.id);
+    expect(RAIL_WIDTH.toggle).not.toBe(RAIL.toggle);
+  });
+
+  it("starts full, and does not vary by route", () => {
+    // `railDefault` is per-route because the editor's page area is measured
+    // arithmetic. A width is a preference, and a preference that changes
+    // screen to screen is the rail with a mind of its own.
+    expect(WIDTH_DEFAULT).toBe("full");
+  });
+
+  it("narrows to the width the palette's spine already has", () => {
+    // Not the drawing's 46: the shell paints one icon column already and two
+    // of them two pixels apart read as a mistake. 44 is also `--tap` under a
+    // coarse pointer, and in this one column the control IS the column.
+    expect(RAIL_ICONS).toBe(44);
+    expect(RAIL_WIDE).toBeGreaterThan(RAIL_ICONS);
+  });
+});
+
+describe("a stored width wins; anything else is the default", () => {
+  it.each([
+    ["icons", "full", "icons"],
+    ["full", "icons", "full"],
+    [null, "full", "full"],
+    [null, "icons", "icons"],
+    // The rail's OWN vocabulary, arriving on the width's key. It is the value
+    // a hand-edited storage entry is most likely to hold, and reading "open"
+    // as "full" would be a guess — so it is neither, and the default stands.
+    ["open", "full", "full"],
+    ["closed", "icons", "icons"],
+    ["", "full", "full"],
+    [42, "full", "full"],
+    [undefined, "icons", "icons"],
+  ] as const)("%j at default %s → %s", (stored, fallback, expected) => {
+    expect(widthOf(stored, fallback)).toBe(expected);
+  });
+});
+
+describe("the width's before-paint script does what widthOf does", () => {
+  interface Stub {
+    attrs: Map<string, string>;
+    setAttribute(name: string, value: string): void;
+    removeAttribute(name: string): void;
+  }
+  const stub = (): Stub => ({
+    attrs: new Map(),
+    setAttribute(name, value) {
+      this.attrs.set(name, value);
+    },
+    removeAttribute(name) {
+      this.attrs.delete(name);
+    },
+  });
+
+  function apply(
+    fallback: "full" | "icons",
+    storage: { getItem(key: string): string | null },
+  ): { rail: string | undefined; pressed: string | undefined } {
+    const element = stub();
+    const button = stub();
+    const document = {
+      getElementById: (id: string) =>
+        id === RAIL_WIDTH.id ? element : id === RAIL_WIDTH.toggle ? button : null,
+    };
+    new Function("document", "localStorage", applyWidthBeforePaint(RAIL_WIDTH, fallback))(
+      document,
+      storage,
+    );
+    return {
+      rail: element.attrs.get("data-rail"),
+      pressed: button.attrs.get("aria-pressed"),
+    };
+  }
+  const storing = (value: string | null) => ({ getItem: () => value });
+
+  it.each([
+    ["icons", "full"],
+    ["icons", "icons"],
+    ["full", "full"],
+    ["full", "icons"],
+    [null, "full"],
+    [null, "icons"],
+    ["nonsense", "full"],
+    ["nonsense", "icons"],
+  ] as const)("agrees with widthOf for %j at default %s", (stored, fallback) => {
+    const expected = widthOf(stored, fallback);
+    const result = apply(fallback, storing(stored));
+    // The ATTRIBUTE is the mechanism: every class that differs between the
+    // two widths is a `data-[rail=…]` variant of this value, so a script that
+    // wrote a third word would silently paint the full rail.
+    expect(result.rail).toBe(expected);
+    expect(result.pressed).toBe(expected === "icons" ? "true" : "false");
+  });
+
+  it("falls back to the default when storage throws, and does not itself throw", () => {
+    const throwing = {
+      getItem(): string | null {
+        throw new Error("SecurityError: a private window");
+      },
+    };
+    expect(apply("full", throwing)).toEqual({ rail: "full", pressed: "false" });
+    expect(apply("icons", throwing)).toEqual({ rail: "icons", pressed: "true" });
+  });
+
+  it("does nothing when the rail is not on the page", () => {
+    // Below 768 the rail is not rendered at all, and the script still runs.
+    expect(() =>
+      new Function("document", "localStorage", applyWidthBeforePaint(RAIL_WIDTH, "full"))(
+        { getElementById: () => null },
+        storing("icons"),
+      ),
+    ).not.toThrow();
+  });
+
+  it("reads the width's key and nobody else's", () => {
+    const seen: string[] = [];
+    apply("full", {
+      getItem(key) {
+        seen.push(key);
+        return null;
+      },
+    });
+    expect(seen).toEqual([RAIL_WIDTH.key]);
   });
 });

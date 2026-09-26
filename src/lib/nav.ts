@@ -35,11 +35,16 @@
 // directory… it is not to come back under another name." That reasoning was
 // sound for four items about one subject and it is the reason the seven-category
 // version was deleted rather than switched off. What changed is not the taste,
-// it is the list: the rail now holds SIX places and two of them are about the
-// one event you have open while four are about the house. A flat list of six
-// mixing two subjects makes a reader check every row to find out which of the
-// two it is about — and the two sale-scoped places are the ones a specialist
-// uses all day, so they go first and they are named as being about the sale.
+// it is the list: the rail holds SEVEN places now — four about the one event
+// you have open, three about the house — where it once held four about one
+// subject. A flat list of seven mixing two subjects makes a reader check every
+// row to find out which of the two it is about, and the sale-scoped places are
+// the ones a specialist uses all day, so they go first and they are named as
+// being about the sale.
+//
+// EVERY ROW CARRIES A GLYPH, and that is not decoration: the rail has a 44px
+// icon width now (src/lib/chrome.ts), and at that width the glyph is the whole
+// row. `NavIcon` below makes it a required field for exactly that reason.
 //
 // The old objection still holds for the old list, and the machinery is
 // deliberately NOT the one that was deleted: there is no store and no effect
@@ -60,6 +65,29 @@
 /** Which of the rail's numbers belongs beside an item, if any does. */
 export type NavCount = "events" | "photographs" | "lots";
 
+/**
+ * Which glyph a row wears.
+ *
+ * THE NAME IS HERE AND THE DRAWING IS IN THE COMPONENT, which is the same
+ * split as `count`: this file is a pure map from a URL to a place and it is
+ * held in node, so it cannot hold an SVG. What it CAN hold is the obligation
+ * — every item declares one, `test/nav.test.ts` fails on an item that does
+ * not, and src/components/nav.tsx keys an exhaustive `Record<NavIcon, …>` off
+ * this union, so a name with no glyph behind it does not compile.
+ *
+ * A ROW WITHOUT ONE IS NOT ALLOWED, because at 44 pixels the glyph IS the row.
+ * `icon?:` would make the icon rail's worst failure — a place that is a blank
+ * 44px square — a thing a new row gets by forgetting rather than by choosing.
+ */
+export type NavIcon =
+  | "ledger"
+  | "plate"
+  | "page"
+  | "objects"
+  | "lens"
+  | "route"
+  | "sliders";
+
 export interface NavItem {
   /**
    * Next's own route pattern — "/events/[id]/catalogue", not the filled-in
@@ -71,6 +99,7 @@ export interface NavItem {
   /** That pattern with the open event filled in. What the link points at. */
   href: string;
   label: string;
+  icon: NavIcon;
   count?: NavCount;
   match: (pathname: string) => boolean;
 }
@@ -240,6 +269,7 @@ export const NAV: readonly NavItem[] = [
     route: "/",
     href: "/",
     label: "Events",
+    icon: "ledger",
     count: "events",
     // EVERYTHING UNDER /events, THE CATALOGUE INCLUDED. This used to exclude
     // the editor, because `/catalogues` claimed it — one ledger later there is
@@ -254,8 +284,37 @@ export const NAV: readonly NavItem[] = [
     route: "/photographs",
     href: "/photographs",
     label: "Photographs",
+    icon: "plate",
     count: "photographs",
     match: (p) => p.startsWith("/photographs"),
+  },
+  // ── SETTINGS IS A PLACE, AND IT IS THE HOUSE'S ────────────────────────────
+  //
+  // It is here rather than on a lot, on a sale or in the palette, and each of
+  // those is a decision worth naming.
+  //
+  // NOT ON A LOT AND NOT ON A SALE. What it holds today is `orgs.field_policy`
+  // — which of the house's fields may leave the building — and that answer is
+  // ORG-WIDE by construction (src/lib/engine/visibility.ts rejects a per-lot
+  // level at length: a new lot's reserve would be public until somebody
+  // remembered). A control on a lot's record that silently changed every lot
+  // in every sale is the worst possible place to put it, so it goes where its
+  // scope is, and the screen says so in its first sentence.
+  //
+  // NOT IN THE PALETTE. The palette is what you can MAKE from where you are
+  // standing (src/lib/palette.ts). Nobody makes a setting; they go and change
+  // one, which is the definition of a place.
+  //
+  // NO COUNT. "How many fields has the house marked" is a number about the
+  // screen rather than about the house, and it would be a second query from
+  // the root layout for every request — the same objection the registers'
+  // note below makes. The screen carries it on its own meta line.
+  {
+    route: "/settings",
+    href: "/settings",
+    label: "Settings",
+    icon: "sliders",
+    match: (p) => p.startsWith("/settings"),
   },
   // `/catalogues` and `/exports` were here and are gone. They were one
   // component — `EventChooser` — over the same rows with a different verb, and
@@ -290,12 +349,14 @@ export function saleNav(eventId: string): readonly NavItem[] {
       route: "/events/[id]/catalogue",
       href: `${base}/catalogue`,
       label: "Editor",
+      icon: "page",
       match: (p) => p === `${base}/catalogue` || p.startsWith(`${base}/catalogue/`),
     },
     {
       route: "/events/[id]",
       href: base,
       label: "Lots",
+      icon: "objects",
       count: "lots",
       // The event and everything under it EXCEPT its catalogue and the two
       // registers — its import and its individual lots are the event; the
@@ -319,12 +380,14 @@ export function saleNav(eventId: string): readonly NavItem[] {
       route: "/events/[id]/condition",
       href: `${base}/condition`,
       label: "Condition",
+      icon: "lens",
       match: claims(base, "condition"),
     },
     {
       route: "/events/[id]/movement",
       href: `${base}/movement`,
       label: "Movement",
+      icon: "route",
       match: claims(base, "movement"),
     },
   ];

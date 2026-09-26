@@ -15,7 +15,7 @@
 // When auth lands, this file is replaced by a session lookup and nothing that
 // calls `currentOrgId()` changes shape.
 
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 
 import { getDb, orgs } from "@/db";
 import { policyFor, type FieldPolicy } from "@/lib/engine/visibility";
@@ -137,14 +137,21 @@ export async function fieldPolicyOf(orgId: string): Promise<FieldPolicy> {
  * be read back — the same one-rule-one-implementation the override writer uses
  * to make its round trip provable.
  *
- * ── IT HAS NO SCREEN YET, AND THAT IS NAMED RATHER THAN HIDDEN ─────────────
+ * ── IT HAS A SCREEN NOW ────────────────────────────────────────────────────
  *
- * Its callers today are the tests that prove the column round-trips and the
- * seed. A house sets its policy by hand until the settings screen lands, and
- * the lot record says where every value goes so that a policy set by hand is at
- * least legible. Shipping the writer with the reader is what keeps the two
- * normalising through one function; shipping a screen for it was not this
- * phase's work.
+ * `/settings` (src/app/settings/page.tsx). This used to say the writer's only
+ * callers were the tests and the seed, and that a house set its policy by hand
+ * in SQL; that is no longer true, and the whole-map contract above is what the
+ * screen is built on — the form states every field it drew, so un-marking one
+ * is expressible and there is no sentinel meaning "public again".
+ *
+ * WHAT THE SCREEN MUST NOT DO, said here because this is the function that
+ * would let it: it must not store `"public"`. An absent key is the default and
+ * the default is that nothing changes, so a screen that wrote every field's
+ * level would turn "the house has said nothing" into "the house has said
+ * public about all forty of these" — identical in behaviour today and a
+ * different sentence the day anything reads the policy's size.
+ * `policyOf` in src/lib/settings.ts is where that is enforced.
  */
 export async function setFieldPolicy(
   orgId: string,
@@ -159,4 +166,65 @@ export async function setFieldPolicy(
     .set({ fieldPolicy: { ...clean }, updatedAt: new Date() })
     .where(eq(orgs.id, orgId));
   return clean;
+}
+
+/** A field key a house's records actually carry, and how many carry it. */
+export interface DiscoveredField {
+  key: string;
+  /** Lots of this org holding a value under that key. */
+  lots: number;
+}
+
+/**
+ * The field keys this house's own records use.
+ *
+ * ── WHY THIS HAS TO BE DISCOVERED AT ALL ────────────────────────────────────
+ *
+ * There is no `fields` table and there is deliberately not going to be one
+ * (src/db/schema.ts says so on `orgs.field_policy`): a lot's field set is the
+ * CUSTOMER's, arrives at import, and `lots.fields` is open jsonb. `CORE_FIELDS`
+ * is the part this system named — nine columns derived from a real corpus —
+ * and 保留價 is not in it and never will be. So a screen that offers a house
+ * its own fields has to ask the rows what they are called.
+ *
+ * ── ONE SCAN, AND IT IS ONE SCREEN'S ────────────────────────────────────────
+ *
+ * `jsonb_object_keys` is a set-returning function, so this reads every lot of
+ * the org and expands each one's keys. That is a full scan of the org's lots
+ * and it has no index that could help it: the question is about the keys
+ * INSIDE a jsonb document, and a b-tree over the column answers nothing about
+ * them. It is acceptable here and it would not be on a page somebody loads all
+ * day — this is the settings screen, opened when a house changes its mind about
+ * what may be printed.
+ *
+ * The day it is not acceptable, what changes is not this function: it is that
+ * the key set stops being derived and starts being recorded, by the importer,
+ * as it maps columns. That is a column on `events` or a small table, it is a
+ * write by the one thing that already knows the answer, and it is not needed
+ * until a house has a hundred thousand lots.
+ *
+ * `jsonb_typeof` guards the expansion: `jsonb_object_keys` RAISES on an array
+ * or a scalar, and this column is open jsonb written by an importer, so a row
+ * that is not an object would take the settings screen down rather than being
+ * skipped. The count is per KEY and not per value — a lot holding an empty
+ * string under 保留價 still names the column, which is the question the screen
+ * is asking.
+ */
+export async function listFieldKeys(orgId: string): Promise<DiscoveredField[]> {
+  const db = getDb();
+  // RAW, the way src/lib/data/movements.ts `placesInUse` is, and for the same
+  // reason: a LATERAL set-returning join is not something the query builder
+  // expresses, and writing the table and column names out is what keeps them
+  // qualified. `db.execute<T>` takes T on trust — it shapes nothing — so the
+  // two casts below are the shape, and the `Number()` is not superfluous:
+  // the driver returns `count(*)` as a string without it.
+  const result = await db.execute<{ key: string; lots: number }>(sql`
+    select k.key as key, count(*)::int as lots
+    from lots, lateral jsonb_object_keys(lots.fields) as k(key)
+    where lots.org_id = ${orgId}
+      and jsonb_typeof(lots.fields) = 'object'
+    group by k.key
+    order by count(*) desc, k.key asc
+  `);
+  return result.rows.map((row) => ({ key: row.key, lots: Number(row.lots) }));
 }

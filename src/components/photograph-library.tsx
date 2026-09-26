@@ -1,10 +1,15 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 
 import type { AssetRow } from "@/lib/data/assets";
 import type { LotChoice } from "@/lib/data/lots";
+// A pure module. Its only import from the data layer is a TYPE, which erases,
+// so nothing here drags the database driver into the client bundle —
+// src/lib/ledger.ts states the same rule about itself.
+import { libraryHref, type LibraryView } from "@/lib/photographs";
 
 /**
  * The library, and the bay of photographs nobody has filed yet.
@@ -13,6 +18,41 @@ import type { LotChoice } from "@/lib/data/lots";
  * once. Assignment is a SEPARATE, LATER action from arrival — which is the whole
  * point of the screen, so the selection bar is the only thing that ever mentions
  * lots, and it appears only once something is selected.
+ *
+ * ── WHAT A PAGER DOES TO "EXTEND", AND WHAT WAS CHOSEN ──────────────────────
+ *
+ * Shift-click extends from the anchor to the row clicked, and the anchor is an
+ * INDEX INTO WHAT IS ON SCREEN. A pager changes what that sentence means, and
+ * there were two answers:
+ *
+ *   A selection that spans pages. Pick twelve here, turn the page, pick eight
+ *   more, assign twenty. Rejected, and not narrowly: the bar would then say
+ *   "20 selected" over a grid showing eight of them, and the button beside it
+ *   writes to the database. A destructive-adjacent action whose extent is
+ *   partly off screen is the shape of mistake that is discovered afterwards.
+ *   Holding the ids in the URL or in storage would make it survivable but not
+ *   visible, which is the wrong half of the problem.
+ *
+ *   A selection that is what is on screen. Chosen. Turning the page clears it,
+ *   the bar counts this page, and "extend" keeps exactly the meaning it had:
+ *   from the anchor to here, among the tiles a person can see. The page is
+ *   sized so the gesture still fits — src/lib/photographs.ts `PAGE_SIZE` is
+ *   chosen to be larger than the run this screen exists for.
+ *
+ * It is ENFORCED rather than hoped for. A client-side navigation between two
+ * queries of the same route re-renders the page without necessarily
+ * remounting this component, so the selection could have survived into a grid
+ * of different tiles; the page keys this component on the whole query
+ * (src/app/photographs/page.tsx) so a page turn is a remount and the state
+ * genuinely is what is on screen.
+ *
+ * ── THE FILTERS WERE ALREADY LINKS, AND THEY STILL ARE ──────────────────────
+ *
+ * They live in the page's header beside the search and the pager, because they
+ * are the same kind of thing: a URL. Nothing about them changed here except
+ * that they clear the selection too, for the reason above — pressing
+ * "Unassigned" while eleven photographs are selected used to leave the
+ * selection standing over a grid that no longer contained most of them.
  */
 function sizeOf(bytes: number): string {
   if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
@@ -22,11 +62,12 @@ function sizeOf(bytes: number): string {
 export function PhotographLibrary({
   assets,
   lots,
-  filter,
+  view,
 }: {
+  /** This page's photographs, in the order the grid draws them. */
   assets: AssetRow[];
   lots: LotChoice[];
-  filter: "all" | "unassigned" | "assigned";
+  view: LibraryView;
 }): React.ReactElement {
   const router = useRouter();
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -58,6 +99,12 @@ export function PhotographLibrary({
     // Shift extends from the last click, which is how every file manager and
     // every ERP grid behaves. Assigning forty consecutive photographs to one lot
     // is the common case and forty clicks is not a workflow.
+    //
+    // THE ANCHOR IS AN INDEX INTO `assets`, WHICH IS THIS PAGE. That is the
+    // whole of what a pager changed about this gesture, and it is the whole
+    // of why the page is sized above the run somebody selects in one go — the
+    // header on this component argues both, and the page keys this component
+    // on the query so the state cannot outlive the tiles it indexes.
     if (shiftKey && anchor !== null) {
       const [from, to] = anchor < index ? [anchor, index] : [index, anchor];
       for (let i = from; i <= to; i++) next.add(assets[i]!.id);
@@ -103,24 +150,7 @@ export function PhotographLibrary({
     }
   }
 
-  if (assets.length === 0) {
-    return (
-      <div className="mt-6 border border-rule bg-paper px-8 py-16 text-center">
-        <p className="text-[15px] font-medium">
-          {filter === "unassigned"
-            ? "Every photograph is on a lot."
-            : filter === "assigned"
-              ? "No photograph is on a lot yet."
-              : "No photographs yet."}
-        </p>
-        <p className="mx-auto mt-2 max-w-md text-[13px] leading-relaxed text-muted">
-          {filter === "all"
-            ? "Drop the shoot folder anywhere on this page. Working out which lot each one belongs to can wait."
-            : "Switch the filter above to see the rest."}
-        </p>
-      </div>
-    );
-  }
+  if (assets.length === 0) return <Nothing view={view} />;
 
   return (
     <>
@@ -190,8 +220,15 @@ export function PhotographLibrary({
       {selected.size > 0 && (
         <div className="sticky bottom-0 z-30 -mx-8 mt-4 border-t border-ruleStrong bg-paper px-8 py-3 shadow-[0_-2px_8px_rgba(0,0,0,.06)]">
           <div className="flex flex-wrap items-center gap-3">
+            {/* "ON THIS PAGE" IS NOT PADDING. The grid is one page of the
+                library now, and a bar that said "12 selected" beside a
+                pager would leave a person to guess whether the other pages
+                are in it. They are not, and the bar is where that is said. */}
             <p className="text-[13px] font-medium" data-numeric>
               {selected.size} selected
+              {view.pages > 1 && (
+                <span className="font-normal text-muted"> on this page</span>
+              )}
             </p>
             <button
               type="button"
@@ -256,5 +293,78 @@ export function PhotographLibrary({
         <p className="mt-3 text-[13px] text-muted">{message}</p>
       )}
     </>
+  );
+}
+
+/**
+ * The ways this grid is empty, told apart.
+ *
+ * There were three and now there are four, because there is a search. One
+ * sentence for all of them is the usual outcome — "No results", under a filter
+ * the person has forgotten they set — and the ledger's own empty state
+ * (src/components/ledger.tsx) makes the same distinction for the same reason:
+ * each of these names what is in the way and offers the press that removes it.
+ *
+ * A DROPPED FOLDER STILL WORKS HERE. This box is inside the dropzone, so the
+ * "drop the shoot folder" sentence is an instruction the surface under it can
+ * actually carry out — which is why it is that sentence and not "upload one".
+ */
+function Nothing({ view }: { view: LibraryView }): React.ReactElement {
+  const { q, filter } = view.query;
+  const filtered = filter !== "all";
+
+  return (
+    <div className="mt-6 border border-rule bg-paper px-8 py-16 text-center">
+      <p className="text-[15px] font-medium">
+        {q !== "" ? (
+          <>
+            No photograph here is named{" "}
+            <span className="text-ink">&ldquo;{q}&rdquo;</span>.
+          </>
+        ) : filter === "unassigned" ? (
+          "Every photograph is on a lot."
+        ) : filter === "assigned" ? (
+          "No photograph is on a lot yet."
+        ) : (
+          "No photographs yet."
+        )}
+      </p>
+
+      <p className="mx-auto mt-2 max-w-md text-[13px] leading-relaxed text-muted">
+        {q === "" && !filtered
+          ? "Drop the shoot folder anywhere on this page. Working out which lot each one belongs to can wait."
+          : "A photograph is searched by the filename it arrived with — that is the only name it has until it is on a lot."}
+      </p>
+
+      {/* FLOORED, WHERE THE LEDGER'S EQUIVALENT IS NOT. These two are the only
+          way out of an empty grid, so they are the screen's controls rather
+          than links inside a sentence — and this is a screen somebody stands
+          at with a tablet and a pile of prints. `inline-flex`, because
+          `min-h` does nothing to an inline box (page-header.tsx paid for that
+          lesson once). */}
+      {(q !== "" || filtered) && (
+        <p className="mt-3 text-[13px]">
+          {q !== "" && (
+            <>
+              <Link
+                href={libraryHref(view.query, { q: "", page: 1 })}
+                className="inline-flex min-h-[var(--tap)] items-center text-muted underline hover:text-ink"
+              >
+                Clear the search
+              </Link>
+              {filtered && <span className="px-2 text-rule">·</span>}
+            </>
+          )}
+          {filtered && (
+            <Link
+              href={libraryHref(view.query, { q: "", filter: "all", page: 1 })}
+              className="inline-flex min-h-[var(--tap)] items-center text-muted underline hover:text-ink"
+            >
+              Look at every photograph
+            </Link>
+          )}
+        </p>
+      )}
+    </div>
   );
 }

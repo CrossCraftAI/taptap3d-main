@@ -52,6 +52,40 @@
 // rule — it needs suppressHydrationWarning on the document element and states
 // the same rule in two languages.
 
+// ── THE RAIL HAS THREE STATES AND TWO CONTROLS ──────────────────────────────
+//
+// away · icons · full. The middle one is new and it is the mode a specialist
+// laying out pages is meant to live in: the places stay reachable and the work
+// gets back the difference between the two widths, which is re-measurable by
+// reading `RAIL_WIDE` and `RAIL_ICONS` below.
+//
+// THREE STATES, AND DELIBERATELY NOT ONE CONTROL THAT CYCLES THEM. The obvious
+// build is Ctrl+\ walking full → icons → away → full, and it was rejected,
+// because the two questions it would answer are not one axis:
+//
+//   "Is the navigation here?" is MOMENTARY. A person wants the window for this
+//   one task and wants it back afterwards; that is what the shortcut is
+//   borrowed from Figma to mean, and it is why the editor starts away.
+//
+//   "How wide is it when it is here?" is a STANDING PREFERENCE. It is set once
+//   by somebody deciding how they work, and it is not touched again.
+//
+// Put both on one control and every momentary gesture overwrites the standing
+// preference: a person who lives in the icon rail presses the shortcut to get
+// the window, presses it again, and is handed the full rail — which is the
+// "rail with a mind of its own" this file already refuses further down. Worse,
+// from `full` the window would then be TWO presses away, and one press is the
+// whole promise of the chord.
+//
+// So there are two controls and two keys, and the pair has four combinations
+// where the product has three states. The fourth is not a fourth state: `away`
+// looks identical whichever width is stored, and that stored width is exactly
+// the memory that lets the rail come back the way the viewer works.
+//
+// Rejected as well: a second chord for the width. A key is spent on a gesture
+// that is repeated, and this one is pressed when somebody changes their mind
+// about how they work — which is not a thing that happens twice in a day.
+
 import { isEditor } from "@/lib/nav";
 
 export type Choice = "open" | "closed";
@@ -73,6 +107,99 @@ export const RAIL: Collapsible = {
   id: "rail",
   toggle: "rail-toggle",
 };
+
+/** Which of the rail's two widths is showing. `full` is the labelled rail. */
+export type Width = "full" | "icons";
+
+/**
+ * The rail's width: the SAME element as `RAIL`, a second decision, a second
+ * key. The header of this file argues why it is not the same control.
+ *
+ * NOT A `Collapsible`, and the difference is the whole reason it is its own
+ * shape. A collapsible part answers "is this element on the page" and the
+ * before-paint script answers it with `hidden`, which is total — the element
+ * is there or it is not. A width is a value the element carries, so the script
+ * writes `data-rail` and the stylesheet keys off it. Forcing this through
+ * `Collapsible` would mean an `open` that means narrow, which is the kind of
+ * name that is wrong in every sentence somebody writes about it afterwards.
+ */
+export interface Widthable {
+  key: string;
+  /** The element that narrows. `RAIL.id`, because there is one rail. */
+  id: string;
+  /** The button that says so, with aria-pressed. */
+  toggle: string;
+}
+
+export const RAIL_WIDTH: Widthable = {
+  key: "taptap3d.rail.width",
+  id: RAIL.id,
+  toggle: "rail-width",
+};
+
+/**
+ * The two widths, in pixels, as the classes that paint them.
+ *
+ * Written here rather than only in the component so the driven test can hold
+ * the numbers without reaching into a className, and so the arithmetic above
+ * ("the work gets back the difference") is re-measurable from one place.
+ *
+ * 44 IS NOT THE DRAWING'S 46, and the two pixels were given up on purpose.
+ * The shell already paints one icon column — the palette's spine, `w-11` in
+ * src/components/palette.tsx — and the palette's body is shut by default, so
+ * the icon rail and that spine sit against one another with a hairline
+ * between. Two icon columns two pixels apart read as a mistake rather than as
+ * a design. 44 is also `--tap` under a coarse pointer (src/app/globals.css):
+ * the rail's rows are the one place where the control IS the column, so on a
+ * tablet the column's width is the control's width and the floor is 44. Two
+ * reasons, one number, both re-measurable.
+ */
+export const RAIL_WIDE = 224;
+export const RAIL_ICONS = 44;
+
+/** A stored value — anything storage can hold — resolved to a width. */
+export function widthOf(stored: unknown, fallback: Width): Width {
+  if (stored === "icons") return "icons";
+  if (stored === "full") return "full";
+  return fallback;
+}
+
+/**
+ * Where the rail's width starts when the viewer has not said.
+ *
+ * ONE ANSWER, THE SAME ON EVERY SCREEN — no `railDefault` twin keyed to the
+ * path. Whether the rail is THERE is a per-route default because the editor's
+ * page area is measured and the argument is arithmetic; how wide it is when a
+ * person has asked for it is a preference, and a preference that changes
+ * screen to screen is the rail with a mind of its own that this file refuses
+ * one paragraph below.
+ */
+export const WIDTH_DEFAULT: Width = "full";
+
+/**
+ * The script that applies a stored width before first paint.
+ *
+ * The twin of `applyBeforePaint`, and it is a twin rather than a parameter
+ * because what it writes is a VALUE and not a presence: `data-rail` on the
+ * rail, which the component's own classes key off (`data-[rail=icons]:…`), and
+ * `aria-pressed` on the toggle, which is what a two-state button says about
+ * itself. Both are exactly what the component renders from the same key, and
+ * test/chrome.test.ts runs this string against `widthOf` for every kind of
+ * value storage can hold, so the two cannot drift.
+ */
+export function applyWidthBeforePaint(part: Widthable, fallback: Width): string {
+  const key = JSON.stringify(part.key);
+  const id = JSON.stringify(part.id);
+  const toggle = JSON.stringify(part.toggle);
+  return (
+    `(function(){var v=null;try{v=localStorage.getItem(${key})}catch(e){}` +
+    `var w=v==="icons"?"icons":v==="full"?"full":${JSON.stringify(fallback)};` +
+    `var el=document.getElementById(${id});` +
+    `if(el)el.setAttribute("data-rail",w);` +
+    `var b=document.getElementById(${toggle});` +
+    `if(b)b.setAttribute("aria-pressed",w==="icons"?"true":"false")})()`
+  );
+}
 
 /**
  * The top bar: the SAME choice as the rail, a second element.
@@ -168,7 +295,19 @@ export function readChoice(key: string): string | null {
   }
 }
 
-export function writeChoice(key: string, choice: Choice): void {
+/**
+ * Every word the chrome writes into storage.
+ *
+ * ONE WRITER FOR BOTH VOCABULARIES, because there is one storage and one
+ * try/catch worth having. The two sets do not overlap — open/closed is a
+ * presence and full/icons is a width — and keeping them distinct is what
+ * makes a value found on the wrong key readable as nonsense rather than as an
+ * answer: `widthOf` refuses "open" and `isOpen` refuses "icons", each falling
+ * back to its own default.
+ */
+export type Stored = Choice | Width;
+
+export function writeChoice(key: string, choice: Stored): void {
   try {
     window.localStorage.setItem(key, choice);
   } catch {

@@ -32,12 +32,46 @@ export interface AssetRow {
 
 export type AssetFilter = "all" | "unassigned" | "assigned";
 
+/**
+ * Is this photograph on a lot? As SQL, once.
+ *
+ * Written out rather than derived from a join, for the reason the count below
+ * gives: two of these are needed — one for the listing's WHERE and one inside
+ * the counting query's FILTER — and a single expression is what keeps the
+ * library's tab counts describing the rows the library will actually show.
+ */
+const ON_A_LOT = sql`exists (select 1 from lot_assets where lot_assets.asset_id = assets.id)`;
+
+/**
+ * Does this photograph's filename contain what was typed?
+ *
+ * ILIKE with the term escaped, because `%` and `_` are wildcards there and a
+ * filename routinely contains an underscore — `IMG_4471.CR2` searched raw
+ * would match `IMGx4471`, which is not wrong often enough for anybody to
+ * notice and is wrong. `originalName` is nullable and a NULL never matches,
+ * which is the right answer: a file the browser sent with no name cannot be
+ * found by a name.
+ *
+ * src/lib/photographs.ts says why the filename is the only thing to search.
+ */
+function named(q: string) {
+  const term = `%${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+  return sql`${assets.originalName} ilike ${term} escape '\\'`;
+}
+
 export async function listAssets(
   orgId: string,
-  options: { filter?: AssetFilter; limit?: number } = {},
+  options: {
+    filter?: AssetFilter;
+    /** A substring of the original filename. "" or absent for all of them. */
+    q?: string;
+    limit?: number;
+    offset?: number;
+  } = {},
 ): Promise<AssetRow[]> {
   const db = getDb();
   const filter = options.filter ?? "all";
+  const q = options.q?.trim() ?? "";
 
   // The count is a correlated subquery with the table and column names WRITTEN
   // OUT. Interpolating drizzle columns into a `sql` template renders them
@@ -61,24 +95,74 @@ export async function listAssets(
       useCount,
     })
     .from(assets)
-    .where(
-      filter === "all"
-        ? eq(assets.orgId, orgId)
-        : and(
-            eq(assets.orgId, orgId),
-            filter === "unassigned"
-              ? sql`not exists (select 1 from lot_assets where lot_assets.asset_id = assets.id)`
-              : sql`exists (select 1 from lot_assets where lot_assets.asset_id = assets.id)`,
-          ),
-    )
-    // Newest first: the pile a person is working through is the one that just
-    // arrived.
-    .orderBy(desc(assets.createdAt))
-    .limit(options.limit ?? 500);
+    .where(and(eq(assets.orgId, orgId), ...narrow(filter, q)))
+    // NEWEST FIRST, AND NOW IT HAS TO BE TOTAL. The pile a person is working
+    // through is the one that just arrived, which is why this order; what is
+    // new is that the library pages, and a page is only meaningful if the
+    // order is. Two photographs uploaded in the same folder share a
+    // `created_at` to the microsecond often enough — the upload route writes
+    // them in one pass — and two rows the database may return either way
+    // round means a tile can appear on page two AND page three, or on
+    // neither. The content hash breaks the tie: it is unique per org, it is
+    // indexed, and it does not change.
+    .orderBy(desc(assets.createdAt), assets.contentHash)
+    .limit(options.limit ?? 500)
+    .offset(options.offset ?? 0);
 
   return rows.map((r) => ({ ...r, useCount: Number(r.useCount) }));
 }
 
+/** The conditions beyond the org, as a list so `and()` can take none of them. */
+function narrow(filter: AssetFilter, q: string) {
+  const where = [];
+  if (filter === "unassigned") where.push(sql`not ${ON_A_LOT}`);
+  if (filter === "assigned") where.push(ON_A_LOT);
+  if (q !== "") where.push(named(q));
+  return where;
+}
+
+/**
+ * The library's three tab counts, over what the search left.
+ *
+ * ONE QUERY AND THREE NUMBERS. Three counting queries would be three scans of
+ * the same rows, and — worse — three chances for the tabs to describe a
+ * different set from the one the listing shows. `filter` inside the aggregate
+ * is how Postgres says this in one pass.
+ *
+ * THE SEARCH IS APPLIED FIRST, which is the ledger's rule and the same reason:
+ * a tab reading "12" that lands on an empty grid is the defect a faceted count
+ * exists to prevent. What the tab says is what pressing it gives.
+ */
+export async function countLibrary(
+  orgId: string,
+  q = "",
+): Promise<{ all: number; unassigned: number; assigned: number }> {
+  const db = getDb();
+  const term = q.trim();
+  const [row] = await db
+    .select({
+      all: sql<number>`count(*)::int`,
+      unassigned: sql<number>`count(*) filter (where not ${ON_A_LOT})::int`,
+      assigned: sql<number>`count(*) filter (where ${ON_A_LOT})::int`,
+    })
+    .from(assets)
+    .where(term === "" ? eq(assets.orgId, orgId) : and(eq(assets.orgId, orgId), named(term)));
+
+  return {
+    all: Number(row?.all ?? 0),
+    unassigned: Number(row?.unassigned ?? 0),
+    assigned: Number(row?.assigned ?? 0),
+  };
+}
+
+/**
+ * The house's totals, for the chrome.
+ *
+ * KEPT SEPARATE FROM `countLibrary`, which answers the same question about a
+ * SEARCH. This one is the root layout's — the rail's Photographs count and its
+ * unassigned badge (src/app/layout.tsx) — and it is asked on every request of
+ * every page, so it stays the narrowest query that answers it.
+ */
 export async function countAssets(
   orgId: string,
 ): Promise<{ total: number; unassigned: number }> {

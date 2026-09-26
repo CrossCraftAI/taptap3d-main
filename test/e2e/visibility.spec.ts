@@ -24,13 +24,25 @@
 //      this the third assertion is equally satisfied by a bug that drops the
 //      field everywhere.
 //
-// ── THE POLICY IS WRITTEN WITH SQL, AND THAT IS A GAP, NOT A SHORTCUT ───────
+// ── THE POLICY IS WRITTEN WITH SQL, AND NOW THAT IS A CHOICE ────────────────
 //
-// There is no screen that sets `orgs.field_policy` and none that sets a
-// catalogue's audience. Both are written here through the database, which is
-// how a house sets them today. When those screens land this spec drives them
-// instead, and the four assertions above do not change — they are about the
-// engine, not about the control.
+// This said there was no screen that sets `orgs.field_policy`, and that it
+// would drive one when it landed. Half of that is out of date: `/settings`
+// exists (src/app/settings/page.tsx) and test/e2e/settings.spec.ts drives it,
+// from the rail, through the house's own column, to the document.
+//
+// The SQL stays here anyway, and the reason is the sentence this file already
+// made: the four assertions above are about the ENGINE. A spec that reached
+// them through the control would fail for two different reasons with one
+// message, and the expensive half — a preview that drops a field and a PDF
+// route that does not — would be reported as a broken settings form. It also
+// has to restore the column in a `finally`, and a restore that depends on a
+// screen rendering is a restore that can be skipped by the failure it is
+// cleaning up after.
+//
+// What genuinely has no screen is a CATALOGUE'S AUDIENCE, which step 4 below
+// still sets by hand. That control belongs beside the template and the
+// density on the editor's own toolbar, and it is not this phase's work.
 //
 // ── IT PUTS THE COLUMN BACK ─────────────────────────────────────────────────
 //
