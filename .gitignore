@@ -46,6 +46,12 @@ playwright-report/
 # The trailing wildcard covers the per-project directories test/e2e/shots.ts
 # makes — screens-webkit and whatever engine comes after it.
 test/e2e/screens*/
+# The UI inspection loop's output, for the same reason: scripts/inspect.mjs and
+# scripts/inspect-driven.mjs regenerate every frame of it, and a hundred PNGs a
+# run is exactly the megabyte the rule above refuses. The SCRIPTS are committed;
+# their pictures are not.
+ui-inspect/
+ui-inspect-driven/
 
 # typescript
 *.tsbuildinfo

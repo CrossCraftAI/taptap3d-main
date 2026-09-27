@@ -7,6 +7,17 @@ import { LOTS_PANEL, applyBeforePaint, isOpen, readChoice, writeChoice } from "@
 import { logAction } from "@/lib/log/client";
 
 /**
+ * The node the canvas portals its per-selection panel into.
+ *
+ * A STRING AND NOT A REF, because the two components cannot see each other:
+ * this one is rendered by a server component's tree and the panel is built
+ * inside a client component that owns the selection. An id is the one handle
+ * both can hold. `preview-canvas.tsx` looks it up after mount and renders
+ * nothing when it is absent, so a canvas used anywhere else still works.
+ */
+export const SELECTION_PANEL_ID = "selection-panel";
+
+/**
  * The editor's frame: two slim rows of tools, then the canvas with the lots
  * panel beside it — and the panel can be put away.
  *
@@ -175,7 +186,32 @@ export function CatalogueWorkspace({
               hidden={!open}
               className="flex min-h-0 w-[340px] shrink-0 flex-col border-l border-rule"
             >
-              {panel}
+              {/* ── WHERE THE SELECTION'S OWN PANEL LANDS ────────────────────
+                  Empty until something on the canvas is selected, and then
+                  filled by a portal from src/components/preview-canvas.tsx —
+                  which owns the selection and cannot hand it to a server
+                  component. `peer` and the rule on the sibling below are what
+                  make this column show ONE thing at a time.
+
+                  IT WAS A LAYER OVER THE CANVAS, AND THAT COVERED THE PLATES.
+                  The panel's own note accepted overlaying the desk on a
+                  measurement of 121px a side — taken with this column CLOSED.
+                  With it open, which is the default, the desk is about sixty
+                  and a 272px panel sits on the artwork it exists to treat: the
+                  driven pass photographed it hiding the whole of the
+                  second plate on the sheet.
+
+                  Docking it in its own column was the other candidate and
+                  costs the document: at fit:page the sheet is sized by HEIGHT,
+                  so another 272px column does not shrink the page, it runs the
+                  page off the edge of the canvas. Taking this column's turn
+                  costs nothing and is the pattern the plan chose from
+                  Mailchimp — select a block and the right-hand panel becomes
+                  that block's. The lots list comes back on Escape. */}
+              <div id={SELECTION_PANEL_ID} className="peer min-h-0 overflow-y-auto empty:hidden" />
+              <div className="flex min-h-0 flex-1 flex-col peer-[:not(:empty)]:hidden">
+                {panel}
+              </div>
             </div>
             <InlineScript html={applyBeforePaint(LOTS_PANEL, true)} />
           </>

@@ -206,7 +206,7 @@ export function Shell({
           ref={rail}
           hidden={!open}
           data-rail={width}
-          className="group w-56 shrink-0 overflow-y-auto border-r border-rule bg-paper max-md:hidden data-[rail=icons]:w-11 data-[rail=icons]:overflow-x-hidden"
+          className="group w-56 shrink-0 overflow-y-auto border-r border-rule bg-paper too-small:hidden data-[rail=icons]:w-11 data-[rail=icons]:overflow-x-hidden"
         >
           <div className="flex min-h-full flex-col py-2">
             <Nav counts={{ ...counts, lots: openSale?.lotCount ?? null }} />
@@ -236,11 +236,11 @@ export function Shell({
             invisible — and the canvas is an absolutely positioned frame, so
             there would be nothing on screen to suggest what went wrong. A
             column costs nothing and cannot fail that way. */}
-        <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto max-md:hidden">
+        <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto too-small:hidden">
           {children}
         </main>
 
-        {/* ── BELOW 768 IT SAYS SO, RATHER THAN TRYING ─────────────────────
+        {/* ── TOO SMALL A WINDOW SAYS SO, RATHER THAN TRYING ───────────────
             The owner's decision: a tablet at a viewing is plausible, a handset
             cataloguing a sale is not. What was shipping below `md` was not a
             smaller version of this product, it was a broken one — the rail and
@@ -255,12 +255,19 @@ export function Shell({
             and it does not promise a phone version — it says what the window
             needs, which is the one thing the reader can change. When a phone
             form is designed, this is the thing that is deleted, and it is
-            findable because it is the only `md:hidden` block in the shell. */}
-        <div className="flex flex-1 items-center justify-center px-6 md:hidden">
+            findable because it is the only `too-small:flex` block in the
+            shell.
+
+            THE CONDITION IS BOTH AXES, and it did not used to be. `md` is a
+            width, and a phone held landscape is 844×390 — so it passed a test
+            written to exclude it and got the whole product in 390 pixels of
+            height, with the sale's titles cut to one character each. The
+            variant is defined once in src/app/globals.css and says why. */}
+        <div className="hidden flex-1 items-center justify-center px-6 too-small:flex">
           <p className="max-w-xs text-center text-[13px] leading-relaxed text-muted">
-            taptap3d needs a window at least 768 pixels wide. A tablet held
-            landscape is enough; a phone is not, and a catalogue laid out on one
-            would be a catalogue nobody could read.
+            taptap3d needs a window at least 768 pixels wide and 500 tall. A
+            tablet either way up is enough; a phone is not, in either hand, and
+            a catalogue laid out on one would be a catalogue nobody could read.
           </p>
         </div>
       </div>

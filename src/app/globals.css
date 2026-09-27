@@ -1,5 +1,39 @@
 @import "tailwindcss";
 
+/* ── THE WINDOW THIS PRODUCT NEEDS, AS ONE CONDITION ─────────────────────────
+
+   The owner's decision is "a tablet at a viewing is plausible, a handset
+   cataloguing a sale is not", and src/components/shell.tsx says it in a
+   sentence rather than shipping three screens of clipping. That boundary was
+   `md`, which is a WIDTH — and a phone held landscape is 844×390, so it passed
+   a test written to exclude it and got the full product in 390 pixels of
+   height. Found by the inspection loop: the sale's table at that size showed
+   ONE CHARACTER of every title before the ellipsis, on the column the screen
+   exists for.
+
+   So the condition is both axes, in one place, named after what it means. A
+   10-inch tablet is 1024×768 landscape and 768×1024 portrait; both pass. A
+   phone passes neither way. A desktop window dragged shorter than 500px gets
+   the sentence too, which is right for the same reason: a catalogue page is
+   tall, and there is nowhere to put it.
+
+   When a phone form is designed, this variant and the block that uses it are
+   what get deleted.
+
+   THE BLOCK FORM, NOT THE SHORTHAND. `@custom-variant too-small (@media
+   (max-width: 767px), (max-height: 499px))` compiles without complaint and
+   emits only the FIRST arm, so the height half did nothing and the landscape
+   phone still got the whole product. Two `@media` rules around a `@slot` each
+   is what actually produces both. Read out of the built CSS, not assumed. */
+@custom-variant too-small {
+  @media (max-width: 767px) {
+    @slot;
+  }
+  @media (max-height: 499px) {
+    @slot;
+  }
+}
+
 /* ── THE GROUND A PLATE IS JUDGED AGAINST IS TRUE NEUTRAL, and that is the one
    design decision here with a reason outside taste.
 

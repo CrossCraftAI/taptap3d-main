@@ -116,14 +116,21 @@ export default async function MovementRegisterPage({
           )}
 
           <div className="mt-6 border border-rule bg-paper">
-            <table className="w-full border-collapse text-[13px]">
+            <table className="w-full table-fixed border-collapse text-[13px]">
               <thead>
                 <tr className="border-b border-rule text-left text-[10px] tracking-wide text-muted">
+                  {/* THE CUSTODIAN AND THE DATE LEAVE BEFORE THE TITLE DOES —
+                      the same measurement as the sale's table (../page.tsx).
+                      The register's question is "where is this lot", so the
+                      lot and the place stay at every width; who signed for it
+                      and when are on the lot's own movement page, one press
+                      away, and neither is worth the title's last hundred
+                      pixels on a tablet. */}
                   <th className="w-28 px-4 py-2 font-medium">Ref</th>
                   <th className="px-4 py-2 font-medium">Title</th>
                   <th className="w-56 px-4 py-2 font-medium">Where it is</th>
-                  <th className="w-40 px-4 py-2 font-medium">Who has it</th>
-                  <th className="w-44 px-4 py-2 font-medium">Since</th>
+                  <th className="w-40 px-4 py-2 font-medium max-xl:hidden">Who has it</th>
+                  <th className="w-44 px-4 py-2 font-medium max-xl:hidden">Since</th>
                 </tr>
               </thead>
               <tbody>
@@ -177,10 +184,10 @@ export default async function MovementRegisterPage({
                           <span className="text-faint">nowhere recorded</span>
                         )}
                       </td>
-                      <td className="max-w-0 truncate px-4 py-2 text-muted">
+                      <td className="max-w-0 truncate px-4 py-2 text-muted max-xl:hidden">
                         {where?.custodian ?? "—"}
                       </td>
-                      <td className="px-4 py-2 text-muted" data-numeric>
+                      <td className="px-4 py-2 text-muted max-xl:hidden" data-numeric>
                         {where ? formatMoment(where.since) : "—"}
                       </td>
                     </tr>

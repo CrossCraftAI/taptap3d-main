@@ -152,13 +152,23 @@ export function PolishPanel({
   // React's own "adjust state when a prop changes" shape — the previous value
   // kept in state and compared during render, not a ref read in render and not
   // an effect that would paint the stale value first.
+  //
+  // BY VALUE AND NOT BY IDENTITY, which is the whole of the difference. Every
+  // render of the page makes a new `value` object, and a page can re-render for
+  // reasons that have nothing to do with this panel — so identity says "the
+  // server has spoken" on refreshes that carry the same row as before. The
+  // driven pass caught it: press a ground, and the panel snapped back to
+  // showing no ground while the PAGE behind it had already painted one. A
+  // content comparison holds the optimistic view until the row genuinely
+  // changes, which is the only event it was ever meant to yield to.
   const [written, setWritten] = useState<OverrideValue | null>(null);
-  const [seen, setSeen] = useState(stored);
-  if (seen !== stored) {
+  const storedKey = JSON.stringify(stored);
+  const [seenKey, setSeenKey] = useState(storedKey);
+  if (seenKey !== storedKey) {
     // THE SERVER'S WORD WINS, ALWAYS, and a refusal reaches here as a value
     // that does not carry the patch — which is exactly right, because a
     // refused patch did not happen.
-    setSeen(stored);
+    setSeenKey(storedKey);
     setWritten(null);
   }
   const value = written ?? stored;

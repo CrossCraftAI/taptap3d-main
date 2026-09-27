@@ -119,14 +119,47 @@ export default async function EventPage({
         </div>
       ) : (
         <div className="mt-6 border border-rule bg-paper">
-          <table className="w-full border-collapse text-[13px]">
+          {/* `table-fixed`, WITHOUT WHICH `max-w-0` DOES THE OPPOSITE OF WHAT
+              IT SAYS. The cells below carry `max-w-0 truncate`, which is the
+              standard way to make a table cell ellipsise — and under the
+              AUTOMATIC layout it means exactly what it says: the column
+              contributes zero, so the browser gives it its minimum and hands
+              the slack to the fixed ones. The inspection loop caught the result
+              at 768px: every title in this table was one glyph and an ellipsis
+              while three columns of em-dashes kept their full width. Fixed
+              layout honours the `w-*` above and gives the remainder here, which
+              is what every comment around it already assumed. The condition and
+              movement registers carry the same pair for the same reason. */}
+          <table className="w-full table-fixed border-collapse text-[13px]">
             <thead>
+              {/* ── TWO COLUMNS LEAVE BEFORE THE TITLE IS SQUEEZED ─────────
+                  The fixed widths here come to 576px and the rail takes 224,
+                  so on the 768px tablet this product says it supports the
+                  title had about thirty pixels: the inspection loop caught
+                  every row reading "粉…", one glyph and an ellipsis, on the
+                  column the screen exists for.
+
+                  A table that drops its least valuable columns is honest; a
+                  table that keeps all five and shreds the one that identifies
+                  the row is not. Maker is blank on most lots and the
+                  photograph count is a number the lot's own page repeats, so
+                  those two go and Ref, Title and Estimate stay — which is what
+                  a person scans a running order for.
+
+                  THE THRESHOLD IS 1280 AND NOT 1024, because 1024 is where the
+                  measurement says it is already too tight: a 1024 window less
+                  the rail and the gutters is 736px, and 576 of that is spoken
+                  for before the title gets a pixel. Chosen by re-running the
+                  inspection at every width rather than by picking the
+                  breakpoint that sounded right. */}
               <tr className="border-b border-rule text-left text-[10px] tracking-wide text-muted">
                 <th className="w-28 px-4 py-2 font-medium">Ref</th>
                 <th className="px-4 py-2 font-medium">Title</th>
-                <th className="w-44 px-4 py-2 font-medium">Maker</th>
-                <th className="w-52 px-4 py-2 font-medium">Estimate</th>
-                <th className="w-20 px-4 py-2 text-right font-medium">Photos</th>
+                <th className="w-44 px-4 py-2 font-medium max-xl:hidden">Maker</th>
+                <th className="w-52 px-4 py-2 font-medium max-xl:w-40">Estimate</th>
+                <th className="w-20 px-4 py-2 text-right font-medium max-xl:hidden">
+                  Photos
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -153,13 +186,13 @@ export default async function EventPage({
                       )}
                     </Link>
                   </td>
-                  <td className="max-w-0 truncate px-4 py-2 text-muted">
+                  <td className="max-w-0 truncate px-4 py-2 text-muted max-xl:hidden">
                     {asText(lot.fields.maker) || "—"}
                   </td>
                   <td className="max-w-0 truncate px-4 py-2 text-muted">
                     {asText(lot.fields.price) || "—"}
                   </td>
-                  <td className="px-4 py-2 text-right" data-numeric>
+                  <td className="px-4 py-2 text-right max-xl:hidden" data-numeric>
                     {lot.images.length === 0 ? (
                       <span className="text-faint">—</span>
                     ) : (

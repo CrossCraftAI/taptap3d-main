@@ -39,20 +39,33 @@ export const dynamic = "force-dynamic";
  *
  * ── WHY THE LARGER TERM IS LEFT, NAMED RATHER THAN HIDDEN ───────────────────
  *
- * Capping it is the one thing that must not be done: the picker's search reads
- * the whole set, so a capped list silently loses the lot somebody is typing
+ * Capping it silently is the one thing that must not be done: the picker's
+ * search reads the whole set, so a capped list loses the lot somebody is typing
  * the reference of — exactly the failure src/lib/nav.ts refuses for the event
  * switcher, where the fix was to cap what is PAINTED and send everything. That
  * trick does not transfer, because here the cost IS the payload and not the
  * DOM.
  *
- * The fix is the one `listLotChoices` already names in its own comment: it
- * becomes a search endpoint, the picker asks as the person types, and the
- * component above it does not change shape. That is a route, a debounce and a
- * pending state, it is a different piece of work from paginating a grid, and
- * doing half of it — sending fewer lots to the same instant filter — would
- * make the picker quietly wrong rather than slower. So it is measured, it is
- * written down here where the next person will read it, and it is left.
+ * ── AND THE CAP WAS ALREADY HERE, WHICH THIS NOTE DID NOT KNOW ──────────────
+ *
+ * `listLotChoices` has ended in `.limit(5000)` since it was written, so the
+ * paragraph above described a rule the code was already breaking. The UI
+ * inspection loop found it against a database of 11,665 lots: a sale created
+ * ninety seconds earlier could not be found by its own reference, and nothing
+ * on the screen said why, because "no match" and "not sent" are the same
+ * answer from a component that only has what it was given.
+ *
+ * Two things changed, and neither is the real fix. The cut is by RECENCY rather
+ * than alphabetical — the lots being filed against are the ones from the sale
+ * being worked on, where an alphabetical cut is a cut at a letter — and the
+ * total travels with the list, so the picker says that it is not showing
+ * everything and where to go instead. Loud and partial beats quiet and partial;
+ * neither beats complete.
+ *
+ * The real fix is still the one `listLotChoices` names: it becomes a search
+ * endpoint, the picker asks as the person types, and the component above it
+ * does not change shape. That is a route, a debounce and a pending state, and
+ * it is a different piece of work from paginating a grid.
  *
  * ── THE FILTERS WERE ALREADY LINKS, AND THEY STAY LINKS ─────────────────────
  *
@@ -91,7 +104,7 @@ export default async function PhotographsPage({
   const counts = await countLibrary(org.id, query.q);
   const view = readLibrary(counts, query);
 
-  const [rows, held, lots] = await Promise.all([
+  const [rows, held, choices] = await Promise.all([
     listAssets(org.id, {
       filter: view.query.filter,
       q: view.query.q,
@@ -204,7 +217,10 @@ export default async function PhotographsPage({
         <PhotographLibrary
           key={`${view.query.filter}|${view.query.q}|${view.page}`}
           assets={rows}
-          lots={lots}
+          lots={choices.choices}
+          // What the picker is NOT showing. A cap that says nothing is a lot
+          // that cannot be found by its own reference — see listLotChoices.
+          lotsHeld={choices.total}
           view={view}
         />
       </Dropzone>

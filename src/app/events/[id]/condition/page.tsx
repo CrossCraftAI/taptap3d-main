@@ -80,14 +80,28 @@ export default async function ConditionRegisterPage({
         </div>
       ) : (
         <div className="mt-6 border border-rule bg-paper">
-          <table className="w-full border-collapse text-[13px]">
+          <table className="w-full table-fixed border-collapse text-[13px]">
             <thead>
               <tr className="border-b border-rule text-left text-[10px] tracking-wide text-muted">
+                {/* TWO COUNTS LEAVE BEFORE THE TITLE DOES. The same measurement
+                    as the sale's table (../page.tsx): the fixed columns here
+                    come to 624px and the rail takes 224, so at the 768px tablet
+                    this product supports the title was down to two half-drawn
+                    glyphs — while three columns of em-dashes kept their full
+                    width. What a register is scanned for is which lot and
+                    whether anyone has looked at it, so the two tallies go and
+                    "Last examined" stays — until 1280, below which it goes too
+                    and the row's own verb carries the state, which is what it
+                    was already written to do. */}
                 <th className="w-28 px-4 py-2 font-medium">Ref</th>
                 <th className="px-4 py-2 font-medium">Title</th>
-                <th className="w-32 px-4 py-2 text-right font-medium">Examinations</th>
-                <th className="w-24 px-4 py-2 text-right font-medium">Marks</th>
-                <th className="w-40 px-4 py-2 font-medium">Last examined</th>
+                <th className="w-32 px-4 py-2 text-right font-medium max-xl:hidden">
+                  Examinations
+                </th>
+                <th className="w-24 px-4 py-2 text-right font-medium max-xl:hidden">
+                  Marks
+                </th>
+                <th className="w-40 px-4 py-2 font-medium max-xl:hidden">Last examined</th>
                 <th className="w-32 px-4 py-2 font-medium">&nbsp;</th>
               </tr>
             </thead>
@@ -124,13 +138,13 @@ export default async function ConditionRegisterPage({
                         )}
                       </Link>
                     </td>
-                    <td className="px-4 py-2 text-right" data-numeric>
+                    <td className="px-4 py-2 text-right max-xl:hidden" data-numeric>
                       {state ? state.examinations : <span className="text-faint">—</span>}
                     </td>
-                    <td className="px-4 py-2 text-right" data-numeric>
+                    <td className="px-4 py-2 text-right max-xl:hidden" data-numeric>
                       {state ? state.marks : <span className="text-faint">—</span>}
                     </td>
-                    <td className="px-4 py-2 text-muted" data-numeric>
+                    <td className="px-4 py-2 text-muted max-xl:hidden" data-numeric>
                       {state ? formatDay(state.latestAt) : "—"}
                     </td>
                     <td className="px-4 py-2">

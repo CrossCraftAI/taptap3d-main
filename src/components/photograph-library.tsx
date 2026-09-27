@@ -9,7 +9,7 @@ import type { LotChoice } from "@/lib/data/lots";
 // A pure module. Its only import from the data layer is a TYPE, which erases,
 // so nothing here drags the database driver into the client bundle —
 // src/lib/ledger.ts states the same rule about itself.
-import { libraryHref, type LibraryView } from "@/lib/photographs";
+import { libraryHref, shortName, type LibraryView } from "@/lib/photographs";
 
 /**
  * The library, and the bay of photographs nobody has filed yet.
@@ -62,11 +62,22 @@ function sizeOf(bytes: number): string {
 export function PhotographLibrary({
   assets,
   lots,
+  lotsHeld,
   view,
 }: {
   /** This page's photographs, in the order the grid draws them. */
   assets: AssetRow[];
   lots: LotChoice[];
+  /**
+   * How many lots the house has, which is not always how many are in `lots`.
+   *
+   * The picker is sent the newest `LOT_CHOICE_CAP` and filters them here with
+   * no round trip. Past the cap that filter is over a SUBSET, and a person
+   * typing a reference from an older sale gets "no match" for a lot that
+   * exists — so the difference is said out loud rather than left to be
+   * discovered.
+   */
+  lotsHeld: number;
   view: LibraryView;
 }): React.ReactElement {
   const router = useRouter();
@@ -182,14 +193,44 @@ export function PhotographLibrary({
                     them necessary; the store is content-addressed and ready for
                     them, and shipping a decoder before then is the speculative
                     weight the Dockerfile refuses elsewhere. */}
+                {/* ── A TILE THAT CANNOT DRAW SAYS WHY ──────────────────────
+                    `/api/assets/[hash]` answers 410 when the row is there and
+                    the bytes are not, and it says so in a sentence — which
+                    nobody reads, because the only thing on screen is the
+                    browser's broken-image glyph. That state is real: the
+                    migration can produce it, and a build destroyed a local
+                    store while this was being written. A photograph that has
+                    lost its file is something a cataloguer has to act on
+                    (re-upload it), so the grid names it rather than looking
+                    like a slow network. */}
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={`/api/assets/${asset.contentHash}`}
                   alt={asset.originalName ?? "photograph"}
                   loading="lazy"
                   decoding="async"
+                  // BOTH, AND THE REF IS THE ONE THAT MATTERS ABOVE THE FOLD.
+                  // `onError` is attached at hydration, and a tile at the top
+                  // of the grid has usually already failed by then — the
+                  // driven pass caught exactly that: the lazy tiles further
+                  // down swapped to the sentence while the first row still
+                  // showed the browser's broken glyph with the filename
+                  // spilling out of the tile. A ref callback runs at mount and
+                  // can ask the element what already happened.
+                  ref={(el) => {
+                    if (el && el.complete && el.naturalWidth === 0) missing(el);
+                  }}
+                  onError={(e) => missing(e.currentTarget)}
                   className="max-h-full max-w-full object-contain"
                 />
+                <span
+                  data-missing
+                  hidden
+                  className="px-2 text-center text-[10px] leading-relaxed text-muted"
+                >
+                  This photograph&rsquo;s file is missing from the store. Upload
+                  it again to restore it.
+                </span>
                 {asset.useCount === 0 && (
                   <span className="absolute left-1 top-1 bg-seal px-1.5 py-0.5 text-[10px] font-medium text-white">
                     unassigned
@@ -202,8 +243,12 @@ export function PhotographLibrary({
                 )}
               </div>
               <div className="border-t border-rule px-2 py-1.5">
+                {/* SHORTENED IN THE MIDDLE, not by CSS at the end: a tile is
+                    148px and every name a camera writes is a shared prefix
+                    with the distinguishing part on the tail. `truncate` stays
+                    as the floor for a name that is one long word. */}
                 <p className="truncate text-[12px]" title={asset.originalName ?? ""}>
-                  {asset.originalName ?? "untitled"}
+                  {asset.originalName ? shortName(asset.originalName) : "untitled"}
                 </p>
                 <p className="mt-0.5 text-[10px] text-faint" data-numeric>
                   {geometry?.width && geometry?.height
@@ -282,6 +327,18 @@ export function PhotographLibrary({
                     </li>
                   ))}
                 </ul>
+              )}
+              {/* SAID WHERE THE SEARCHING HAPPENS, not in a banner at the top
+                  of the page. The person who needs this sentence is the one
+                  who has just typed a reference and been shown nothing, and
+                  they are looking at this box. */}
+              {lotsHeld > lots.length && (
+                <p className="mt-1 text-[10px] leading-relaxed text-muted">
+                  Showing the {lots.length.toLocaleString()} newest lots of{" "}
+                  {lotsHeld.toLocaleString()}. A lot from an older sale is not in
+                  this list — open it from its own sale and add the photograph
+                  there.
+                </p>
               )}
             </div>
             {message && <p className="text-[12px] text-muted">{message}</p>}
@@ -367,4 +424,10 @@ function Nothing({ view }: { view: LibraryView }): React.ReactElement {
       )}
     </div>
   );
+}
+
+/** Put the sentence in the tile's place. See the note at the `<img>`. */
+function missing(el: HTMLImageElement): void {
+  el.style.display = "none";
+  el.parentElement?.querySelector("[data-missing]")?.removeAttribute("hidden");
 }

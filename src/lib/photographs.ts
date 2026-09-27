@@ -74,6 +74,40 @@ import type { AssetFilter } from "@/lib/data/assets";
  */
 export const PAGE_SIZE = 48;
 
+/**
+ * A filename shortened in the MIDDLE, keeping the tail.
+ *
+ * ── THE END IS THE PART THAT TELLS TWO PHOTOGRAPHS APART ────────────────────
+ *
+ * A tile is about 148px wide and a caption line holds roughly twenty-four
+ * characters, so a name has to be cut. `truncate` cuts the END, and every name
+ * a camera writes is a shared prefix with a distinguishing tail:
+ * `IMG_4471.CR2` and `IMG_4472.CR2`, `DSC00123` and `DSC00124`, a shoot folder
+ * exported as `2026-03-ming-vases-014`. Cutting the end throws away the only
+ * part that differs — the inspection loop found a grid of forty-eight tiles
+ * every one of which read `insp-1790488754792-…`, which is a picture of a
+ * filename rather than a filename.
+ *
+ * So the head and the tail both survive and the middle goes. The extension
+ * comes with the tail, which is worth keeping in a library that holds RAW
+ * files beside JPEGs — "is this the one I can hand to the printer" is a
+ * question the last four characters answer.
+ *
+ * NOT CSS, because CSS cannot do it: `text-overflow: ellipsis` has no
+ * middle-out form, and the two-span trick (`direction: rtl` on the tail) breaks
+ * on a name containing Chinese or a digit run, which is most of them here. The
+ * full name stays in `title` either way, so nothing is lost to a pointer.
+ */
+export function shortName(name: string, keep = 24): string {
+  if (name.length <= keep) return name;
+  // The tail gets the extension plus a few characters of the stem; the head
+  // gets the rest. A one-character head would be useless, so the split is not
+  // allowed to starve either end.
+  const tail = Math.max(8, Math.min(14, (name.split(".").pop() ?? "").length + 8));
+  const head = Math.max(4, keep - tail - 1);
+  return `${name.slice(0, head)}…${name.slice(-tail)}`;
+}
+
 /** What a `<form method="get">` and a `<Link>` call each of these. */
 export const PARAM = { q: "q", filter: "filter", page: "page" } as const;
 

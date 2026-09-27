@@ -1,8 +1,18 @@
 "use client";
 
-import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  startTransition,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
+import { createPortal } from "react-dom";
 
 import { placePartAction, restorePartFrameAction } from "@/app/events/[id]/catalogue/actions";
+import { SELECTION_PANEL_ID } from "@/components/catalogue-workspace";
 import { PolishPanel } from "@/components/polish-panel";
 import type { OverridePatch, OverrideValue } from "@/lib/data/overrides";
 import type { PlaceResult } from "@/lib/forms";
@@ -1406,38 +1416,36 @@ export function PreviewCanvas({
         </div>
       )}
 
-      {/* ── THE PANEL FOR THE SELECTED PART ──────────────────────────────
-          Only while something is selected, which is the same rule the bar
-          above follows: a panel that stood there empty would be 272px of the
-          desk spent on nothing. It takes the pointer, so it is a sibling of
-          the overlay rather than inside it.
+      {/* ── THE PANEL FOR THE SELECTED PART, AND IT IS NOT OVER THE PAGE ──
+          Rendered here, because the selection is client state that lives in
+          this component and reaches no server component — and PLACED in the
+          lots column through a portal, because 272 pixels of panel over this
+          canvas sits on the artwork.
 
-          IT OVERLAYS THE DESK, and at fit:width there is no desk — the same
-          trade the bar makes, and for the same reason: there is no fixed place
-          over this canvas that misses the sheet at both fits
-          (catalogue-workspace.tsx carries the measurement). It is transient in
-          a way the settings panel is not, so the cost is paid only while a
-          person is working on one part. */}
-      {panelSelection && plates && polish && (
-        <div className="pointer-events-none absolute inset-y-0 right-0 z-[2] flex max-w-full items-start p-2">
-          <div className="pointer-events-auto max-h-full w-[272px] max-w-full overflow-y-auto border border-rule bg-paper">
-            <PolishPanel
-              eventId={eventId}
-              catalogueId={catalogueId}
-              selection={panelSelection}
-              // ONE CONSTANT FOR THE LOT WE HAVE NOTHING ABOUT, not `?? {}`.
-              // A fresh object here would be a new `value` on every render of
-              // this canvas — and this canvas re-renders on every frame of a
-              // drag — which the panel reads as "the server has spoken again"
-              // and answers by throwing away the press it is still waiting on.
-              value={(plates[panelSelection.lotId] ?? NO_PLATE).value}
-              hasPhotograph={(plates[panelSelection.lotId] ?? NO_PLATE).hasPhotograph}
-              measured={(plates[panelSelection.lotId] ?? NO_PLATE).measured}
-              commit={(patch) => polish(panelSelection.lotId, patch)}
-            />
-          </div>
-        </div>
-      )}
+          The first version overlaid the desk, on a measured 121px a side. That
+          measurement was taken with the lots column CLOSED; with it open,
+          which is how the screen opens, the desk is about sixty and the panel
+          covered the whole of the second plate on the sheet. The note that
+          accepted the trade is in catalogue-workspace.tsx now, beside the node
+          this fills, along with why a column of its own would be worse. */}
+      <SelectionPanelPortal>
+        {panelSelection && plates && polish && (
+          <PolishPanel
+            eventId={eventId}
+            catalogueId={catalogueId}
+            selection={panelSelection}
+            // ONE CONSTANT FOR THE LOT WE HAVE NOTHING ABOUT, not `?? {}`.
+            // A fresh object here would be a new `value` on every render of
+            // this canvas — and this canvas re-renders on every frame of a
+            // drag — which the panel reads as "the server has spoken again"
+            // and answers by throwing away the press it is still waiting on.
+            value={(plates[panelSelection.lotId] ?? NO_PLATE).value}
+            hasPhotograph={(plates[panelSelection.lotId] ?? NO_PLATE).hasPhotograph}
+            measured={(plates[panelSelection.lotId] ?? NO_PLATE).measured}
+            commit={(patch) => polish(panelSelection.lotId, patch)}
+          />
+        )}
+      </SelectionPanelPortal>
 
       {capturing !== null && (
         /* MOUNTED FOR THE LIFE OF THE GESTURE AND NO LONGER. It handles
@@ -1622,4 +1630,38 @@ function sameSpot(
 ): boolean {
   if (a === null || b === null) return a === b;
   return a.x === b.x && a.y === b.y && a.side === b.side;
+}
+
+/**
+ * Put a child in the editor's selection column, or nowhere.
+ *
+ * ── AFTER MOUNT, ALWAYS ─────────────────────────────────────────────────────
+ *
+ * The target is rendered by another component's tree, so it does not exist
+ * during this one's first render and cannot exist during a server render. The
+ * state-then-effect shape is what makes that safe: nothing is portalled until
+ * the browser has the document, and a canvas mounted on a screen that has no
+ * such column renders nothing rather than throwing.
+ *
+ * Children are passed even when there is no selection — an EMPTY portal, which
+ * is what lets the column's `:empty` rule give the space back to the lots list
+ * without this component knowing that rule exists.
+ */
+/** Nothing to subscribe to: the answer below changes once, at hydration. */
+const subscribeNever = (): (() => void) => () => {};
+
+function SelectionPanelPortal({
+  children,
+}: {
+  children: React.ReactNode;
+}): React.ReactElement | null {
+  // `useSyncExternalStore` AND NOT AN EFFECT THAT SETS STATE. The question is
+  // only "is there a document yet", which has one answer on the server and one
+  // in the browser and never changes after that — so it is a snapshot, not a
+  // synchronisation, and writing it as `setState` inside an effect is the
+  // cascading-render shape React's own lint rule refuses.
+  const mounted = useSyncExternalStore(subscribeNever, () => true, () => false);
+  const host = mounted ? document.getElementById(SELECTION_PANEL_ID) : null;
+  if (!host) return null;
+  return createPortal(children, host);
 }

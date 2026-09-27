@@ -241,18 +241,48 @@ export interface LotChoice {
   photoCount: number;
 }
 
+/** How many lots the picker is sent. See `listLotChoices`. */
+export const LOT_CHOICE_CAP = 5000;
+
 /**
- * Every lot in the org, flattened for a picker.
+ * Lots in the org, flattened for a picker — the newest sales first.
  *
- * ONE QUERY AND THE WHOLE SET, not a search endpoint. A house's sale is a few
- * hundred lots; sending them once lets the picker filter as the person types
- * with no round trip, which is the difference between assigning forty
- * photographs in a sitting and giving up. When a customer arrives with a
+ * ONE QUERY AND (NEARLY ALWAYS) THE WHOLE SET, not a search endpoint. A house's
+ * sale is a few hundred lots; sending them once lets the picker filter as the
+ * person types with no round trip, which is the difference between assigning
+ * forty photographs in a sitting and giving up. When a customer arrives with a
  * five-thousand-lot back catalogue this becomes a search endpoint, and the
  * component above it does not change shape.
+ *
+ * ── THE CAP WAS ALPHABETICAL, AND THAT MADE IT INVISIBLE ────────────────────
+ *
+ * `order by events.name` with a limit is a cut at a letter: the sales that
+ * survive it are the ones whose names sort early, which has nothing to do with
+ * anything. Found by the inspection loop against a database of 11,665 lots — a
+ * sale created ninety seconds earlier could not be found by its own reference,
+ * and the picker said nothing, because "no match" and "not sent" look identical
+ * from a component that only has what it was given.
+ *
+ * TWO THINGS CHANGED, AND THE SECOND MATTERS MORE. The order is now the newest
+ * sale first, because the lots a person is filing photographs against are from
+ * the sale they are working on; and the count is returned, so the screen can
+ * say that the list is not everything. A silent truncation is the failure a
+ * cataloguer cannot diagnose — they type a reference that exists and are told
+ * there is no such lot.
+ *
+ * Three years at twenty sales of three hundred is eighteen thousand lots, so
+ * this is not a hypothetical customer. What it buys is the time until the
+ * search endpoint the note above already promised.
  */
-export async function listLotChoices(orgId: string): Promise<LotChoice[]> {
+export async function listLotChoices(
+  orgId: string,
+): Promise<{ choices: LotChoice[]; total: number }> {
   const db = getDb();
+  const [counted] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(lots)
+    .where(eq(lots.orgId, orgId));
+
   const rows = await db
     .select({
       id: lots.id,
@@ -267,20 +297,26 @@ export async function listLotChoices(orgId: string): Promise<LotChoice[]> {
     .from(lots)
     .innerJoin(events, eq(events.id, lots.eventId))
     .where(eq(lots.orgId, orgId))
-    .orderBy(events.name, lots.position)
-    .limit(5000);
+    // The sale a person is working on is the one that was made most recently,
+    // and within it the running order — so the first thing in the list is the
+    // first lot of the current sale, which is where the work is.
+    .orderBy(desc(events.createdAt), lots.position)
+    .limit(LOT_CHOICE_CAP);
 
-  return rows.map((r) => ({
-    id: r.id,
-    ref: r.ref,
-    title: typeof r.fields?.title === "string"
-      ? r.fields.title
-      : ((r.fields?.title as { zh?: string; en?: string } | undefined)?.zh ??
-         (r.fields?.title as { zh?: string; en?: string } | undefined)?.en ??
-         ""),
-    eventName: r.eventName,
-    photoCount: Number(r.photoCount),
-  }));
+  return {
+    choices: rows.map((r) => ({
+      id: r.id,
+      ref: r.ref,
+      title: typeof r.fields?.title === "string"
+        ? r.fields.title
+        : ((r.fields?.title as { zh?: string; en?: string } | undefined)?.zh ??
+           (r.fields?.title as { zh?: string; en?: string } | undefined)?.en ??
+           ""),
+      eventName: r.eventName,
+      photoCount: Number(r.photoCount),
+    })),
+    total: Number(counted?.n ?? 0),
+  };
 }
 
 /** One lot, scoped. Both conditions, always. */

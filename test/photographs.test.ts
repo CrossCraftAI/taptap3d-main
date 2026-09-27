@@ -14,11 +14,12 @@ import { describe, expect, it } from "vitest";
 
 import {
   DEFAULT_QUERY,
+  libraryHref,
   PAGE_SIZE,
   PARAM,
-  libraryHref,
   readLibrary,
   readQuery,
+  shortName,
   type LibraryCounts,
   type LibraryQuery,
 } from "@/lib/photographs";
@@ -182,5 +183,35 @@ describe("the page is big enough for the gesture it exists for", () => {
     // in half. This is the floor under PAGE_SIZE; the ceiling is the window,
     // and that one is argued where the number is declared.
     expect(PAGE_SIZE).toBeGreaterThanOrEqual(40);
+  });
+});
+
+describe("a filename is cut in the middle, because the end is what differs", () => {
+  // The inspection loop found a grid of forty-eight tiles every one of which
+  // read `insp-1790488754792-…`. Every name a camera writes shares a prefix.
+  it("keeps the head and the tail of a long name", () => {
+    const out = shortName("insp-1790488754792-13.png");
+    expect(out.startsWith("insp-")).toBe(true);
+    expect(out.endsWith("13.png")).toBe(true);
+    expect(out).toContain("…");
+  });
+
+  it("tells two photographs from one shoot apart, which truncation does not", () => {
+    const a = shortName("2026-03-ming-vases-014.jpg");
+    const b = shortName("2026-03-ming-vases-015.jpg");
+    expect(a).not.toBe(b);
+  });
+
+  it("leaves a short name alone, extension and all", () => {
+    expect(shortName("IMG_4471.CR2")).toBe("IMG_4471.CR2");
+    expect(shortName("a.png")).toBe("a.png");
+  });
+
+  it("never starves either end, whatever it is given", () => {
+    // A name with no extension and no structure is the worst case for any
+    // middle-out rule; it must still show something from both ends.
+    const out = shortName("x".repeat(120));
+    expect(out.length).toBeLessThanOrEqual(26);
+    expect(out.indexOf("…")).toBeGreaterThanOrEqual(4);
   });
 });

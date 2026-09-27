@@ -78,8 +78,27 @@ if (existsSync(publicSrc)) {
 // connects to 127.0.0.1, and on a machine where the two do not resolve to the
 // same socket the run fails with a connection refused that says nothing about
 // why. The environment still wins, so a container can set its own.
+// ── THE ASSET STORE IS PINNED OUTSIDE THE BUILD, AND THAT IS NOT A DETAIL ───
+//
+// `server.js` sets its own cwd to `.next/standalone`, and src/lib/assets/
+// store.ts resolves its root as `cwd()/.data/assets` — so a standalone server
+// started this way writes every uploaded photograph INSIDE THE BUILD OUTPUT,
+// and the next `npm run build` deletes the lot. The database rows survive, so
+// what is left is exactly the fault the asset route has a 410 for: "the row
+// exists and its bytes are missing from the store."
+//
+// It bites hardest where nobody would look for it: `npm run test:e2e` builds
+// before every run, so running the suite destroyed every photograph anybody
+// had uploaded locally. Found by the inspection loop, as 623 broken plates in
+// a preview that had rendered correctly twenty minutes earlier.
+//
+// Production is not affected — the image mounts a volume and sets
+// TAPTAP3D_ASSET_ROOT — and that is the point: this makes the harness match
+// the image instead of quietly differing from it. The environment still wins.
 const env = {
   ...process.env,
+  TAPTAP3D_ASSET_ROOT:
+    process.env.TAPTAP3D_ASSET_ROOT ?? join(ROOT, ".data", "assets"),
   HOSTNAME: process.env.HOSTNAME ?? "127.0.0.1",
   PORT: process.env.PORT ?? "3000",
 };
