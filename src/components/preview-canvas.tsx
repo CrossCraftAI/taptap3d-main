@@ -1,8 +1,13 @@
 "use client";
 
-import { startTransition, useCallback, useEffect, useRef, useState } from "react";
+import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { placePartAction, restorePartFrameAction } from "@/app/events/[id]/catalogue/actions";
+import { PolishPanel } from "@/components/polish-panel";
+import type { OverridePatch, OverrideValue } from "@/lib/data/overrides";
+import type { PlaceResult } from "@/lib/forms";
+import type { PanelSelection } from "@/lib/polish/panel-model";
+import type { PlateMeasurement } from "@/lib/polish/plate-note";
 import { SelectionOverlay } from "@/components/selection-overlay";
 import {
   SelectionToolbar,
@@ -242,16 +247,44 @@ interface Nudge {
  */
 const NUDGE_COMMIT_MS = 450;
 
+/** One lot's plate, as the server already knows it. See `plates` below. */
+export interface PlateInfo {
+  value: OverrideValue;
+  hasPhotograph: boolean;
+  measured: PlateMeasurement | null;
+}
+
+/** A lot this page was given nothing about. One object, for the reason at the
+ *  mount: a new one per render is a new prop, and the panel reads a new prop as
+ *  news from the server. */
+const NO_PLATE: PlateInfo = { value: {}, hasPhotograph: false, measured: null };
+
 export function PreviewCanvas({
   eventId,
   catalogueId,
   src,
+  plates,
+  polish,
 }: {
   eventId: string;
   /** Null on a sale with no catalogue row yet; nothing there is selectable. */
   catalogueId: string | null;
   /** The preview route, with the version in the query. See ../page.tsx. */
   src: string;
+  /**
+   * What this catalogue already says about each lot's PLATE, by lot id.
+   *
+   * THE PANEL IS MOUNTED HERE AND NOT BY THE PAGE, and the reason is the
+   * boundary rather than the layout. `PolishPanel` needs the SELECTION, which
+   * is client state that lives in this component and nowhere else; the page is
+   * a server component and cannot be handed a function that reads it. So the
+   * page sends the data — serializable, per lot, already in hand from the
+   * queries it makes for the preview — and the selection is joined to it here.
+   */
+  plates?: Readonly<Record<string, PlateInfo>>;
+  /** `polishPlateAction` with the sale already bound. A server action, so it
+   *  crosses the boundary; a closure over the selection could not. */
+  polish?: (lotId: string, patch: OverridePatch) => Promise<PlaceResult>;
 }): React.ReactElement {
   const [buffers, setBuffers] = useState<BufferState>(() => openBuffers(src));
   /** The mode of the running gesture, or null. Drives the capture layer. */
@@ -1006,6 +1039,15 @@ export function PreviewCanvas({
     return () => window.removeEventListener("keydown", onKey, { capture: true });
   }, [onKey]);
 
+  // The painted key is `selectionKey`'s own JSON — the injective form the rest
+  // of this layer uses — so the panel's identity comes back out of it rather
+  // than being kept a second time and drifting out of step with the rings.
+  const panelSelection = useMemo((): PanelSelection | null => {
+    if (!paint.selection) return null;
+    const [lotId, field] = JSON.parse(paint.selection) as [string, string];
+    return { lotId, field };
+  }, [paint.selection]);
+
   // A run of arrows that was still accumulating when this unmounted is work the
   // specialist did and cannot see; the timer goes, and with it the save.
   useEffect(
@@ -1361,6 +1403,39 @@ export function PreviewCanvas({
             onUndo={undo}
             onReset={reset}
           />
+        </div>
+      )}
+
+      {/* ── THE PANEL FOR THE SELECTED PART ──────────────────────────────
+          Only while something is selected, which is the same rule the bar
+          above follows: a panel that stood there empty would be 272px of the
+          desk spent on nothing. It takes the pointer, so it is a sibling of
+          the overlay rather than inside it.
+
+          IT OVERLAYS THE DESK, and at fit:width there is no desk — the same
+          trade the bar makes, and for the same reason: there is no fixed place
+          over this canvas that misses the sheet at both fits
+          (catalogue-workspace.tsx carries the measurement). It is transient in
+          a way the settings panel is not, so the cost is paid only while a
+          person is working on one part. */}
+      {panelSelection && plates && polish && (
+        <div className="pointer-events-none absolute inset-y-0 right-0 z-[2] flex max-w-full items-start p-2">
+          <div className="pointer-events-auto max-h-full w-[272px] max-w-full overflow-y-auto border border-rule bg-paper">
+            <PolishPanel
+              eventId={eventId}
+              catalogueId={catalogueId}
+              selection={panelSelection}
+              // ONE CONSTANT FOR THE LOT WE HAVE NOTHING ABOUT, not `?? {}`.
+              // A fresh object here would be a new `value` on every render of
+              // this canvas — and this canvas re-renders on every frame of a
+              // drag — which the panel reads as "the server has spoken again"
+              // and answers by throwing away the press it is still waiting on.
+              value={(plates[panelSelection.lotId] ?? NO_PLATE).value}
+              hasPhotograph={(plates[panelSelection.lotId] ?? NO_PLATE).hasPhotograph}
+              measured={(plates[panelSelection.lotId] ?? NO_PLATE).measured}
+              commit={(patch) => polish(panelSelection.lotId, patch)}
+            />
+          </div>
         </div>
       )}
 

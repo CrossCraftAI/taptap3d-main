@@ -17,8 +17,30 @@ function pngChunk(type: string, data: Buffer): Buffer {
   return Buffer.concat([length, body, crc]);
 }
 
-/** Write a w × h RGB gradient tinted by `tint`, and return the path. */
-export function writePlate(path: string, w: number, h: number, tint: number): string {
+/**
+ * Write a w × h RGB gradient tinted by `tint`, and return the path.
+ *
+ * ── `seed` MAKES THE FILE UNIQUE, AND IT IS NOT OPTIONAL IN SPIRIT ──────────
+ *
+ * The store is content-addressed: `recordAsset` de-duplicates on the hash, so
+ * two tests that write the same gradient get ONE row back, under whichever
+ * filename arrived first, already filed against whichever lot claimed it. A
+ * test that then looks for its own upload by name finds nothing and waits until
+ * it times out — which is how it presents, and it looks nothing like the cause.
+ *
+ * This was found across RUNS rather than within one: the same seven tints came
+ * back every time the suite ran, so a second run's plate was the first run's
+ * asset. `seed` goes into the pixels and therefore into the hash, so a caller
+ * that passes something unique per run gets a file nothing else in the database
+ * can be.
+ */
+export function writePlate(
+  path: string,
+  w: number,
+  h: number,
+  tint: number,
+  seed = 0,
+): string {
   const ihdr = Buffer.alloc(13);
   ihdr.writeUInt32BE(w, 0);
   ihdr.writeUInt32BE(h, 4);
@@ -34,6 +56,15 @@ export function writePlate(path: string, w: number, h: number, tint: number): st
       raw[i + 2] = (tint * 3) % 256;
     }
   }
+  // Stamped into the top-left pixels of the first row, where it changes the
+  // bytes without changing the geometry — `assets.geometry` is what the plate
+  // note reads, and a caller asking for 2870×100 is asking for a 28.7:1 work.
+  let rest = seed >>> 0;
+  for (let i = 0; i < 4 && 1 + i < raw.length; i++) {
+    raw[1 + i] = rest & 0xff;
+    rest = Math.floor(rest / 256);
+  }
+
   writeFileSync(
     path,
     Buffer.concat([

@@ -243,6 +243,56 @@ export async function listAssetsForLot(
 }
 
 /**
+ * Every plate in one sale, measured — by lot id.
+ *
+ * ── WHY THIS IS NOT `listAssetsForLot` IN A LOOP ────────────────────────────
+ *
+ * The editor mounts the polish panel over a document of 100–300 lots and the
+ * panel reads a measurement the moment a plate is selected, so the page has to
+ * carry all of them. Per lot that is one round trip each, which is the shape of
+ * query that makes a screen feel fine on the seeded sale and unusable on a real
+ * one. One join, one pass, and the primary only — a treatment is about the
+ * plate, and the plate is `is_primary`.
+ *
+ * ── A LOT WITH NO MEASUREMENT IS STILL IN THE MAP ───────────────────────────
+ *
+ * `assets.geometry` is nullable on purpose (the upload route stores a file it
+ * could not measure rather than refusing it), so a plate can exist and have no
+ * numbers. The value is then null and the KEY is still present — which is how
+ * the caller tells "this lot has no photograph" from "this lot has one nobody
+ * could measure", two states the panel says different sentences about.
+ */
+export async function plateGeometry(
+  orgId: string,
+  eventId: string,
+): Promise<Map<string, { width: number; height: number } | null>> {
+  const db = getDb();
+  const rows = await db
+    .select({ lotId: lotAssets.lotId, geometry: assets.geometry })
+    .from(lotAssets)
+    .innerJoin(assets, eq(assets.id, lotAssets.assetId))
+    .innerJoin(lots, eq(lots.id, lotAssets.lotId))
+    .where(
+      and(
+        eq(lotAssets.orgId, orgId),
+        eq(lots.eventId, eventId),
+        eq(lotAssets.isPrimary, true),
+      ),
+    );
+
+  const out = new Map<string, { width: number; height: number } | null>();
+  for (const row of rows) {
+    const width = Number(row.geometry?.width);
+    const height = Number(row.geometry?.height);
+    out.set(
+      row.lotId,
+      width > 0 && height > 0 ? { width, height } : null,
+    );
+  }
+  return out;
+}
+
+/**
  * Attach photographs to a lot.
  *
  * Both ids are checked against the org before anything is written — an id alone

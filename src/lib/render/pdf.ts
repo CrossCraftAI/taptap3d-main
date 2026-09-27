@@ -26,6 +26,8 @@ import { existsSync } from "node:fs";
 
 import puppeteer, { type Browser } from "puppeteer-core";
 
+import { CJK_FACES, CJK_PROBE_GLYPH } from "./html";
+
 /** Where Chromium is. Named explicitly; nothing here downloads a browser. */
 export function browserExecutable(): string | null {
   const declared = process.env.PUPPETEER_EXECUTABLE_PATH;
@@ -125,40 +127,39 @@ export async function renderPdf(html: string): Promise<PdfResult> {
       // codepoint no font on earth carries, and their pixels are compared.
       // Identical means 青 came out as the same notdef box — which is precisely
       // the failure being hunted and is invisible to every other kind of test.
-      const probe = await page.evaluate(() => {
-        const families = [
-          "Noto Serif CJK HK",
-          "Noto Serif CJK TC",
-          "Noto Serif TC",
-          "Source Han Serif TC",
-          "Songti TC",
-          "Noto Sans CJK TC",
-        ];
-        const named = families.filter((family) =>
-          document.fonts.check(`16px "${family}"`, "青"),
-        );
+      // THE FACES COME FROM THE DOCUMENT, not from a second list here. This
+      // block used to carry its own copy and the copy had drifted: it asked
+      // about "Noto Sans CJK TC" while the document names "Noto Sans CJK HK",
+      // so it reported on a face the catalogue never requests. See CJK_FACES.
+      const probe = await page.evaluate(
+        ([families, glyph]: [readonly string[], string]) => {
+          const named = families.filter((family) =>
+            document.fonts.check(`16px "${family}"`, glyph),
+          );
 
-        const canvas = document.createElement("canvas");
-        canvas.width = 80;
-        canvas.height = 80;
-        const context = canvas.getContext("2d");
-        if (!context) return { named, rendersCjk: false };
+          const canvas = document.createElement("canvas");
+          canvas.width = 80;
+          canvas.height = 80;
+          const context = canvas.getContext("2d");
+          if (!context) return { named, rendersCjk: false };
 
-        // The document's own stack, so this measures what the catalogue uses
-        // rather than what this function happens to ask for.
-        const stack = getComputedStyle(document.body).fontFamily;
-        const paint = (character: string): string => {
-          context.clearRect(0, 0, 80, 80);
-          context.fillStyle = "#000";
-          context.font = `56px ${stack}`;
-          context.fillText(character, 6, 62);
-          return canvas.toDataURL();
-        };
-        const blank = paint(" ");
-        const chinese = paint("青");
-        const notdef = paint(String.fromCodePoint(0x10fffd));
-        return { named, rendersCjk: chinese !== notdef && chinese !== blank };
-      });
+          // The document's own stack, so this measures what the catalogue uses
+          // rather than what this function happens to ask for.
+          const stack = getComputedStyle(document.body).fontFamily;
+          const paint = (character: string): string => {
+            context.clearRect(0, 0, 80, 80);
+            context.fillStyle = "#000";
+            context.font = `56px ${stack}`;
+            context.fillText(character, 6, 62);
+            return canvas.toDataURL();
+          };
+          const blank = paint(" ");
+          const chinese = paint(glyph);
+          const notdef = paint(String.fromCodePoint(0x10fffd));
+          return { named, rendersCjk: chinese !== notdef && chinese !== blank };
+        },
+        [CJK_FACES, CJK_PROBE_GLYPH] as [readonly string[], string],
+      );
 
       await page.emulateMediaType("print");
       const bytes = await page.pdf({

@@ -29,6 +29,7 @@
 import { CORE_FIELDS } from "@/lib/import/fields";
 
 import { intersectsPage, type OverrideFrame } from "./frame";
+import { plateFromValue, type PlateTreatment } from "./plate";
 import {
   BUILT_IN_TEMPLATES,
   densityFor,
@@ -167,12 +168,26 @@ export interface EnginePin {
  * The record is never touched. Remove the override and the record's own value
  * prints again (principle 9: a default, not a lock).
  *
- * The STORED shape carries more than this — plate treatments, a subject box, a
- * straighten (src/lib/data/overrides.ts). None of it is here, because the
- * engine renders no plate treatment and a field in this interface that no
- * output consumes is noise in the one module that has to stay readable.
+ * ── THE PLATE'S KEYS ARE HERE NOW, AND THIS PARAGRAPH USED TO SAY WHY NOT ───
+ *
+ * It said: "The STORED shape carries more than this — plate treatments, a
+ * subject box, a straighten. None of it is here, because the engine renders no
+ * plate treatment and a field in this interface that no output consumes is
+ * noise in the one module that has to stay readable."
+ *
+ * An output consumes them now (src/lib/render/plate-css.ts), so the condition
+ * that kept them out has gone. They arrive by EXTENSION rather than as six more
+ * fields on this interface, because they are one question asked about one
+ * thing — what this plate is treated with — and `listOverrides` already returns
+ * rows that carry them (src/lib/data/overrides.ts, `OverrideRow`), so nothing
+ * between the table and here had to learn a new shape.
+ *
+ * They are read from the `images` field and from no other. A ground on a
+ * lot's TITLE is not a smaller ground, it is a row about a thing that has no
+ * plate; `derive` ignores it rather than painting it somewhere, and the panel
+ * refuses to write one (src/lib/polish/panel-model.ts).
  */
-export interface EngineOverride {
+export interface EngineOverride extends PlateTreatment {
   lotId: string;
   field: string;
   /** Do not print this field in this catalogue. Wins over `text`. */
@@ -230,6 +245,22 @@ export interface DocSlot {
    * (src/lib/engine/frame.ts, intersectsPage).
    */
   frames?: Record<string, OverrideFrame>;
+  /**
+   * What a person has said about this lot's PLATE — 去背, a ground, a turn, the
+   * passages, the subject box, the colour.
+   *
+   * ONE KEY AND NOT SIX, and not inside `frames` either. `frames` is keyed by
+   * field because any part of an entry can be dragged; a treatment is only ever
+   * about the plate, so a map keyed by field would be a map with one key whose
+   * other keys are unreachable — and the first reader to loop over it would be
+   * reading a shape the writer cannot produce.
+   *
+   * ABSENT when nobody has treated the plate, which is every document this
+   * system has derived so far and keeps them byte-identical. The renderer emits
+   * nothing at all for an absent one, down to the stylesheet
+   * (src/lib/render/plate-css.ts).
+   */
+  plate?: PlateTreatment;
 }
 
 export interface DocPage {
@@ -715,6 +746,30 @@ function withhold(lot: EngineLot, withheld: ReadonlySet<string>): EngineLot {
  * be read then or replaced by that one. What must not happen in the meantime is
  * a guess that moves a client's artwork somewhere nobody asked for.
  *
+ * ── RE-TAKEN WHEN THE PLATE'S TREATMENTS LANDED, AND IT DID NOT MOVE ────────
+ *
+ * The polish tranche had to decide this rather than inherit it, because it is
+ * the one key in the row that the tranche did NOT give a renderer path to, and
+ * "we never got to it" and "it must not be honoured" look identical in a diff.
+ * It is the second.
+ *
+ * The three reasons above all still hold, and the work added a fourth that is
+ * about evidence rather than about arithmetic: THERE IS NO WRITER. Every other
+ * key in `OverrideValue` now has a surface that produces it — the lot form
+ * writes `hidden` and `text`, a drag writes `frame`, the polish panel writes
+ * the six plate keys — and `pageIndex` has none, in this application or in the
+ * predecessor's migration. Every value that can reach the column today was put
+ * there by a test or by hand. Honouring a key nothing writes would be shipping
+ * a behaviour with no way to observe it working and no way to observe it
+ * breaking, which is the shape of a feature that is wrong for a year.
+ *
+ * The cheap alternative was considered and refused: DELETE the key. It is
+ * refused because deleting it is not free either — a row written before the
+ * deletion would come back through `overrideFromValue` with the key dropped,
+ * and `mergeOverride`'s whole contract is that an absent key leaves the stored
+ * value alone. Carrying a value nobody reads costs a paragraph; dropping one
+ * silently costs a specialist's work. It stays carried.
+ *
  * `library` is the templates that exist. The built-ins by default; the day a
  * house authors one, the data layer appends it here and nothing else changes.
  *
@@ -786,6 +841,30 @@ export function derive(
     framesOf.set(override.lotId, own);
   }
 
+  // What a person has said about each lot's PLATE, gathered the same way and
+  // for the same reason: a treatment is a property of the lot's photograph and
+  // says nothing about which page the lot lands on.
+  //
+  // READ THROUGH THE VOCABULARY'S OWN READER rather than picked off the
+  // override object key by key. The row arrived from a jsonb column and the
+  // interface above is a promise about the CALLER, not about the database; a
+  // hand-built override reaching `derive` directly — which the tests and the
+  // template tile both do — has passed no predicate at all. One reader on both
+  // paths is what makes "what is stored is what is painted" provable rather
+  // than asserted (src/lib/engine/plate.ts).
+  //
+  // ON THE `images` FIELD AND NO OTHER. The plate is the only thing any of
+  // these treatments describes, `images` is the field key the renderer already
+  // paints it under, and a ground stored against a title is a row about a
+  // thing that has no plate — carried in the table, never applied, exactly as
+  // a frame that has left the paper is.
+  const platesOf = new Map<string, PlateTreatment>();
+  for (const override of overrides) {
+    if (override.field !== "images") continue;
+    const plate = plateFromValue(override as unknown as Record<string, unknown>);
+    if (plate) platesOf.set(override.lotId, plate);
+  }
+
   const columns =
     template.arrangement === "table"
       ? tableColumns(template, density, printedLots, showRef, withheld)
@@ -833,12 +912,24 @@ export function derive(
     for (const lot of run) {
       const printed = printedOf.get(lot.id)!;
       const frames = framesOf.get(lot.id);
+      // THE DECISION TRAVELS EVEN WHEN THERE IS NOTHING TO APPLY IT TO, and
+      // that division is the engine's from the renderer's. A lot whose
+      // photograph has not arrived, or whose plate this catalogue hides, still
+      // HAS a ground somebody chose — the panel must show it, or un-hiding the
+      // plate would spring a treatment nobody remembers setting, and an audit
+      // asking how much of a sale has been polished would under-count the
+      // work. What must not happen is PAINT: an empty dashed box does not get
+      // a studio sweep, and the renderer is where that is decided
+      // (src/lib/render/plate-css.ts, `slotNeedsPolish`), because whether
+      // there is ink is a question about the page.
+      const plate = platesOf.get(lot.id);
       current.push({
         lotId: lot.id,
         ref: showRef ? printed.ref : null,
         image: printed.images[0] ?? null,
         caption: linesFor(printed),
         ...(frames ? { frames } : {}),
+        ...(plate ? { plate } : {}),
       });
       if (current.length === perPage) flush();
     }

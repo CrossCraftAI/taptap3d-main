@@ -4,14 +4,17 @@ import { notFound } from "next/navigation";
 import { CatalogueControls } from "@/components/catalogue-controls";
 import { CatalogueWorkspace } from "@/components/catalogue-workspace";
 import { PinPanel, type PinPanelLot, type PinPanelPin } from "@/components/pin-panel";
-import { PreviewCanvas } from "@/components/preview-canvas";
+import { PreviewCanvas, type PlateInfo } from "@/components/preview-canvas";
+import { plateGeometry } from "@/lib/data/assets";
 import { getCatalogue, listPins } from "@/lib/data/catalogues";
 import { getEvent } from "@/lib/data/events";
 import { listLotsWithImages } from "@/lib/data/lots";
 import { currentOrgId, fieldPolicyOf } from "@/lib/data/org";
-import { listOverrides } from "@/lib/data/overrides";
+import { listOverrides, overrideFromValue } from "@/lib/data/overrides";
 import { asText, derive, normaliseParams } from "@/lib/engine/derive";
 import { BUILT_IN_TEMPLATES, templateChoice } from "@/lib/engine/templates";
+import { polishPlateAction } from "@/lib/polish/actions";
+import { PLATE_FIELD } from "@/lib/polish/panel-model";
 
 export const dynamic = "force-dynamic";
 
@@ -131,6 +134,39 @@ export default async function CataloguePage({
     refs: pin.lotIds.map((lotId) => refOf.get(lotId) ?? "?"),
   }));
 
+  // ── WHAT THE POLISH PANEL IS HANDED, AND WHY IT COMES FROM HERE ───────────
+  //
+  // The panel needs the SELECTION, which is client state inside the canvas and
+  // reaches no server component — so the canvas mounts it and this page sends
+  // the two things a server can send: per-lot data that is already in hand, and
+  // a server action with the sale bound into it. Nothing here is a second query
+  // for the panel's sake except the measurement, which no other reader of this
+  // screen needed.
+  //
+  // The whole sale, not the selected lot: the selection changes with a click
+  // and a round trip per click is the lag the buffered preview exists to avoid.
+  // Three small values a lot, at 100–300 lots.
+  //
+  // THROUGH `overrideFromValue`, not by spreading the row. An `OverrideRow` is
+  // the value with an id, an `updatedAt` and its own identity mixed in, and the
+  // panel takes the VALUE — so the projection back is the same reader the write
+  // path normalises through, rather than a hand-written list of keys here that
+  // would need editing the day the plate gains one.
+  const plateValues = new Map(
+    overrides
+      .filter((o) => o.field === PLATE_FIELD)
+      .map((o) => [o.lotId, overrideFromValue(o) ?? {}]),
+  );
+  const geometry = await plateGeometry(orgId, id);
+  const plates: Record<string, PlateInfo> = {};
+  for (const lot of lots) {
+    plates[lot.id] = {
+      value: plateValues.get(lot.id) ?? {},
+      hasPhotograph: lot.images.length > 0,
+      measured: geometry.get(lot.id) ?? null,
+    };
+  }
+
   return (
     <CatalogueWorkspace
       catalogueId={catalogue?.id ?? null}
@@ -230,6 +266,12 @@ export default async function CataloguePage({
             // density appeared to do nothing at all. Found by driving the
             // application; no unit test could have seen it.
             src={`/events/${event.id}/catalogue/preview?v=${previewKey}`}
+            plates={plates}
+            // BOUND HERE, so the panel never builds a route and the sale cannot
+            // be chosen by whatever is selected. The action's own guards run
+            // again on the server regardless — a bound argument is a
+            // convenience, not an authorisation.
+            polish={polishPlateAction.bind(null, event.id)}
           />
           {empty && (
             /* ON THE CANVAS, at the foot of the blank sheet: one line and the one

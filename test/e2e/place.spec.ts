@@ -54,37 +54,105 @@ const preview = (page: Page): FrameLocator =>
   page.frameLocator('iframe[title="Catalogue preview"]');
 const overlay = (page: Page) => page.locator("[data-overlay]");
 
-/** The stored frame the renderer published for one part, or null. */
+/**
+ * How long a poll waits for the preview to carry a commit.
+ *
+ * NOT PLAYWRIGHT'S FIVE SECONDS, and not a number picked to make a test pass. A
+ * placement here is a server action, a revalidate, a re-derive of the whole
+ * document, a fresh render and an iframe load into the back buffer before the
+ * swap — and `storedFrame` reads the DOCUMENT, so nothing it asks can be true
+ * until all of that has landed. Measured on webkit it is typically 250–750ms;
+ * the slow runs are the ones where a route is being compiled for the first time
+ * as well, which is a property of the harness. Five seconds was never chosen,
+ * it was the default.
+ */
+const SETTLED = { timeout: 20_000 };
+
+/**
+ * The stored frame the renderer published for one part, or null.
+ *
+ * ── READ IN ONE `evaluate`, AND NOT THROUGH A FRAME LOCATOR ─────────────────
+ *
+ * This used to be `preview(page).locator(…)` — a `frameLocator`, then a
+ * `count()`, then a `getAttribute()`. Three round trips, each of which
+ * RE-RESOLVES the iframe, straddling the one moment in this editor when which
+ * element answers to "Catalogue preview" changes: `preview-buffer.ts` swaps the
+ * two frames on every commit and sends the outgoing one to `about:blank`.
+ *
+ * On webkit that produced two failures a run, and both accused the product of
+ * the opposite of what it had done. Instrumented at 250ms, with the parent's
+ * own view of both frames printed beside this function's answer:
+ *
+ *     raw: [back = new document, FRONT = old document]   storedFrame → null
+ *
+ * — this helper reporting the part unplaced while the front buffer still held
+ * the placement, because the resolution had landed on the other frame. The
+ * mirror image of that is what the failures printed: "expected null, received
+ * [0.169708, …]", an undo that had plainly worked being reported as ignored.
+ * One `getAttribute` hung until the 180s test timeout.
+ *
+ * So the read is now ONE evaluation in the parent, which picks the frame by
+ * title and reads through its `contentDocument` in the same task. It cannot see
+ * a half-swapped pair, because a task boundary is the only place the swap can
+ * happen. The preview is same-origin, which is what makes it possible — and is
+ * the same access the editor's own overlay depends on.
+ */
 async function storedFrame(
   page: Page,
   lotId: string,
   field: string,
 ): Promise<[number, number, number, number] | null> {
-  const el = preview(page).locator(`[data-lot="${lotId}"][data-field="${field}"][data-page-frame]`);
-  if ((await el.count()) === 0) return null;
-  const raw = await el.first().getAttribute("data-page-frame");
-  const parts = (raw ?? "").split(",").map(Number);
+  const raw = await page.evaluate(
+    ({ lotId, field }) => {
+      const frames = Array.from(document.querySelectorAll("iframe"));
+      const front = frames.find((f) => f.title === "Catalogue preview");
+      const node = front?.contentDocument?.querySelector(
+        `[data-lot="${lotId}"][data-field="${field}"][data-page-frame]`,
+      );
+      return node?.getAttribute("data-page-frame") ?? null;
+    },
+    { lotId, field },
+  );
+  if (raw === null) return null;
+  const parts = raw.split(",").map(Number);
   return parts.length === 4 ? (parts as [number, number, number, number]) : null;
 }
 
-/** A box in WINDOW coordinates: the frame's own box plus the child's inside it. */
+/**
+ * A box in WINDOW coordinates: the frame's own box plus the child's inside it.
+ *
+ * ONE EVALUATION, for `storedFrame`'s reason — and here it buys a second thing
+ * as well. The frame's box and the child's box are read in the same task, so
+ * they describe the same instant; taken separately, a swap or a scroll between
+ * them produces a coordinate that was never on the screen, which is the worst
+ * kind of number to hand to `page.mouse.move`.
+ */
 async function boxIn(page: Page, selector: string): Promise<{ x: number; y: number; w: number; h: number }> {
-  const outer = (await page.locator('iframe[title="Catalogue preview"]').boundingBox())!;
-  const inner = await preview(page)
-    .locator(selector)
-    .first()
-    .evaluate((el) => {
-      const r = el.getBoundingClientRect();
-      return { x: r.x, y: r.y, w: r.width, h: r.height };
-    });
-  return { x: outer.x + inner.x, y: outer.y + inner.y, w: inner.w, h: inner.h };
+  const box = await page.evaluate((selector) => {
+    const frames = Array.from(document.querySelectorAll("iframe"));
+    const front = frames.find((f) => f.title === "Catalogue preview");
+    const el = front?.contentDocument?.querySelector(selector);
+    if (!front || !el) return null;
+    const outer = front.getBoundingClientRect();
+    const inner = el.getBoundingClientRect();
+    return {
+      x: outer.x + inner.x,
+      y: outer.y + inner.y,
+      w: inner.width,
+      h: inner.height,
+    };
+  }, selector);
+  if (!box) throw new Error(`No ${selector} in the front preview buffer.`);
+  return box;
 }
 
-/** The preview's own scroll, in child pixels. */
+/** The preview's own scroll, in child pixels. Read the same way, and why. */
 const scrollOf = (page: Page): Promise<number> =>
-  preview(page)
-    .locator("body")
-    .evaluate(() => document.scrollingElement?.scrollTop ?? 0);
+  page.evaluate(() => {
+    const frames = Array.from(document.querySelectorAll("iframe"));
+    const front = frames.find((f) => f.title === "Catalogue preview");
+    return front?.contentDocument?.scrollingElement?.scrollTop ?? 0;
+  });
 
 async function importLots(page: Page, eventUrl: string, count: number): Promise<void> {
   await page.getByRole("link", { name: "Import lots" }).first().click();
@@ -155,7 +223,7 @@ test("a caption line goes where a person drags it, and stays there", async ({ pa
   await page.mouse.up();
 
   // ── THE SERVER'S ANSWER, IN THE RENDERER'S OWN NUMBERS ───────────────────
-  await expect.poll(() => storedFrame(page, lotId!, "title")).not.toBeNull();
+  await expect.poll(() => storedFrame(page, lotId!, "title"), SETTLED).not.toBeNull();
   const stored = (await storedFrame(page, lotId!, "title"))!;
   const wantX = (title.x - page1.x + dx) / page1.w;
   const wantY = (title.y - page1.y + dy) / page1.h;
@@ -222,7 +290,7 @@ test("committing keeps the reader on the page they were looking at", async ({ pa
   await page.mouse.move(title.x + title.w / 2 + 60, title.y + title.h / 2 + 40, { steps: 10 });
   await page.mouse.up();
 
-  await expect.poll(() => storedFrame(page, lotId!, "title")).not.toBeNull();
+  await expect.poll(() => storedFrame(page, lotId!, "title"), SETTLED).not.toBeNull();
   // Still exactly one preview after the swap.
   await expect(page.locator('iframe[title="Catalogue preview"]')).toHaveCount(1);
   const kept = await scrollOf(page);
@@ -326,7 +394,7 @@ test("a part dropped on another lot says so, and the page still prints", async (
   await page.mouse.move(onto.x + onto.w / 2, onto.y + onto.h / 2, { steps: 12 });
   await page.mouse.up();
 
-  await expect.poll(() => storedFrame(page, lotA!, "title")).not.toBeNull();
+  await expect.poll(() => storedFrame(page, lotA!, "title"), SETTLED).not.toBeNull();
   // AND THE PREVIEW HAS CAUGHT UP. `storedFrame` asks the server, which
   // answers as soon as the row is written; the overlay measures the DOCUMENT,
   // which does not exist until the back buffer has loaded and swapped. Polling
@@ -412,7 +480,7 @@ test("a handle resizes a part, and a box too small for its text says so", async 
   await page.screenshot({ path: shot("85-resize-dragging") });
   await page.mouse.up();
 
-  await expect.poll(() => storedFrame(page, lotId, "title")).not.toBeNull();
+  await expect.poll(() => storedFrame(page, lotId, "title"), SETTLED).not.toBeNull();
   const stored = (await storedFrame(page, lotId, "title"))!;
   const line =
     `resized to ${stored.map((n) => n.toFixed(4)).join(", ")} ` +
@@ -558,7 +626,7 @@ test("the arrows nudge the selection, and leave the page alone when there is non
   // Twenty presses. One POST each would re-derive the document and reload a
   // preview twenty times; the settle is what makes the run one decision, and
   // one decision is one undo entry.
-  await expect.poll(() => storedFrame(page, lotId, "title")).not.toBeNull();
+  await expect.poll(() => storedFrame(page, lotId, "title"), SETTLED).not.toBeNull();
   await expect(overlay(page)).toHaveAttribute("data-placements", "1");
   await expect(page.getByText(/1 override/)).toBeVisible();
 
@@ -609,7 +677,7 @@ test("undo puts the last placement back, and reset hands the part to the engine"
   await page.mouse.down();
   await page.mouse.move(title.x + title.w / 2 + 70, title.y + title.h / 2 + 50, { steps: 12 });
   await page.mouse.up();
-  await expect.poll(() => storedFrame(page, lotId, "title")).not.toBeNull();
+  await expect.poll(() => storedFrame(page, lotId, "title"), SETTLED).not.toBeNull();
   await expect(overlay(page)).toHaveAttribute("data-placements", "1");
   const placed = (await storedFrame(page, lotId, "title"))!;
 
@@ -619,7 +687,7 @@ test("undo puts the last placement back, and reset hands the part to the engine"
   // is the reason `before` is nullable rather than absent.
   await expect(page.getByRole("button", { name: "Undo" })).toBeEnabled();
   await page.getByRole("button", { name: "Undo" }).click();
-  await expect.poll(() => storedFrame(page, lotId, "title")).toBeNull();
+  await expect.poll(() => storedFrame(page, lotId, "title"), SETTLED).toBeNull();
   await expect(overlay(page)).toHaveAttribute("data-placements", "0");
   // The row went with the frame: it held nothing else.
   await expect(page.getByText(/override/)).toHaveCount(0);
@@ -636,7 +704,7 @@ test("undo puts the last placement back, and reset hands the part to the engine"
   await page.mouse.down();
   await page.mouse.move(again.x + again.w / 2 + 60, again.y + again.h / 2 + 30, { steps: 10 });
   await page.mouse.up();
-  await expect.poll(() => storedFrame(page, lotId, "title")).not.toBeNull();
+  await expect.poll(() => storedFrame(page, lotId, "title"), SETTLED).not.toBeNull();
   const first = (await storedFrame(page, lotId, "title"))!;
 
   const moved = await boxIn(page, `[data-lot="${lotId}"][data-field="title"]`);
@@ -644,11 +712,11 @@ test("undo puts the last placement back, and reset hands the part to the engine"
   await page.mouse.down();
   await page.mouse.move(moved.x + moved.w / 2 + 40, moved.y + moved.h / 2 + 20, { steps: 10 });
   await page.mouse.up();
-  await expect.poll(() => storedFrame(page, lotId, "title")).not.toEqual(first);
+  await expect.poll(() => storedFrame(page, lotId, "title"), SETTLED).not.toEqual(first);
   await expect(overlay(page)).toHaveAttribute("data-placements", "2");
 
   await page.getByRole("button", { name: "Undo" }).click();
-  await expect.poll(() => storedFrame(page, lotId, "title")).toEqual(first);
+  await expect.poll(() => storedFrame(page, lotId, "title"), SETTLED).toEqual(first);
   await expect(overlay(page)).toHaveAttribute("data-placements", "1");
   const undoLine =
     `two placements, one undo: back to ${first.map((n) => n.toFixed(4)).join(", ")} ` +
@@ -658,7 +726,7 @@ test("undo puts the last placement back, and reset hands the part to the engine"
 
   // ── RESET, WHICH IS THE FLOOR UNDER ALL OF IT ────────────────────────────
   await page.getByRole("button", { name: "Reset placement" }).click();
-  await expect.poll(() => storedFrame(page, lotId, "title")).toBeNull();
+  await expect.poll(() => storedFrame(page, lotId, "title"), SETTLED).toBeNull();
   await expect(page.getByText(/override/)).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Reset placement" })).toBeDisabled();
   await page.screenshot({ path: shot("92-reset") });
@@ -692,7 +760,7 @@ test("resetting one part does not throw away another lot's history", async ({ pa
     await page.mouse.down();
     await page.mouse.move(box.x + box.w / 2 + dx, box.y + box.h / 2 + dy, { steps: 10 });
     await page.mouse.up();
-    await expect.poll(() => storedFrame(page, lotId, "title")).not.toBeNull();
+    await expect.poll(() => storedFrame(page, lotId, "title"), SETTLED).not.toBeNull();
   };
 
   await drag(lotB, 40, 30);
@@ -701,7 +769,7 @@ test("resetting one part does not throw away another lot's history", async ({ pa
 
   // Reset A — which is selected, because dragging it selected it.
   await page.getByRole("button", { name: "Reset placement" }).click();
-  await expect.poll(() => storedFrame(page, lotA, "title")).toBeNull();
+  await expect.poll(() => storedFrame(page, lotA, "title"), SETTLED).toBeNull();
   // A's entry went with its frame; B's did not.
   await expect(overlay(page)).toHaveAttribute("data-placements", "1");
 
@@ -710,7 +778,7 @@ test("resetting one part does not throw away another lot's history", async ({ pa
   // would be the same defect wearing a better number.
   await expect(page.getByRole("button", { name: "Undo" })).toBeEnabled();
   await page.getByRole("button", { name: "Undo" }).click();
-  await expect.poll(() => storedFrame(page, lotB, "title")).toBeNull();
+  await expect.poll(() => storedFrame(page, lotB, "title"), SETTLED).toBeNull();
   await expect(overlay(page)).toHaveAttribute("data-placements", "0");
   await expect(page.getByText(/override/)).toHaveCount(0);
 });

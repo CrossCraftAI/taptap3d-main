@@ -42,6 +42,16 @@
 import type { CaptionLine, CatalogueDocument, DocPage, DocSlot } from "@/lib/engine/derive";
 import type { OverrideFrame } from "@/lib/engine/frame";
 
+import {
+  POLISH_STYLES,
+  bandMarkup,
+  documentIsPolished,
+  gradeFilterSvg,
+  pictureBox,
+  plateAttrs,
+  plateClass,
+} from "./plate-css";
+
 /**
  * How a plate's content hash becomes something the document can load.
  *
@@ -72,6 +82,51 @@ function escapeHtml(value: string): string {
 
 export const PREVIEW_CSP =
   "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'";
+
+/**
+ * The CJK faces this document asks for, in the order it asks for them.
+ *
+ * ── THE LIST WAS WRITTEN TWICE AND THE TWO DID NOT AGREE ────────────────────
+ *
+ * The stylesheet below names "Noto Sans CJK HK" as its last CJK rung. The PDF
+ * route's paint probe (src/lib/render/pdf.ts) named "Noto Sans CJK TC" — so it
+ * checked for a face this document never asks for and did not check for the
+ * one it does. On a container carrying the HK sans and not the TC sans, the
+ * `x-taptap3d-cjk` header would have under-reported the fonts the document
+ * could actually use; on one carrying the TC sans and not the HK sans it would
+ * have over-reported. Neither would have failed anything, which is why it
+ * survived: the probe's headline answer is a PAINT test and was right either
+ * way, and only the named list was wrong.
+ *
+ * So there is one list, and it is here rather than in the probe because the
+ * document is what names the faces. It is NOT interpolated into the stylesheet
+ * — the declaration below is wrapped and indented, and rebuilding that wrapping
+ * from an array would put the bytes of every catalogue at the mercy of a join.
+ * `test/polish.test.ts` asserts instead that every face here appears in the
+ * rendered stylesheet in this order, which catches a drift in either direction
+ * without either copy having to generate the other.
+ *
+ * WHY HK BEFORE TC is a domain decision and is argued at the declaration.
+ */
+export const CJK_FACES = [
+  "Noto Serif CJK HK",
+  "Noto Serif CJK TC",
+  "Noto Serif TC",
+  "Source Han Serif TC",
+  "Songti TC",
+  "Noto Sans CJK HK",
+] as const;
+
+/**
+ * The glyph the probes draw.
+ *
+ * A COMMON HANZI AND NOT A RARE ONE. A rare character is missing from fonts
+ * that are perfectly good for a catalogue, so a probe using one would report a
+ * broken machine on a working install — and a probe that cries wolf is a probe
+ * somebody loosens. 青 is in every CJK face named above and in none of the
+ * Latin fallbacks after them, which is exactly the distinction being measured.
+ */
+export const CJK_PROBE_GLYPH = "青";
 
 /** A share as a CSS percentage: 0.62 → "62%". */
 const pct = (share: number | undefined): string =>
@@ -182,14 +237,46 @@ function part(
   return "";
 }
 
+/**
+ * What goes INSIDE a plate's box: the photograph, or the photograph inside the
+ * box a treatment needs.
+ *
+ * ONE FUNCTION FOR ALL THREE ARRANGEMENTS, because a treatment is about the
+ * picture and not about the page it is on — a ground behind a plate in a grid
+ * cell and behind the same plate lifted onto the paper are the same ground.
+ * The extra box only exists when something asked for it
+ * (src/lib/render/plate-css.ts, `pictureBox`), so an untreated plate is the
+ * bare `<img>` this function has always returned.
+ */
+function picture(slot: DocSlot, asset: AssetResolver): string {
+  if (!slot.image) return "";
+  const url = asset(slot.image);
+  const img = `<img src="${escapeHtml(url)}" alt="">`;
+  const treatment = slot.plate;
+  const box = treatment ? pictureBox(treatment, slot.lotId, url) : null;
+  if (!treatment || !box) return img;
+  const filter = treatment.grade ? gradeFilterSvg(slot.lotId, treatment.grade) : "";
+  const inside = box.banded ? bandMarkup(treatment.bands ?? 1) : img;
+  return `<div class="${box.cls}" style="${escapeHtml(box.style)}">${filter}${inside}</div>`;
+}
+
 function plate(slot: DocSlot, asset: AssetResolver, placed: string[]): string {
-  const inner = slot.image
-    ? `<img src="${escapeHtml(asset(slot.image))}" alt="">`
-    : "<span>no photograph</span>";
+  const inner = slot.image ? picture(slot, asset) : "<span>no photograph</span>";
   const empty = slot.image ? "" : " plate--empty";
+  // WHAT A PERSON DECIDED ABOUT THIS PLATE, on the element that already carries
+  // its identity. Both are the empty string for a plate nobody treated, so an
+  // untreated document's bytes are what they were.
+  //
+  // THE ATTRIBUTES ARE PUBLISHED WITHOUT A PHOTOGRAPH AND THE CLASS IS NOT.
+  // The decision is a fact about the lot and the panel reads it back; the
+  // class only means anything alongside the stylesheet, which a document with
+  // nothing to paint does not carry — and an inert class on an empty dashed
+  // box is a thing for the next reader to wonder about.
+  const treated = slot.plate && slot.image ? plateClass(slot.plate) : "";
+  const marks = slot.plate ? plateAttrs(slot.plate) : "";
   return part(
     (cls, attrs) =>
-      `<div class="plate${empty}${cls}"${ids(slot.lotId, "images")}${attrs}>${inner}</div>`,
+      `<div class="plate${empty}${treated}${cls}"${ids(slot.lotId, "images")}${marks}${attrs}>${inner}</div>`,
     slot.frames?.images,
     placed,
   );
@@ -340,21 +427,28 @@ function entry(
         // load-bearing: the colgroup declares the widths, so a row with one
         // fewer cell shifts every column after it by one. So the content moves
         // and the cell stays.
-        const cell = (cls: string, inner: string): string => {
+        // `extra` is what a cell carries BESIDES its identity — today only a
+        // plate's treatment. It defaults to nothing and is emitted on the empty
+        // `<td>` as well as on the lifted content, for the same reason the
+        // identity is: the two are one cell painted in two places, and a reader
+        // that found the decision on one of them and not the other would have
+        // to know which.
+        const cell = (cls: string, inner: string, extra = ""): string => {
           const frame = slot.frames?.[column.key];
           const id = ids(slot.lotId, column.key);
-          if (!frame) return `<td class="${cls}"${id}>${inner}</td>`;
-          placed.push(`<div class="${cls} placed"${id}${placedAt(frame)}>${inner}</div>`);
-          return `<td class="${cls}"${id}></td>`;
+          if (!frame) return `<td class="${cls}"${id}${extra}>${inner}</td>`;
+          placed.push(`<div class="${cls} placed"${id}${extra}${placedAt(frame)}>${inner}</div>`);
+          return `<td class="${cls}"${id}${extra}></td>`;
         };
         if (column.key === "ref") {
           return cell("ref", slot.ref === null ? "" : escapeHtml(slot.ref));
         }
         if (column.key === "images") {
-          const img = slot.image
-            ? `<img src="${escapeHtml(asset(slot.image))}" alt="">`
-            : "";
-          return cell("plate", `<div class="cell">${img}</div>`);
+          return cell(
+            `plate${slot.plate && slot.image ? plateClass(slot.plate) : ""}`,
+            `<div class="cell">${picture(slot, asset)}</div>`,
+            slot.plate ? plateAttrs(slot.plate) : "",
+          );
         }
         const l = byKey.get(column.key);
         return cell(
@@ -484,6 +578,31 @@ export function renderCatalogue(
     doc.pages.length === 0
       ? '<section class="page page--empty" aria-label="Blank page"></section>'
       : "";
+
+  // ── THE POLISH BLOCK, AND WHY IT IS CONDITIONAL ───────────────────────────
+  //
+  // The stylesheet is otherwise emitted WHOLE for every document — every hole
+  // in it is a number and not one rule is gated on the arrangement, which is
+  // the property test/golden.test.ts's palette census depends on. This is the
+  // one exception, and it is the exception because the alternative is worse in
+  // exactly the way that test exists to catch: an unconditional block would
+  // change the bytes of every catalogue already in production, none of which
+  // has a treatment on it, to carry rules that paint nothing.
+  //
+  // So a document nobody has polished emits not one byte from
+  // src/lib/render/plate-css.ts, and the four goldens are the proof rather than
+  // this sentence. Interpolated with NO surrounding whitespace, because a
+  // newline is a byte too.
+  //
+  // IT GOES LAST, AFTER ALL THREE ARRANGEMENTS, and that is a correctness
+  // requirement rather than tidiness. Its rules override the arrangements'
+  // own, they are written to TIE those on specificity, and a tie is decided by
+  // order — so above the arrangements they would all lose. The rules are also
+  // deliberately over-qualified for the same reason, which is the half that is
+  // easy to undo; src/lib/render/plate-css.ts carries the measurement and the
+  // symptom (a straightened plate sized to its box instead of to its turn,
+  // showing paper at the corners).
+  const polish = documentIsPolished(doc) ? POLISH_STYLES : "";
 
   return `<!doctype html>
 <html lang="zh-Hant">
@@ -755,7 +874,7 @@ export function renderCatalogue(
   /* The sheet's own leading on a part that has left its description list. Its
      type rules are keyed to .line, .label and .value rather than to dt and dd,
      which is why a placed part can take neutral tags and still look the same. */
-  .page--sheet .placed { line-height: 1.5; }
+  .page--sheet .placed { line-height: 1.5; }${polish}
 
   @media print {
     /* MARGIN ZERO, and the page's own padding is the margin. Without this the
