@@ -135,7 +135,7 @@ export function LotCatalogueForm({
       <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-rule px-4 py-2">
         <p className="text-[12px] text-muted">
           These decisions belong to <span className="text-ink">{catalogueName}</span> only.
-          The record is untouched, and the engine re-applies them at every density.
+          The record is untouched.
           {/* WHO IT IS FOR, on the panel that says what it prints. The audience
               is a property of THIS output — the same sale may have a public
               catalogue and an internal schedule — so it is stated here rather

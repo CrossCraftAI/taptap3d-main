@@ -108,9 +108,9 @@ export default async function MovementPage({
         <h2 className="text-[15px] font-medium">The chain</h2>
         {chain.length === 0 ? (
           <p className="mt-2 max-w-xl text-[13px] leading-relaxed text-muted">
-            Nothing yet. A lot imported before this system recorded movements
-            has no chain, and none was invented for it — a first leg nobody
-            witnessed would be a fact in a record that exists to be argued from.
+            Nothing yet, and nothing was invented — a first leg nobody
+            witnessed would be a fact in a record that exists to be argued
+            from.
           </p>
         ) : (
           <ol className="mt-3 m-0 list-none border border-rule bg-paper p-0">

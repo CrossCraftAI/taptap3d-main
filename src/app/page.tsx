@@ -57,12 +57,13 @@ export default async function LedgerPage({
     return (
       <div className="mx-auto max-w-lg px-8 py-20">
         <h1 className="text-[16px] font-semibold">No organisation yet</h1>
+        {/* NO SHELL COMMAND ON A SCREEN A CUSTOMER CAN REACH. This printed
+            `npm run db:seed` and an environment variable — instructions for
+            whoever is running the server, on a page addressed to whoever is
+            looking at it. The state is the whole of what this screen can
+            honestly say. */}
         <p className="mt-2 text-[13px] leading-relaxed text-muted">
-          Every row in this system carries the organisation that owns it, so
-          there is nothing to show until one exists. Create it with{" "}
-          <code className="bg-sunk px-1 py-0.5 text-[12px]">npm run db:seed</code>
-          , or set <code className="bg-sunk px-1 py-0.5 text-[12px]">TAPTAP3D_ORG_SLUG</code>{" "}
-          if there is more than one.
+          There is no house set up on this installation yet.
         </p>
       </div>
     );

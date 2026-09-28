@@ -279,9 +279,7 @@ export default async function CataloguePage({
                lets the pointer through to the frame everywhere but the bar. */
             <div className="pointer-events-none absolute inset-x-0 bottom-6 flex justify-center">
               <div className="pointer-events-auto flex items-center gap-4 border border-rule bg-paper py-2 pl-4 pr-2 shadow-[0_1px_2px_rgba(0,0,0,.08),0_6px_20px_rgba(0,0,0,.06)]">
-                <p className="text-[13px] text-muted">
-                  No lots yet. Import them and the engine lays out the pages.
-                </p>
+                <p className="text-[13px] text-muted">No lots yet.</p>
                 <Link
                   href={`/events/${event.id}/import`}
                   className="bg-seal px-3 py-1.5 text-[13px] font-medium text-white hover:bg-sealPress"

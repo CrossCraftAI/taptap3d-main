@@ -82,6 +82,11 @@ async function main() {
     (async () => {
       await page.getByRole("button", { name: "底色" }).click();
       await preview.locator(".pic--tone").first().waitFor();
+      // AND THE PANEL, NOT ONLY THE PAGE. The plate paints as soon as the row
+      // is written; the tone row appears when the panel's own value catches
+      // up, which is a beat later. Photographing on the first of the two
+      // caught the panel mid-write and made a working feature look broken.
+      await page.getByRole("button", { name: "深", exact: true }).waitFor();
     })(),
   );
   await shot(page, "03-editor-ground-applied");

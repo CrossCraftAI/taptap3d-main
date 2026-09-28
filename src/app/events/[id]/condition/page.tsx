@@ -67,10 +67,6 @@ export default async function ConditionRegisterPage({
       {lots.length === 0 ? (
         <div className="mt-6 border border-rule bg-paper px-8 py-16 text-center">
           <p className="text-[15px] font-medium">This sale has no lots.</p>
-          <p className="mx-auto mt-2 max-w-md text-[13px] leading-relaxed text-muted">
-            There is nothing to examine yet. Import the file the client sent and
-            every lot arrives here unexamined.
-          </p>
           <Link
             href={`/events/${event.id}/import`}
             className="mt-5 inline-flex min-h-[var(--tap)] items-center bg-seal px-4 text-[13px] font-medium text-paper hover:bg-sealPress"

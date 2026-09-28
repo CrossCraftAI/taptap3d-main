@@ -213,9 +213,13 @@ export async function createPin(
     if (sorted[i]! !== sorted[i - 1]! + 1) {
       return {
         ok: false,
+        // THE RULE, NOT THE ROADMAP. This said "Reordering is not built yet,
+        // so a pin cannot bring them together" — which tells a specialist
+        // about our schedule and nothing about their sale. What they can act
+        // on is the rule and the gesture that satisfies it.
         reason:
           "Pinned lots must be neighbours in the sale's order. " +
-          "Reordering is not built yet, so a pin cannot bring them together.",
+          "Pin a run that is already together.",
       };
     }
   }

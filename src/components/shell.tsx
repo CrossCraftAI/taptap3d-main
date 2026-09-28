@@ -210,17 +210,17 @@ export function Shell({
         >
           <div className="flex min-h-full flex-col py-2">
             <Nav counts={{ ...counts, lots: openSale?.lotCount ?? null }} />
+            {/* THE FOOT OF THE RAIL CARRIES THE WIDTH CONTROL AND NOTHING ELSE.
+                It used to carry a standing caption about the build — "M1 — the
+                pitch. Catalogue production; no money path." — which is a note
+                from us to us, printed on every screen of a product a Hong Kong
+                cataloguer is looking at. The owner's rule, and it reaches
+                further than this one line: the product does not narrate itself.
+                Where a screen states a fact the person cannot see — what an
+                edit will reach, what the catalogue will print — that is the
+                product doing its job and it stays. */}
             <div className="mt-auto pt-4">
               <WidthToggle width={width} onPick={setWidth} />
-              {/* GONE at the narrow width, not `sr-only`. Prose does not fit
-                  in 44 pixels, and this is a standing caption about the build
-                  rather than the name of anything — every label that IS a
-                  name stays in the document when it stops being drawn, and
-                  the difference between the two is what `hidden` says here
-                  and `sr-only` says in the rows. */}
-              <p className="px-3 pt-2 text-[12px] leading-relaxed text-faint group-data-[rail=icons]:hidden">
-                M1 — the pitch. Catalogue production; no money path.
-              </p>
             </div>
           </div>
         </aside>

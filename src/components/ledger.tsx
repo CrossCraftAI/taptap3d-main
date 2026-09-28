@@ -421,13 +421,16 @@ function Nothing({ view }: { view: LedgerView }): React.ReactElement {
   const { query, total, tabs } = view;
 
   // NOTHING AT ALL is a different sentence from nothing HERE: one is a house
-  // that has not started, the other is a filter. The first offers the line
-  // above; the second offers to take the filter off.
+  // that has not started, the other is a filter. The second still offers to
+  // take the filter off, because that is a control this screen owns.
+  //
+  // THE FIRST IS NOW THE STATE AND NOTHING ELSE. It read "Name the event you
+  // are cataloguing on the line above, and the lots go in next" — pointing at
+  // a field two inches up and narrating the screen after it.
   if (total === 0) {
     return (
-      <p className="px-4 py-10 text-center text-[13px] leading-relaxed text-muted">
-        Name the event you are cataloguing on the line above, and the lots go
-        in next.
+      <p className="px-4 py-10 text-center text-[13px] text-muted">
+        No events yet.
       </p>
     );
   }

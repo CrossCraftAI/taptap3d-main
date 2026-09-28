@@ -86,8 +86,7 @@ export default async function PhotographsPage({
       <div className="mx-auto max-w-lg px-8 py-20">
         <h1 className="text-[16px] font-semibold">No organisation yet</h1>
         <p className="mt-2 text-[13px] leading-relaxed text-muted">
-          Photographs belong to an organisation, so there is nowhere to put one
-          until there is one.
+          There is no house set up on this installation yet.
         </p>
       </div>
     );

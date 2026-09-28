@@ -106,6 +106,21 @@ export interface PolishPanelProps {
   settings?: React.ReactNode;
 }
 
+/**
+ * What each treatment does to the plate, on the control itself.
+ *
+ * The one distinction a specialist must not get wrong is 去背's: it takes the
+ * PLATE's grey field off, and it cannot take the photograph's own background
+ * out, because nothing in this system produces a cut-out derivative. That used
+ * to be a paragraph under the row; it is here now, where it arrives at the
+ * moment somebody wonders and takes none of the panel.
+ */
+const PICTURE_NOTE: Readonly<Record<PictureTreatment, string>> = {
+  original: "The photograph as supplied, on the plate's own field.",
+  cutout:
+    "Takes the grey field off the plate so the object sits on the paper. The photograph's own background is unchanged.",
+};
+
 /** Every pressable thing in this panel stands on the house floor. */
 const TAP = "min-h-[var(--tap)]";
 const BUTTON = `${TAP} border border-rule bg-paper px-2 text-[12px] text-ink hover:bg-sunk`;
@@ -311,21 +326,24 @@ export function PolishPanel({
                 key={p}
                 type="button"
                 className={value.picture === p ? PICKED : BUTTON}
+                title={PICTURE_NOTE[p]}
                 onClick={() => send("picture", picturePatch(value.picture === p ? null : p))}
               >
                 {PICTURE_LABELS[p]}
               </button>
             ))}
-            {/* SAYS WHAT IT DOES AND WHAT IT DOES NOT. 去背 here removes the
-                plate's own field so the object sits on the paper; it cannot
-                remove the photograph's background, because nothing in this
-                system produces a cut-out derivative. A control whose name
-                promises more than its renderer delivers is the defect this
-                vocabulary keeps paying for. */}
-            <span className="w-full text-[10px] text-faint">
-              去背 takes the grey field off the plate so the object sits on the paper. It does not
-              cut the photograph&rsquo;s own background out — nothing here produces a cut-out file.
-            </span>
+            {/* ── THE PARAGRAPH WENT AND THE PROMISE MOVED INTO THE LABEL ──
+                A sentence stood here explaining that 去背 takes the plate's
+                grey field off and does NOT cut the photograph's own background
+                out. The distinction is real and a specialist has to have it —
+                a control whose name promises more than its renderer delivers
+                is the defect this vocabulary keeps paying for — but a
+                paragraph of explanation under a row of buttons is the product
+                narrating itself, which the owner's rule refuses.
+
+                So it is in the button's own title, where it arrives at the
+                moment somebody wonders, and the result is one press away on
+                the plate itself. */}
           </Row>
 
           <Row label="底">

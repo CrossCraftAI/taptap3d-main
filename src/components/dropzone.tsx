@@ -213,9 +213,10 @@ export function Dropzone({
         >
           {label ?? "Add photographs"}
         </button>
-        <p className="text-[12px] text-muted">
-          or drop files — or a whole folder — anywhere on this page
-        </p>
+        {/* THE DROP IS NOT ANNOUNCED. This carried "or drop files — or a whole
+            folder — anywhere on this page", which is the product explaining a
+            gesture every photograph grid on every desktop already answers to.
+            The capability is unchanged; only the sentence went. */}
         <input
           ref={input}
           type="file"

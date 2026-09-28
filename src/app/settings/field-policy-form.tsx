@@ -201,7 +201,7 @@ function NameOne(): React.ReactElement {
         </label>
         <span className="block max-w-prose text-[12px] leading-relaxed text-faint">
           Name a column the next import will bring — 保留價, say — and it is
-          held back from the first derivation rather than from the second.
+          held back from the moment it arrives.
         </span>
       </div>
       <input

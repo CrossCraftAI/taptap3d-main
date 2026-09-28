@@ -39,11 +39,10 @@ export function LotPhotographs({
   if (assets.length === 0) {
     return (
       <div className="mt-4 border border-dashed border-rule bg-paper px-6 py-10 text-center">
+        {/* The state. The two ways to answer it — the button below and the
+            library — are controls, and a control does not need a sentence
+            telling the reader it is there. */}
         <p className="text-[13px] font-medium">No photograph on this lot yet.</p>
-        <p className="mx-auto mt-1 max-w-sm text-[12px] leading-relaxed text-muted">
-          Drop one anywhere on this page and it attaches here. Or assign one from
-          the library that has already arrived.
-        </p>
       </div>
     );
   }

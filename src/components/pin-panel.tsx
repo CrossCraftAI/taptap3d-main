@@ -84,10 +84,12 @@ export function PinPanel({
       className="flex min-h-0 flex-1 flex-col bg-paper"
     >
       <div className="shrink-0 border-b border-rule px-4 py-2.5">
+        {/* THE HEADING AND NOTHING UNDER IT. This carried "Tick neighbours
+            and pin them to stay on one page. Open a lot to correct it." — a
+            sentence describing the tickboxes, the button and the links that
+            are all visible two inches below it. The owner's rule: the product
+            does not explain its own controls. */}
         <h2 className="text-[13px] font-medium">Lots</h2>
-        <p className="mt-0.5 text-[12px] leading-relaxed text-muted">
-          Tick neighbours and pin them to stay on one page. Open a lot to correct it.
-        </p>
       </div>
 
       {pins.length > 0 && (

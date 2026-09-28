@@ -178,10 +178,14 @@ export function ImportFlow({
           <h2 className="text-[15px] font-medium">
             {unreadable ? "Paste the list instead" : "Or paste the list"}
           </h2>
+          {/* WHAT IS ACCEPTED, NOT WHAT TO DO. The second half of this said
+              "Copy the rows and paste them; tabs and commas are both
+              understood" — narrating the gesture over a box that is plainly a
+              box to paste into. What a person cannot see is the RANGE: that a
+              Word table or a PDF's selected text will work at all. */}
           <p className="mt-1 text-[13px] leading-relaxed text-muted">
             Anything that is not a spreadsheet comes through here — a Word table,
-            an email, a PDF you can select text in. Copy the rows and paste them;
-            tabs and commas are both understood.
+            an email, a PDF you can select text in.
           </p>
           <textarea
             value={pasted}

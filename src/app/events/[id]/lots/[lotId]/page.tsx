@@ -266,10 +266,12 @@ export default async function LotPage({
               <summary className="cursor-pointer text-[13px] text-muted hover:text-ink">
                 {carried.length} carried values
               </summary>
+              {/* THE HOUSE'S OWN WORD, NOT OURS. This said the values were
+                  "kept from the predecessor", which names a system the reader
+                  has never heard of. What they need is which numbers print. */}
               <p className="mt-1 text-[12px] leading-relaxed text-faint">
-                Kept from the predecessor because they are the house&rsquo;s data.
-                They do not print — the dimensions and the estimate above are what
-                the catalogue uses.
+                These do not print — the dimensions and the estimate above are
+                what the catalogue uses.
               </p>
               <dl className="mt-2 border border-rule bg-paper">
                 {carried.map(([key, value]) => (
@@ -368,8 +370,8 @@ function WhereThisPrints({
       <div className="border-b border-rule px-4 py-2">
         <h3 className="text-[13px] font-medium">Where this prints</h3>
         <p className="mt-0.5 text-[12px] leading-relaxed text-muted">
-          An output carries the values its readership may have, and the engine drops the
-          rest before a page is laid out. This is a reading of that, not a second rule.
+          An output carries only the values its readership may have; the rest
+          never reach the page. This is a reading of that, not a second rule.
         </p>
       </div>
       <table className="w-full border-collapse text-[13px]">

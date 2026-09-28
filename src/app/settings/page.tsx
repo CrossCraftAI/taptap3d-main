@@ -41,10 +41,10 @@ export default async function SettingsPage(): Promise<React.ReactElement> {
     return (
       <div className="mx-auto max-w-lg px-8 py-20">
         <h1 className="text-[16px] font-semibold">Settings</h1>
+        {/* The state, and no shell command — see the note on the same screen
+            in src/app/page.tsx. */}
         <p className="mt-2 text-[13px] leading-relaxed text-muted">
-          These are one organisation&rsquo;s answers about its own fields, so
-          there is nothing to set until there is an organisation. Run{" "}
-          <code>npm run db:seed</code> to make one.
+          There is no house set up on this installation yet.
         </p>
       </div>
     );
@@ -83,10 +83,10 @@ export default async function SettingsPage(): Promise<React.ReactElement> {
             again for each one would be public until somebody remembered.
           </p>
           <p className="mt-1.5 max-w-prose text-[12px] leading-relaxed text-faint">
-            An output carries the values its readership may have, and the engine
-            drops the rest before a page is laid out. A field nobody has marked
-            is public, which is what every field is until this screen is used —
-            so leaving a row alone changes nothing at all.
+            An output carries only the values its readership may have; the
+            rest never reach the page. A field nobody has marked is public,
+            which is what every field is until this screen is used — so leaving
+            a row alone changes nothing at all.
           </p>
         </div>
 

@@ -104,12 +104,12 @@ export default async function EventPage({
            empty-lots state, not a workflow stage: whatever a house's workflow
            says, a sale with no lots needs lots. */
         <div className="mt-6 border border-rule bg-paper px-8 py-16 text-center">
+          {/* THE STATE AND THE ACTION, WITH NOTHING BETWEEN THEM. The
+              paragraph that stood here explained which file formats the
+              importer takes — which is the import screen's own business, and
+              is said there, on the screen where somebody has a file in their
+              hand. */}
           <p className="text-[15px] font-medium">This event has no lots.</p>
-          <p className="mx-auto mt-2 max-w-md text-[13px] leading-relaxed text-muted">
-            Import the file the client sent. A spreadsheet or a CSV goes straight
-            in; anything else, paste the list as text and the same screen reads
-            it.
-          </p>
           <Link
             href={`/events/${event.id}/import`}
             className="mt-5 inline-block bg-seal px-4 py-2 text-[13px] font-medium text-white hover:bg-sealPress"
