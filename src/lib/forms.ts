@@ -35,3 +35,17 @@ export const NO_PIN_MESSAGE: PinFormState = { message: null, at: 0 };
  * shape this one cannot express.
  */
 export type PlaceResult = { ok: true } | { ok: false; message: string };
+
+/**
+ * What the sale index's bar says after a bulk move.
+ *
+ * A MESSAGE EITHER WAY, unlike `PlaceResult`, whose success is silent because
+ * the page under it visibly changes. Here the screen shows no location at all
+ * — the movement register does — so "12 lots are at Crate HK-114 now" is the
+ * only evidence the gesture landed, and a silent success would read as a
+ * button that did nothing.
+ */
+export interface MoveResult {
+  ok: boolean;
+  message: string;
+}

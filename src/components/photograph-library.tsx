@@ -10,6 +10,7 @@ import type { LotChoice } from "@/lib/data/lots";
 // so nothing here drags the database driver into the client bundle —
 // src/lib/ledger.ts states the same rule about itself.
 import { libraryHref, shortName, type LibraryView } from "@/lib/photographs";
+import { NOTHING, click, type Selection } from "@/lib/selection";
 
 /**
  * The library, and the bay of photographs nobody has filed yet.
@@ -81,8 +82,13 @@ export function PhotographLibrary({
   view: LibraryView;
 }): React.ReactElement {
   const router = useRouter();
-  const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [anchor, setAnchor] = useState<number | null>(null);
+  // ONE IMPLEMENTATION OF THE GESTURE, in src/lib/selection.ts. It was
+  // fifteen lines here until the sale's index needed the same run-picking;
+  // two copies of "what does the anchor do after a shift-click" is the kind
+  // of divergence nobody notices until a selection of forty comes back as
+  // thirty-nine.
+  const [selection, setSelection] = useState<Selection>(NOTHING);
+  const selected = selection.ids;
   const [query, setQuery] = useState("");
   const [busy, setBusy] = useState(false);
   // The picker is CLOSED until someone asks for it. It was open whenever
@@ -105,27 +111,14 @@ export function PhotographLibrary({
       .slice(0, 12);
   }, [lots, query]);
 
-  function toggle(index: number, id: string, shiftKey: boolean): void {
-    const next = new Set(selected);
-    // Shift extends from the last click, which is how every file manager and
-    // every ERP grid behaves. Assigning forty consecutive photographs to one lot
-    // is the common case and forty clicks is not a workflow.
-    //
-    // THE ANCHOR IS AN INDEX INTO `assets`, WHICH IS THIS PAGE. That is the
-    // whole of what a pager changed about this gesture, and it is the whole
-    // of why the page is sized above the run somebody selects in one go — the
-    // header on this component argues both, and the page keys this component
-    // on the query so the state cannot outlive the tiles it indexes.
-    if (shiftKey && anchor !== null) {
-      const [from, to] = anchor < index ? [anchor, index] : [index, anchor];
-      for (let i = from; i <= to; i++) next.add(assets[i]!.id);
-    } else if (next.has(id)) {
-      next.delete(id);
-    } else {
-      next.add(id);
-    }
-    setSelected(next);
-    setAnchor(index);
+  // THE ANCHOR IS AN INDEX INTO `assets`, WHICH IS THIS PAGE. That is the
+  // whole of what a pager changed about this gesture, and it is the whole of
+  // why the page is sized above the run somebody selects in one go — the
+  // header on this component argues both, and the page keys this component on
+  // the query so the state cannot outlive the tiles it indexes.
+  const rowIds = useMemo(() => assets.map((a) => a.id), [assets]);
+  function toggle(index: number, shiftKey: boolean): void {
+    setSelection((current) => click(current, rowIds, index, shiftKey));
   }
 
   async function assignTo(lot: LotChoice): Promise<void> {
@@ -151,7 +144,7 @@ export function PhotographLibrary({
         `${body.attached} assigned to ${name}` +
           (body.alreadyThere ? `, ${body.alreadyThere} already there` : ""),
       );
-      setSelected(new Set());
+      setSelection(NOTHING);
       setQuery("");
       router.refresh();
     } catch {
@@ -180,7 +173,7 @@ export function PhotographLibrary({
               key={asset.id}
               type="button"
               aria-pressed={isSelected}
-              onClick={(e) => toggle(index, asset.id, e.shiftKey)}
+              onClick={(e) => toggle(index, e.shiftKey)}
               className={`group border bg-paper text-left transition-shadow ${
                 isSelected
                   ? "border-seal shadow-[0_0_0_1px_var(--color-seal)]"
@@ -277,7 +270,7 @@ export function PhotographLibrary({
             </p>
             <button
               type="button"
-              onClick={() => setSelected(new Set())}
+              onClick={() => setSelection(NOTHING)}
               className="text-[12px] text-muted underline hover:text-ink"
             >
               Clear

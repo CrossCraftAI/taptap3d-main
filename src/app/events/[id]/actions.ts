@@ -2,8 +2,11 @@
 
 import { revalidatePath } from "next/cache";
 
+import { currentActorId } from "@/lib/data/actor";
 import { setStageOverride } from "@/lib/data/events";
+import { MAX_PLACE, logMovements } from "@/lib/data/movements";
 import { currentOrgId } from "@/lib/data/org";
+import type { MoveResult } from "@/lib/forms";
 import { workflowOf } from "@/lib/data/workflow";
 
 /**
@@ -36,4 +39,67 @@ export async function setStageAction(
   // here because there is only the one.
   revalidatePath("/");
   revalidatePath(`/events/${eventId}`);
+}
+
+/**
+ * Move a chosen set of lots, in one gesture.
+ *
+ * ── WHY THIS EXISTS BESIDE THE CRATE OPTION THAT ALREADY DID ───────────────
+ *
+ * The lot's own movement form can already move "everything standing where this
+ * is standing" — a crate, resolved on the server from the chain. That answers
+ * "all of those over there". It cannot answer "these twelve", because the
+ * twelve a registrar is about to pack are by definition NOT yet in the same
+ * place: that is what packing them means.
+ *
+ * So the two are complementary and neither is the other with a filter. This
+ * one takes the ids the pointer picked, and every guard the per-lot writer has
+ * applies unchanged — `logMovements` checks each id against the org and the
+ * event itself, because a list of ids off a request is not an authorisation.
+ *
+ * ── THE ORIGIN IS NOT ASKED FOR, AND THAT IS THE POINT OF THE PLURAL ───────
+ *
+ * Twelve lots picked off an index came from wherever each of them was
+ * standing. `logMovements` resolves each one's own last `to_place` in the same
+ * statement; a single origin typed into this form would write a fact that is
+ * false for most of them. The whole set shares one `occurred_at` to the
+ * microsecond, which is what makes it one gesture rather than twelve.
+ */
+export async function moveLotsAction(
+  eventId: string,
+  lotIds: readonly string[],
+  formData: FormData,
+): Promise<MoveResult> {
+  const orgId = await currentOrgId();
+  const toPlace = String(formData.get("toPlace") ?? "").trim();
+  if (!toPlace) {
+    return { ok: false, message: "Say where they went." };
+  }
+  if (lotIds.length === 0) {
+    return { ok: false, message: "Nothing was selected." };
+  }
+
+  const written = await logMovements(
+    orgId,
+    eventId,
+    lotIds,
+    {
+      toPlace: toPlace.slice(0, MAX_PLACE),
+      custodian: String(formData.get("custodian") ?? "").slice(0, MAX_PLACE),
+      reason: String(formData.get("reason") ?? "").slice(0, MAX_PLACE),
+    },
+    await currentActorId(orgId),
+  );
+
+  // The sale's index shows no location, but the two registers that do are one
+  // press away and a stale answer there is the one somebody would act on.
+  revalidatePath(`/events/${eventId}`);
+  revalidatePath(`/events/${eventId}/movement`);
+  if (written === 0) {
+    return { ok: false, message: "Nothing moved — none of those lots is in this sale." };
+  }
+  return {
+    ok: true,
+    message: `${written} ${written === 1 ? "lot is" : "lots are"} at ${toPlace} now.`,
+  };
 }

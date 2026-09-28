@@ -108,8 +108,11 @@ test("the page column is the engine's own answer, not the screen's arithmetic", 
   // is on page 2. The number has to come from a real derivation of the real
   // document — the editor's lots panel prints the same one — because two ways
   // of working it out is how two screens come to disagree about one sale.
+  // BY NAME, NOT BY COLUMN NUMBER. The first draft counted to the fifth `td`
+  // and broke the day a checkbox column arrived in front of it — a spec that
+  // counts columns is a spec that fails on a layout decision.
   const pageCell = (n: number) =>
-    page.locator(`tbody tr[data-lot] >> nth=${n - 1}`).locator("td").nth(4);
+    page.locator(`tbody tr[data-lot] >> nth=${n - 1}`).locator("[data-page]");
   await expect(pageCell(1)).toHaveText("1");
   await expect(pageCell(5)).toHaveText("2");
   await expect(pageCell(9)).toHaveText("3");
@@ -118,8 +121,58 @@ test("the page column is the engine's own answer, not the screen's arithmetic", 
   // this column were computed here rather than derived, it would not move.
   await page.goto(`${eventUrl}/catalogue`);
   await page.selectOption('select[name="perPage"]', "9");
-  await page.waitForURL(/catalogue/);
+  // RETRIED OVER THE WHOLE READ, because the density is a server action and
+  // not a navigation: there is no URL to wait on, and coming back to the index
+  // too early reads the document as it was. The claim being made is exactly
+  // the assertion inside the retry — nine to a sheet puts lot 5 on page 1 —
+  // so waiting for a proxy for it would be waiting for the wrong thing.
+  await expect(async () => {
+    await page.goto(eventUrl);
+    await expect(pageCell(5)).toHaveText("1", { timeout: 5_000 });
+    await expect(pageCell(10)).toHaveText("2", { timeout: 5_000 });
+  }).toPass({ timeout: 90_000 });
+});
+
+test("a run of lots is picked with the pointer and moved as one gesture", async ({ page }) => {
+  const eventUrl = await saleOfSixty(page);
+  const boxes = page.locator('tbody tr[data-lot] input[type="checkbox"]');
+
+  // ── SHIFT EXTENDS THE RUN ────────────────────────────────────────────────
+  // Two clicks pick five lots. test/selection.test.ts is the table of cases
+  // over the gesture; what this adds is that the gesture is WIRED — a pure
+  // function with no pointer on it would pass either way.
+  await boxes.nth(1).click();
+  await boxes.nth(5).click({ modifiers: ["Shift"] });
+  await expect(page.getByText("5 selected")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Move 5" })).toBeVisible();
+
+  // ── ONE DESTINATION, AND NOTHING ELSE IS ASKED FOR ───────────────────────
+  // The origin is resolved per lot by the writer, because twelve lots picked
+  // off an index came from wherever each of them was standing. A single
+  // origin typed here would write a fact that is false for most of them.
+  const crate = `Crate ${TAG}`;
+  await page.getByPlaceholder("a room, a crate, a courier").fill(crate);
+  await page.getByRole("button", { name: "Move 5" }).click();
+
+  // ── AND THE REGISTER AGREES, WHICH IS THE ONLY PROOF THAT COUNTS ─────────
+  // The sale's index shows no location on purpose — the movement register is
+  // the screen with that column — so the evidence the gesture landed is over
+  // there, and this is what makes the two screens one product rather than
+  // two.
+  await expect(page.getByRole("button", { name: "Move 5" })).toBeHidden({
+    timeout: 60_000,
+  });
+  await page.goto(`${eventUrl}/movement`);
+  await expect(page.getByText(crate).first()).toBeVisible();
+  await expect(page.getByRole("row", { name: new RegExp(crate) })).toHaveCount(5);
+  await page.screenshot({ path: shot("98-lots-moved") });
+
+  // THE SELECTION CANNOT OUTLIVE ITS ROWS. Page two indexes different lots at
+  // the same positions, so a run picked on page one must not survive the
+  // turn — the component is keyed on the whole query for exactly this.
   await page.goto(eventUrl);
-  await expect(pageCell(5)).toHaveText("1");
-  await expect(pageCell(10)).toHaveText("2");
+  await boxes.nth(0).click();
+  await expect(page.getByText("1 selected")).toBeVisible();
+  await page.getByRole("link", { name: "Next ›" }).click();
+  await expect(page.getByText(/\d+ selected/)).toBeHidden();
 });

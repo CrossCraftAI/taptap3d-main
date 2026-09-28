@@ -1,6 +1,8 @@
 import type { Route } from "next";
 import Link from "next/link";
 
+import { LotsTable } from "@/components/lots-table";
+import type { MoveResult } from "@/lib/forms";
 import { PARAM, lotsHref, type LotsView } from "@/lib/lots-view";
 
 /*
@@ -31,9 +33,15 @@ const route = (href: string): Route => href as Route;
 export function LotsIndex({
   eventId,
   view,
+  places,
+  move,
 }: {
   eventId: string;
   view: LotsView;
+  /** Places the house already uses, for the move bar's datalist. */
+  places: readonly string[];
+  /** `moveLotsAction` with the sale bound. Crosses to the client table. */
+  move: (lotIds: readonly string[], formData: FormData) => Promise<MoveResult>;
 }): React.ReactElement {
   return (
     <>
@@ -113,106 +121,17 @@ export function LotsIndex({
           Nothing in this sale answers to that.
         </p>
       ) : (
-        <div className="mt-4 border border-rule bg-paper">
-          {/* `table-fixed`, WITHOUT WHICH `max-w-0` DOES THE OPPOSITE OF WHAT
-              IT SAYS. The cells below carry `max-w-0 truncate`, which is the
-              standard way to make a table cell ellipsise — and under the
-              AUTOMATIC layout it means exactly what it says: the column
-              contributes zero, so the browser gives it its minimum and hands
-              the slack to the fixed ones. The inspection loop caught the
-              result at 768px: every title one glyph and an ellipsis while
-              three columns of em-dashes kept their full width. The condition
-              and movement registers carry the same pair for the same reason. */}
-          <table className="w-full table-fixed border-collapse text-[13px]">
-            <thead>
-              {/* ── COLUMNS LEAVE BEFORE THE TITLE IS SQUEEZED ─────────────
-                  The fixed widths come to more than a 768px tablet has once
-                  the rail has taken its 224, and a table that shreds the
-                  column identifying the row is worse than one that drops its
-                  least valuable. Maker and the photograph count go below 1280
-                  — the threshold measured by re-running the inspection at
-                  every width, not picked because it sounded right. */}
-              <tr className="border-b border-rule text-left text-[10px] tracking-wide text-muted">
-                <th className="w-28 px-4 py-2 font-medium">Ref</th>
-                <th className="px-4 py-2 font-medium">Title</th>
-                <th className="w-44 px-4 py-2 font-medium max-xl:hidden">Maker</th>
-                <th className="w-52 px-4 py-2 font-medium max-xl:w-40">Estimate</th>
-                {/* THE ENGINE'S OWN ANSWER, not this screen's arithmetic. The
-                    editor's lots panel prints the same number from the same
-                    derivation. */}
-                <th className="w-16 px-4 py-2 text-right font-medium">Page</th>
-                <th className="w-20 px-4 py-2 text-right font-medium max-xl:hidden">
-                  Photos
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {view.rows.map((lot) => {
-                const href = route(`/events/${eventId}/lots/${lot.id}`);
-                return (
-                  <tr
-                    key={lot.id}
-                    data-lot={lot.id}
-                    className="border-b border-rule last:border-b-0 hover:bg-sunk"
-                  >
-                    <td className="px-4 py-2 font-medium" data-numeric>
-                      {/* ON THE HOUSE FLOOR, like every other pressable
-                          thing: `--tap` is 28px with a mouse and 44 under a
-                          coarse pointer, and a row of a 300-lot sale opened on
-                          a tablet at a viewing is exactly the case the token
-                          was argued for. `inline-flex items-center`, because a
-                          bare `min-h` does nothing to an inline box. */}
-                      <Link
-                        href={href}
-                        className="inline-flex min-h-[var(--tap)] items-center hover:text-seal hover:underline"
-                      >
-                        {lot.ref ?? <span className="text-faint">—</span>}
-                      </Link>
-                    </td>
-                    <td className="max-w-0 truncate px-4 py-2">
-                      <Link
-                        href={href}
-                        className="inline-flex min-h-[var(--tap)] max-w-full items-center truncate hover:text-seal hover:underline"
-                      >
-                        {lot.title || <span className="text-faint">untitled</span>}
-                      </Link>
-                      {/* WHAT THIS CATALOGUE SAYS, beside the name it says it
-                          about. A count in a column of its own would be a
-                          sixth column for a number that is zero on almost
-                          every row; here it is absent until there is something
-                          to report, which is the same rule the lot's own
-                          header follows. */}
-                      {lot.overrides > 0 && (
-                        <span className="ml-2 text-[10px] text-seal" data-numeric>
-                          {lot.overrides} overridden
-                        </span>
-                      )}
-                    </td>
-                    <td className="max-w-0 truncate px-4 py-2 text-muted max-xl:hidden">
-                      {lot.maker || "—"}
-                    </td>
-                    <td className="max-w-0 truncate px-4 py-2 text-muted">
-                      {lot.estimate || "—"}
-                    </td>
-                    <td className="px-4 py-2 text-right text-muted" data-numeric>
-                      {lot.page ?? <span className="text-faint">—</span>}
-                    </td>
-                    {/* A LOT WITH NO PLATE IS THE ONE THING THIS SCREEN IS
-                        FOR, so zero is not drawn as a zero — it is the seal,
-                        which is this product's word for "a person is needed". */}
-                    <td className="px-4 py-2 text-right max-xl:hidden" data-numeric>
-                      {lot.photographs === 0 ? (
-                        <span className="text-seal">none</span>
-                      ) : (
-                        lot.photographs
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+        /* KEYED ON THE WHOLE QUERY, which is what makes "the selection is what
+           is on screen" true rather than hoped for. A run picked on page one
+           must not survive into page two, where the same indices are different
+           lots — the library states the same rule for the same reason. */
+        <LotsTable
+          key={`${view.query.q}|${view.query.filter}|${view.page}`}
+          eventId={eventId}
+          rows={view.rows}
+          places={places}
+          move={move}
+        />
       )}
 
       <Pager view={view} />

@@ -4,7 +4,9 @@ import { notFound } from "next/navigation";
 import { LotsIndex } from "@/components/lots-index";
 import { NextAction } from "@/components/stage";
 import { StageControl } from "@/components/stage-control";
+import { moveLotsAction } from "./actions";
 import { getCatalogue } from "@/lib/data/catalogues";
+import { placesInUse } from "@/lib/data/movements";
 import { factsOf, getEventSummary } from "@/lib/data/events";
 import { listLotsWithImages } from "@/lib/data/lots";
 import { currentOrgId, fieldPolicyOf } from "@/lib/data/org";
@@ -44,7 +46,7 @@ export default async function EventPage({
   const orgId = await currentOrgId();
   // The SAME counts the ledger shows, from the same SQL, so the stage here and
   // the stage there cannot disagree about one sale.
-  const [event, lots, workflow, catalogue, policy] = await Promise.all([
+  const [event, lots, workflow, catalogue, policy, places] = await Promise.all([
     getEventSummary(orgId, id),
     listLotsWithImages(orgId, id),
     workflowOf(orgId),
@@ -55,6 +57,8 @@ export default async function EventPage({
     // different door.
     getCatalogue(orgId, id),
     fieldPolicyOf(orgId),
+    // The house's own places, so a crate keeps one spelling across sales.
+    placesInUse(orgId),
   ]);
   if (!event) notFound();
 
@@ -164,7 +168,15 @@ export default async function EventPage({
           </Link>
         </div>
       ) : (
-        <LotsIndex eventId={event.id} view={view} />
+        <LotsIndex
+          eventId={event.id}
+          view={view}
+          places={places.map((p) => p.place)}
+          // BOUND HERE, so the table never names a sale. The action checks
+          // every id against the org and the event again regardless — a bound
+          // argument is a convenience, not an authorisation.
+          move={moveLotsAction.bind(null, event.id)}
+        />
       )}
     </div>
   );
