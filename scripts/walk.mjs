@@ -51,12 +51,16 @@ for (const [name, href] of screens) {
   await p.goto(base + href);
   // 1. Is there a link UP — to the parent screen — that is not the rail?
   const inMain = p.getByRole("main").getByRole("link");
-  const ups = await inMain.evaluateAll((els, here) => {
-    const parent = here.split("/").slice(0, -1).join("/") || "/";
-    return els
-      .map((e) => new URL(e.href).pathname)
-      .filter((h) => h !== here && here.startsWith(h));
-  }, href);
+  // ANY ANCESTOR, not just the immediate parent. A lot's condition screen
+  // offering the lot is a way up; so is the editor offering the sale. What
+  // matters is that the reader is not stranded, not which rung they land on.
+  const ups = await inMain.evaluateAll(
+    (els, here) =>
+      els
+        .map((e) => new URL(e.href).pathname)
+        .filter((h) => h !== here && here.startsWith(h)),
+    href,
+  );
   // 2. Does the rail mark exactly one place?
   const marked = await p.locator('[aria-current="page"]').count();
   // 3. What does the rail say is current?
