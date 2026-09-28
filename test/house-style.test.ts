@@ -365,7 +365,10 @@ const OWED: Record<string, number> = {
   "src/app/events/[id]/catalogue/page.tsx": 1,
   "src/app/events/[id]/import/page.tsx": 1,
   "src/app/events/[id]/lots/[lotId]/page.tsx": 1,
-  "src/app/events/[id]/page.tsx": 5,
+  // 5 → 3: the sale's table moved into src/components/lots-index.tsx and its
+  // two row links stand on the floor there. The new file owes nothing, which
+  // is the only way a new screen should arrive in this ledger.
+  "src/app/events/[id]/page.tsx": 3,
   "src/app/photographs/page.tsx": 1,
   "src/components/dropzone.tsx": 2,
   "src/components/import-flow.tsx": 7,

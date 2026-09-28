@@ -1,13 +1,18 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { LotsIndex } from "@/components/lots-index";
 import { NextAction } from "@/components/stage";
 import { StageControl } from "@/components/stage-control";
-import { asText } from "@/lib/engine/derive";
+import { getCatalogue } from "@/lib/data/catalogues";
 import { factsOf, getEventSummary } from "@/lib/data/events";
 import { listLotsWithImages } from "@/lib/data/lots";
-import { currentOrgId } from "@/lib/data/org";
+import { currentOrgId, fieldPolicyOf } from "@/lib/data/org";
+import { listOverrides } from "@/lib/data/overrides";
 import { workflowOf } from "@/lib/data/workflow";
+import { asText, derive, normaliseParams } from "@/lib/engine/derive";
+import { BUILT_IN_TEMPLATES } from "@/lib/engine/templates";
+import { readLots, readQuery, type LotRow } from "@/lib/lots-view";
 import { placeHref, readStage, type Place } from "@/lib/workflow";
 
 export const dynamic = "force-dynamic";
@@ -29,21 +34,62 @@ const STANDING: { label: string; to: Place }[] = [
 
 export default async function EventPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }): Promise<React.ReactElement> {
   const { id } = await params;
+  const query = readQuery(await searchParams);
   const orgId = await currentOrgId();
   // The SAME counts the ledger shows, from the same SQL, so the stage here and
   // the stage there cannot disagree about one sale.
-  const [event, lots, workflow] = await Promise.all([
+  const [event, lots, workflow, catalogue, policy] = await Promise.all([
     getEventSummary(orgId, id),
     listLotsWithImages(orgId, id),
     workflowOf(orgId),
+    // READ, NEVER ENSURED. Opening the sale's index is not a layout decision,
+    // and the four gestures that make a catalogue row are all elsewhere —
+    // src/app/events/[id]/catalogue/page.tsx carries the whole argument, which
+    // this screen has to honour too or the same defect comes back by a
+    // different door.
+    getCatalogue(orgId, id),
+    fieldPolicyOf(orgId),
   ]);
   if (!event) notFound();
 
   const reading = readStage(workflow, factsOf(event), event.stageOverride);
+
+  // ── WHAT THIS CATALOGUE SAYS ABOUT EACH LOT ───────────────────────────────
+  //
+  // Two more whole-sale reads, and no more: the overrides in one query, and the
+  // page each lot lands on from ONE derivation of the document. The page number
+  // is the engine's own answer rather than this screen's arithmetic — the
+  // editor's lots panel shows the same number from the same call, and a second
+  // way of working it out is how two screens come to disagree about one sale.
+  const overrides = catalogue ? await listOverrides(orgId, catalogue.id) : [];
+  const pageOf = new Map<string, number>();
+  if (lots.length > 0) {
+    const params = normaliseParams(catalogue?.params);
+    const document = derive(lots, params, [], overrides, BUILT_IN_TEMPLATES, policy);
+    for (const page of document.pages) {
+      for (const slot of page.slots) pageOf.set(slot.lotId, page.number);
+    }
+  }
+  const overridesOf = new Map<string, number>();
+  for (const o of overrides) overridesOf.set(o.lotId, (overridesOf.get(o.lotId) ?? 0) + 1);
+
+  const rows: LotRow[] = lots.map((lot) => ({
+    id: lot.id,
+    ref: lot.ref,
+    title: asText(lot.fields.title),
+    maker: asText(lot.fields.maker),
+    estimate: asText(lot.fields.price),
+    photographs: lot.images.length,
+    page: pageOf.get(lot.id) ?? null,
+    overrides: overridesOf.get(lot.id) ?? 0,
+  }));
+  const view = readLots(event.id, rows, query);
 
   return (
     <div className="px-8 py-8">
@@ -118,92 +164,7 @@ export default async function EventPage({
           </Link>
         </div>
       ) : (
-        <div className="mt-6 border border-rule bg-paper">
-          {/* `table-fixed`, WITHOUT WHICH `max-w-0` DOES THE OPPOSITE OF WHAT
-              IT SAYS. The cells below carry `max-w-0 truncate`, which is the
-              standard way to make a table cell ellipsise — and under the
-              AUTOMATIC layout it means exactly what it says: the column
-              contributes zero, so the browser gives it its minimum and hands
-              the slack to the fixed ones. The inspection loop caught the result
-              at 768px: every title in this table was one glyph and an ellipsis
-              while three columns of em-dashes kept their full width. Fixed
-              layout honours the `w-*` above and gives the remainder here, which
-              is what every comment around it already assumed. The condition and
-              movement registers carry the same pair for the same reason. */}
-          <table className="w-full table-fixed border-collapse text-[13px]">
-            <thead>
-              {/* ── TWO COLUMNS LEAVE BEFORE THE TITLE IS SQUEEZED ─────────
-                  The fixed widths here come to 576px and the rail takes 224,
-                  so on the 768px tablet this product says it supports the
-                  title had about thirty pixels: the inspection loop caught
-                  every row reading "粉…", one glyph and an ellipsis, on the
-                  column the screen exists for.
-
-                  A table that drops its least valuable columns is honest; a
-                  table that keeps all five and shreds the one that identifies
-                  the row is not. Maker is blank on most lots and the
-                  photograph count is a number the lot's own page repeats, so
-                  those two go and Ref, Title and Estimate stay — which is what
-                  a person scans a running order for.
-
-                  THE THRESHOLD IS 1280 AND NOT 1024, because 1024 is where the
-                  measurement says it is already too tight: a 1024 window less
-                  the rail and the gutters is 736px, and 576 of that is spoken
-                  for before the title gets a pixel. Chosen by re-running the
-                  inspection at every width rather than by picking the
-                  breakpoint that sounded right. */}
-              <tr className="border-b border-rule text-left text-[10px] tracking-wide text-muted">
-                <th className="w-28 px-4 py-2 font-medium">Ref</th>
-                <th className="px-4 py-2 font-medium">Title</th>
-                <th className="w-44 px-4 py-2 font-medium max-xl:hidden">Maker</th>
-                <th className="w-52 px-4 py-2 font-medium max-xl:w-40">Estimate</th>
-                <th className="w-20 px-4 py-2 text-right font-medium max-xl:hidden">
-                  Photos
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {lots.map((lot) => (
-                <tr
-                  key={lot.id}
-                  className="border-b border-rule last:border-b-0 hover:bg-sunk"
-                >
-                  <td className="px-4 py-2 font-medium" data-numeric>
-                    <Link
-                      href={`/events/${event.id}/lots/${lot.id}`}
-                      className="hover:text-seal hover:underline"
-                    >
-                      {lot.ref ?? <span className="text-faint">—</span>}
-                    </Link>
-                  </td>
-                  <td className="max-w-0 truncate px-4 py-2">
-                    <Link
-                      href={`/events/${event.id}/lots/${lot.id}`}
-                      className="hover:text-seal hover:underline"
-                    >
-                      {asText(lot.fields.title) || (
-                        <span className="text-faint">untitled</span>
-                      )}
-                    </Link>
-                  </td>
-                  <td className="max-w-0 truncate px-4 py-2 text-muted max-xl:hidden">
-                    {asText(lot.fields.maker) || "—"}
-                  </td>
-                  <td className="max-w-0 truncate px-4 py-2 text-muted">
-                    {asText(lot.fields.price) || "—"}
-                  </td>
-                  <td className="px-4 py-2 text-right max-xl:hidden" data-numeric>
-                    {lot.images.length === 0 ? (
-                      <span className="text-faint">—</span>
-                    ) : (
-                      lot.images.length
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <LotsIndex eventId={event.id} view={view} />
       )}
     </div>
   );
