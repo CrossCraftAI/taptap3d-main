@@ -78,6 +78,23 @@ function parseArgs(argv) {
         });
     } else if (a === "--routes") {
       while (argv[i + 1] && !argv[i + 1].startsWith("--")) out.routes.push(argv[++i]);
+    } else if (a === "--basic") {
+      /*
+       * `--basic user:password`, or `--basic user` with the password on stdin.
+       *
+       * A STAGING DEPLOYMENT IS USUALLY BEHIND A GATE, and the deployed half of
+       * this loop is the half that has real data in it. Without this the sweep
+       * can only reach a 401 page, which renders clean at every width and says
+       * nothing — the worst kind of green.
+       *
+       * It goes to `httpCredentials` on the context, so every request in the
+       * run carries it, including the ones a page makes for itself. Not into
+       * the URL: Chromium strips embedded credentials from subresource
+       * requests, so images and API calls come back 401 while the document
+       * looks fine.
+       */
+      const [user, ...rest] = next().split(":");
+      out.basic = { username: user, password: rest.join(":") };
     } else if (a === "--storage") {
       // --storage key=value, repeatable: seed localStorage before the app boots
       const [k, ...rest] = next().split("=");
@@ -94,6 +111,7 @@ ui inspection harness
   --routes <p> [p...]   paths to render (default: /)
   --out <dir>           where screenshots go (default: ./ui-inspect)
   --viewports <list>    override sizes, e.g. 390x844,1440x900 (default: 7 sizes, 390-1920)
+  --basic user:pass     HTTP basic credentials, for a gated staging deployment
   --storage k=v         seed a localStorage key before boot; repeatable
                         (auth bypass, theme, dismissing a first-run gate)
   --init <file.js>      script injected before any page script — for anything --storage cannot do
@@ -389,6 +407,7 @@ async function main() {
   const viewports = cli.viewports || file.viewports || DEFAULT_VIEWPORTS;
   const outDir = path.resolve(cli.out || file.out || "./ui-inspect");
   const storage = { ...(file.storage || {}), ...cli.storage };
+  const basic = cli.basic || file.basic || null;
   const timeout = cli.timeout || file.timeout || 20000;
   const waitFor = file.waitFor || null;
 
@@ -437,6 +456,7 @@ async function main() {
     const ctx = await browser.newContext({
       viewport: { width: vp.width, height: vp.height },
       deviceScaleFactor: 1,
+      ...(basic ? { httpCredentials: basic } : {}),
     });
     if (Object.keys(storage).length) {
       await ctx.addInitScript((kv) => {
