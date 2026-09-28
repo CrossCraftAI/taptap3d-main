@@ -93,6 +93,20 @@ export function TopBar({
         taptap<span className="text-seal">3d</span>
       </p>
 
+      {/* ── THE CRUMBS FOLLOW THE APP'S OWN BOUNDARY ────────────────────────
+          Below the window this product says it needs, `main` is a sentence and
+          the rail is gone — so there is nothing to navigate, and a switcher
+          over a screen that is not rendering is chrome for nothing. The
+          inspection loop found it as the last two clip warnings on the whole
+          product: at 320 the house's name and the switcher's "All events" were
+          each cut to about two thirds, because three names and a wordmark do
+          not fit in 320 pixels and never will.
+
+          The wordmark stays. It is the one thing worth saying on a screen
+          whose whole message is "not here" — it tells the reader what refused
+          them. `too-small` is defined once in src/app/globals.css, beside the
+          reason. */}
+      <div className="flex min-w-0 items-center gap-3 too-small:hidden">
       {/* THE HOUSE. Text today, the org switcher's seat tomorrow — see above. */}
       <span aria-hidden="true" className="shrink-0 text-ruleStrong">
         /
@@ -141,6 +155,7 @@ export function TopBar({
           />
         </>
       )}
+      </div>
     </div>
   );
 }

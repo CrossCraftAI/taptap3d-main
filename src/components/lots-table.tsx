@@ -82,12 +82,23 @@ export function LotsTable({
               <th className="w-10 px-2 py-2 font-medium">
                 <span className="sr-only">Picked</span>
               </th>
-              <th className="w-24 px-3 py-2 font-medium">Ref</th>
+              <th className="w-24 px-3 py-2 font-medium max-xl:w-20">Ref</th>
               <th className="px-3 py-2 font-medium">Title</th>
               <th className="w-44 px-3 py-2 font-medium max-xl:hidden">Maker</th>
-              <th className="w-52 px-3 py-2 font-medium max-xl:w-40">Estimate</th>
-              {/* The engine's own answer, not this screen's arithmetic. */}
-              <th className="w-16 px-3 py-2 text-right font-medium">Page</th>
+              <th className="w-52 px-3 py-2 font-medium max-xl:w-32">Estimate</th>
+              {/* The engine's own answer, not this screen's arithmetic — and
+                  the next thing to leave after Maker. THE TICKBOX CHANGED THE
+                  SUM: it is only 40px, but the inspection measured the title
+                  at fifty visible pixels on the 768 tablet once it was there,
+                  because four fixed columns and a rail leave nothing. The
+                  column that identifies the row wins every time, so at narrow
+                  widths this screen is a tickbox, a reference, a title and a
+                  price — and the page a lot prints on is the editor's own
+                  business, one press away, where the panel beside the sheet
+                  says the same number. */}
+              <th className="w-16 px-3 py-2 text-right font-medium max-xl:hidden">
+                Page
+              </th>
               <th className="w-20 px-3 py-2 text-right font-medium max-xl:hidden">
                 Photos
               </th>
@@ -163,7 +174,7 @@ export function LotsTable({
                       checkbox arrived, and a spec that counts is a spec that
                       breaks on a layout decision. */}
                   <td
-                    className="px-3 py-2 text-right text-muted"
+                    className="px-3 py-2 text-right text-muted max-xl:hidden"
                     data-numeric
                     data-page={lot.page ?? ""}
                   >

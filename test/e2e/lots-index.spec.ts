@@ -162,9 +162,19 @@ test("a run of lots is picked with the pointer and moved as one gesture", async 
   await expect(page.getByRole("button", { name: "Move 5" })).toBeHidden({
     timeout: 60_000,
   });
-  await page.goto(`${eventUrl}/movement`);
-  await expect(page.getByText(crate).first()).toBeVisible();
-  await expect(page.getByRole("row", { name: new RegExp(crate) })).toHaveCount(5);
+  // RETRIED OVER THE NAVIGATION, not just the assertion. The bar hiding means
+  // the action returned ok, so the rows are written — but the register is a
+  // different screen reading a different query, and under a full suite's load
+  // this walked over before its own revalidation had landed and accused a
+  // move that had plainly happened. The same shape as place.spec.ts's
+  // `SETTLED`, and for the same reason.
+  await expect(async () => {
+    await page.goto(`${eventUrl}/movement`);
+    await expect(page.getByText(crate).first()).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByRole("row", { name: new RegExp(crate) })).toHaveCount(5, {
+      timeout: 5_000,
+    });
+  }).toPass({ timeout: 60_000 });
   await page.screenshot({ path: shot("98-lots-moved") });
 
   // THE SELECTION CANNOT OUTLIVE ITS ROWS. Page two indexes different lots at

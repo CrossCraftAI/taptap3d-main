@@ -80,6 +80,30 @@ async function main() {
   await watch(
     "the polish tab",
     (async () => {
+      // ── RESET FIRST, BECAUSE THE GROUND BUTTONS TOGGLE ──────────────────
+      //
+      // Pressing a ground that is already chosen turns it OFF. That is the
+      // right behaviour for a person and the wrong assumption for a script:
+      // the second run of this harness against the same sale found the plate
+      // already toned from the first, cleared it, and then reported the
+      // feature broken. It alternated pass, fail, pass, fail — which is worse
+      // than failing, because half the runs say everything is fine.
+      //
+      // A harness that only works on a virgin fixture lies on every run after
+      // the first. This starts from a known plate.
+      const clear = page.getByRole("button", { name: "原狀" });
+      if (await clear.isEnabled().catch(() => false)) {
+        await clear.click();
+        // WAITED FOR ON THE PANEL, NOT ON THE PREVIEW. The frame is double
+        // buffered, so the old plate's element detaches the instant a reload
+        // starts — long before the row has actually been cleared. The tone
+        // row going is the panel saying the value came back empty, which is
+        // what the next press depends on.
+        await page
+          .getByRole("button", { name: "深", exact: true })
+          .waitFor({ state: "detached", timeout: 30_000 })
+          .catch(() => {});
+      }
       await page.getByRole("button", { name: "底色" }).click();
       await preview.locator(".pic--tone").first().waitFor();
       // AND THE PANEL, NOT ONLY THE PAGE. The plate paints as soon as the row
@@ -134,6 +158,39 @@ async function main() {
     })(),
   );
   await shot(page, "07-rail-icons");
+
+  // PUT IT BACK. The width is a stored preference, so every screen this
+  // harness photographs after the rail step inherited it — the two shots
+  // below came out with a collapsed rail nobody had asked for, which is not
+  // what a person opening the sale would see. A harness leaves the chrome as
+  // it found it.
+  await page
+    .getByRole("button", { name: /Icons only|Full width/ })
+    .click()
+    .catch(() => {});
+
+  // ── The sale's index, with a run of lots picked ──────────────────────────
+  //
+  // THE BAR HAS NO ADDRESS. It exists only while a hand is holding a
+  // selection, so the static sweep can render this screen at ten widths and
+  // never see it. Driven at the tablet as well as the desk, because packing a
+  // crate is the gesture a registrar does standing up.
+  for (const width of [1440, 768]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto(`${base}/events/${eventId}`);
+    const boxes = page.locator('tbody tr[data-lot] input[type="checkbox"]');
+    await watch(
+      `pick a run of lots at ${width}`,
+      (async () => {
+        await boxes.first().waitFor();
+        await boxes.nth(1).click();
+        await boxes.nth(5).click({ modifiers: ["Shift"] });
+        await page.getByText("5 selected").waitFor();
+      })(),
+    );
+    await shot(page, `${width === 1440 ? "08" : "09"}-lots-selected-${width}`);
+  }
+  await page.setViewportSize(WINDOW);
 
   await browser.close();
 
