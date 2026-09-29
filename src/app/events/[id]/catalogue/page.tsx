@@ -13,7 +13,7 @@ import { currentOrgId, fieldPolicyOf } from "@/lib/data/org";
 import { listOverrides, overrideFromValue } from "@/lib/data/overrides";
 import { asText, derive, normaliseParams } from "@/lib/engine/derive";
 import { BUILT_IN_TEMPLATES, templateChoice } from "@/lib/engine/templates";
-import { templateTiles } from "@/lib/render/template-preview";
+import { documentPages, templateTiles } from "@/lib/render/template-preview";
 import { polishPlateAction } from "@/lib/polish/actions";
 import { PLATE_FIELD } from "@/lib/polish/panel-model";
 
@@ -114,6 +114,11 @@ export default async function CataloguePage({
   // answers "what does this template DO", and a frame somebody dragged would
   // leak one lot's exception into a picture of a different arrangement.
   const tiles = lots.length === 0 ? [] : templateTiles({ lots, params: layoutParams });
+  // ONE PROXY PER PAGE OF THIS DOCUMENT, from the derivation above rather
+  // than a second one. The opposite question from the tiles beside it: they
+  // ask what a template does and deliberately ignore this catalogue's pins
+  // and overrides, while the rail is a picture of the document as it stands.
+  const rail = documentPages(document);
   const empty = lots.length === 0;
 
   const pageOf = new Map<string, number>();
@@ -282,6 +287,13 @@ export default async function CataloguePage({
             // again on the server regardless — a bound argument is a
             // convenience, not an authorisation.
             polish={polishPlateAction.bind(null, event.id)}
+            // THE RAIL'S PICTURES, off the derivation this page already made
+            // twenty lines above. The canvas cannot draw them — the engine is
+            // not in the browser bundle and must not be — and it is the only
+            // thing that knows where in the flow the reader has scrolled to,
+            // so the two halves meet at this prop.
+            pages={rail.pages}
+            pageAspect={rail.aspect}
           />
           {empty && (
             /* ON THE CANVAS, at the foot of the blank sheet: one line and the one

@@ -16,6 +16,8 @@ import { logAction } from "@/lib/log/client";
  * nothing when it is absent, so a canvas used anywhere else still works.
  */
 export const SELECTION_PANEL_ID = "selection-panel";
+/** Where the page rail is portalled to — see the note at the element. */
+export const PAGE_RAIL_ID = "page-rail";
 
 /**
  * The editor's frame: two slim rows of tools, then the canvas with the lots
@@ -176,6 +178,28 @@ export function CatalogueWorkspace({
         <div className="flex min-w-0 flex-1 max-lg:flex-col">
           <div className="shrink-0 overflow-y-auto border-rule bg-paper px-3 py-2 max-lg:border-b lg:w-[230px] lg:border-r">
             {controls}
+            {/* ── THE PAGE RAIL LANDS HERE, AND NOT IN THE RIGHT COLUMN ─────
+                The plan said the right-hand column beside the lots list. That
+                column already takes turns: the selection's own panel replaces
+                the lots list whenever something on the canvas is selected, so
+                a rail in it would disappear at exactly the moment a person is
+                placing a part and most needs to know which page they are on.
+
+                This column has the room. Its content is the document's
+                settings — four controls — and below them the column is empty
+                to the foot of the window at every width the product supports.
+                It already scrolls. And a rail is a document-level control
+                like the ones above it, which is the same argument that put
+                the settings here rather than over the canvas.
+
+                It costs the sheet nothing, for the reason the settings' own
+                note records: at fit-page the sheet is sized by HEIGHT, and
+                this column was already 230px wide.
+
+                Filled by a portal from src/components/preview-canvas.tsx,
+                which owns the iframe — the page tops and the scroll position
+                live there and cannot be handed to a server component. */}
+            <div id={PAGE_RAIL_ID} />
           </div>
           <div className="relative min-h-0 min-w-0 flex-1">{canvas}</div>
         </div>

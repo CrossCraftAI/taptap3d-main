@@ -917,3 +917,76 @@ test("the overlay still never takes the wheel, with every 4b mark painted", asyn
   // No capture layer is left standing between gestures.
   await expect(page.locator("[data-capture]")).toHaveCount(0);
 });
+
+test("the rail says which page you are on, and takes you to another", async ({ page }) => {
+  // ── WHY THIS IS DRIVEN AND NOT A UNIT TEST ────────────────────────────────
+  //
+  // `currentPageIndex` and `pageScrollTop` were written, tested and callerless
+  // for two phases, and both would still pass with the rail wired to nothing:
+  // the interesting part is the SEAM — that the tops the parent reads out of
+  // `contentDocument` are in the same space as the `scrollTop` it sets, and
+  // that the rail's picture is of the document actually in the frame. That
+  // seam exists only in a browser.
+  const { eventUrl, editorUrl } = await createEvent(page, `Rail Sale ${RUN}`);
+  await importLots(page, eventUrl, 12);
+  await page.goto(editorUrl);
+  await expect(preview(page).locator(".page")).toHaveCount(3);
+
+  const rail = page.getByRole("navigation", { name: "Pages of this catalogue" });
+  // ONE PROXY PER PAGE, and the count agrees with the frame beside it. A rail
+  // drawn from a second derivation could disagree with the document; this one
+  // is drawn from the same one, and this is the assertion that says so.
+  await expect(rail.getByRole("button")).toHaveCount(3);
+  await expect(rail).toContainText("Pages");
+
+  // THE DOCUMENT OPENS ON PAGE ONE, and the rail says so before anybody has
+  // scrolled. Without this, a rail that marked nothing would pass every
+  // assertion below — the press works, and it never told you where you were.
+  const marked = rail.locator('[aria-current="true"]');
+  await expect(marked).toHaveAttribute("aria-label", "Page 1");
+
+  // ── THE PRESS MOVES THE PREVIEW ───────────────────────────────────────────
+  const before = await settledScroll(page);
+  expect(before).toBe(0);
+  await rail.getByRole("button", { name: "Page 3" }).click();
+  const after = await settledScroll(page);
+  // A real scroll, not a token one: page three of three is most of the flow
+  // down, and a rail that moved by a few pixels would satisfy `> before`.
+  expect(after).toBeGreaterThan(before);
+  const tops = await page.evaluate(() => {
+    const frames = Array.from(document.querySelectorAll("iframe"));
+    const front = frames.find((f) => f.title === "Catalogue preview");
+    const doc = front?.contentDocument;
+    if (!doc) return [];
+    return Array.from(doc.querySelectorAll<HTMLElement>(".page"), (p) => p.offsetTop);
+  });
+  expect(tops).toHaveLength(3);
+  // WITHIN THE PADDING THE RENDERER DRAWS ABOVE A PAGE. `pageScrollTop` takes
+  // it off on purpose so the sheet is not flush against the top edge, and
+  // asserting equality with the raw top would be asserting the bug.
+  expect(Math.abs(after - tops[2]!)).toBeLessThanOrEqual(24);
+
+  // ── AND THE RAIL FOLLOWED ─────────────────────────────────────────────────
+  // The mark is not set by the press: it is read back out of the frame's own
+  // scroll on the next measurement, so this asserts the round trip rather
+  // than the button's own optimism.
+  await expect(rail.locator('[aria-current="true"]')).toHaveAttribute(
+    "aria-label",
+    "Page 3",
+  );
+  await page.screenshot({ path: shot("57-page-rail"), fullPage: true });
+
+  // ── SCROLLING BY HAND MOVES THE MARK, WITH NOTHING PRESSED ────────────────
+  // The other direction, and the one a rail wired only to its own clicks
+  // would fail. Back to the top of the flow the way a reader goes.
+  await page.evaluate(() => {
+    const frames = Array.from(document.querySelectorAll("iframe"));
+    const front = frames.find((f) => f.title === "Catalogue preview");
+    const scroller = front?.contentDocument?.scrollingElement;
+    if (scroller) scroller.scrollTop = 0;
+  });
+  await expect(rail.locator('[aria-current="true"]')).toHaveAttribute(
+    "aria-label",
+    "Page 1",
+  );
+});

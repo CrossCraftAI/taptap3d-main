@@ -12,7 +12,9 @@ import {
 import { createPortal } from "react-dom";
 
 import { placePartAction, restorePartFrameAction } from "@/app/events/[id]/catalogue/actions";
-import { SELECTION_PANEL_ID } from "@/components/catalogue-workspace";
+import { PAGE_RAIL_ID, SELECTION_PANEL_ID } from "@/components/catalogue-workspace";
+import type { PageProxy } from "@/lib/render/template-preview";
+import { PageRail } from "@/components/page-rail";
 import { PolishPanel } from "@/components/polish-panel";
 import type { OverridePatch, OverrideValue } from "@/lib/data/overrides";
 import type { PlaceResult } from "@/lib/forms";
@@ -25,7 +27,12 @@ import {
   TOOLBAR_FALLBACK,
   TOOLBAR_REACH_PX,
 } from "@/components/selection-toolbar";
-import { toolbarSpot, type ToolbarSide } from "@/lib/editor/canvas-geometry";
+import {
+  currentPageIndex,
+  pageScrollTop,
+  toolbarSpot,
+  type ToolbarSide,
+} from "@/lib/editor/canvas-geometry";
 import {
   dragRect,
   guidesFor,
@@ -269,12 +276,22 @@ export interface PlateInfo {
  *  news from the server. */
 const NO_PLATE: PlateInfo = { value: {}, hasPhotograph: false, measured: null };
 
+/**
+ * The fallback shape of a sheet, for a rail rendered before its aspect
+ * arrives. A4 upright, which is what every built-in template but the
+ * tearsheet is — and the document's own answer overrides it whenever there
+ * is one, so this is never what a real page is drawn at.
+ */
+const A4_PORTRAIT = 210 / 297;
+
 export function PreviewCanvas({
   eventId,
   catalogueId,
   src,
   plates,
   polish,
+  pages,
+  pageAspect,
 }: {
   eventId: string;
   /** Null on a sale with no catalogue row yet; nothing there is selectable. */
@@ -295,6 +312,19 @@ export function PreviewCanvas({
   /** `polishPlateAction` with the sale already bound. A server action, so it
    *  crosses the boundary; a closure over the selection could not. */
   polish?: (lotId: string, patch: OverridePatch) => Promise<PlaceResult>;
+  /**
+   * A proxy of every page of this document, for the rail — drawn on the
+   * server by `documentPages` from the derivation the page already has.
+   *
+   * DRAWN THERE AND NOT HERE for the same reason the plates are: the engine
+   * is not in the browser bundle and must not be. What crosses is a list of
+   * rectangles in page fractions, which is small and serializable, and what
+   * this component adds is the only part the server cannot know — which page
+   * the reader is actually looking at.
+   */
+  pages?: PageProxy[];
+  /** Width ÷ height of the sheet, from the document's own template. */
+  pageAspect?: number;
 }): React.ReactElement {
   const [buffers, setBuffers] = useState<BufferState>(() => openBuffers(src));
   /** The mode of the running gesture, or null. Drives the capture layer. */
@@ -325,6 +355,17 @@ export function PreviewCanvas({
     clipped: false,
     placements: 0,
   });
+
+  /**
+   * Which page the reader is on, 0-based.
+   *
+   * ITS OWN STATE AND NOT A FIELD OF `paint`, because it changes on a
+   * different clock. `paint` is compared field by field and rewritten only
+   * when the overlay's ink would differ; the page index changes on an
+   * ordinary scroll where nothing painted moves at all, and folding it in
+   * would make every crossed page boundary a reason to re-examine every ring.
+   */
+  const [pageAt, setPageAt] = useState(0);
 
   const container = useRef<HTMLDivElement>(null);
   const bar = useRef<HTMLDivElement>(null);
@@ -380,6 +421,33 @@ export function PreviewCanvas({
     front.current = buffers.front;
   }, [buffers.front]);
 
+  // ── Where the reader is in the flow ───────────────────────────────────────
+
+  /**
+   * The top of each `.page`, in the CHILD document's own coordinates — which
+   * is the space `pageScrollTop` returns and `scrollTop` is set in.
+   *
+   * CACHED AGAINST A KEY THAT CHANGES WHEN THEY MOVE, rather than recomputed
+   * per frame or computed once at load. Once at load is wrong: a preview lays
+   * out again when a CJK face finishes loading, and the tops read before that
+   * are the tops of a document nobody is looking at. Per frame is the work
+   * `currentPageIndex`'s own header refuses — `measure` runs on every scroll
+   * event and a 43-page flow raises them continuously. The count and the
+   * scroll height together move on every reflow that could shift a page.
+   */
+  const pageTops = useRef<{ key: string; tops: number[] }>({ key: "", tops: [] });
+  const topsOf = useCallback((doc: Document): number[] => {
+    const pages = doc.querySelectorAll<HTMLElement>(PAGE_SELECTOR);
+    const key = `${pages.length}:${doc.scrollingElement?.scrollHeight ?? 0}`;
+    if (pageTops.current.key !== key) {
+      // `offsetTop` and not `getBoundingClientRect` — the rect is relative to
+      // the child VIEWPORT and so moves as the reader scrolls, which would
+      // make the tops a function of the thing they are used to interpret.
+      pageTops.current = { key, tops: Array.from(pages, (page) => page.offsetTop) };
+    }
+    return pageTops.current.tops;
+  }, []);
+
   // ── Measuring ─────────────────────────────────────────────────────────────
 
   const measure = useCallback((): void => {
@@ -391,6 +459,15 @@ export function PreviewCanvas({
     // frame's BORDER box; `clientLeft`/`clientTop` is the browser's own answer
     // for the inset rather than a number copied out of a Tailwind class.
     const origin: Point = { x: el.clientLeft, y: el.clientTop };
+
+    // WHERE THE READER IS, before anything else is measured — it is an array
+    // walk over numbers already in hand, and it is the one thing here that is
+    // still true when nothing on the overlay has moved. `clientHeight` is the
+    // frame's own viewport, which is what the page-pick line is a fraction of.
+    const scroller = doc.scrollingElement;
+    if (scroller) {
+      setPageAt(currentPageIndex(topsOf(doc), scroller.scrollTop, el.clientHeight));
+    }
 
     // WHAT IS MEASURED, AND WHY IT IS NOT EVERYTHING. A 43-page flow holds
     // upwards of a thousand parts and raises scroll events continuously;
@@ -583,7 +660,7 @@ export function PreviewCanvas({
             placements: history.current.length,
           },
     );
-  }, [frameAt]);
+  }, [frameAt, topsOf]);
 
   /** One measurement per painted frame, however many events asked for it. */
   const schedule = useCallback((): void => {
@@ -593,6 +670,23 @@ export function PreviewCanvas({
       measure();
     });
   }, [measure]);
+
+  /** Put page `index` at the top of the frame. The rail's press. */
+  const goToPage = useCallback(
+    (index: number): void => {
+      const el = frameAt(front.current);
+      const doc = el?.contentDocument;
+      const scroller = doc?.scrollingElement;
+      if (!doc || !scroller) return;
+      scroller.scrollTop = pageScrollTop(topsOf(doc), index);
+      // The scroll listener will fire and re-measure — but a press that
+      // landed exactly where the reader already was raises no scroll event at
+      // all, and then the rail would fail to mark the page it just took them
+      // to. Asking for a measurement costs one raf and is never wrong.
+      schedule();
+    },
+    [frameAt, schedule, topsOf],
+  );
 
   useEffect(
     () => () => {
@@ -1447,6 +1541,26 @@ export function PreviewCanvas({
         )}
       </SelectionPanelPortal>
 
+      {/* ── THE PAGE RAIL, INTO THE DOCUMENT'S OWN COLUMN ─────────────────
+          Rendered from here because the two things it needs — the tops of
+          the pages and where the reader is among them — are inside an iframe
+          this component owns and no server component can read. The pictures
+          come the other way, from `documentPages` on the server, so the
+          engine stays out of the browser bundle.
+
+          The seat and why it is not the right-hand column: see the note at
+          `PAGE_RAIL_ID` in catalogue-workspace.tsx. */}
+      {pages !== undefined && pages.length > 0 && (
+        <HostPortal id={PAGE_RAIL_ID}>
+          <PageRail
+            pages={pages}
+            aspect={pageAspect ?? A4_PORTRAIT}
+            current={pageAt}
+            onGo={goToPage}
+          />
+        </HostPortal>
+      )}
+
       {capturing !== null && (
         /* MOUNTED FOR THE LIFE OF THE GESTURE AND NO LONGER. It handles
            nothing — the listeners are on the window — and exists to take the
@@ -1655,13 +1769,23 @@ function SelectionPanelPortal({
 }: {
   children: React.ReactNode;
 }): React.ReactElement | null {
+  return <HostPortal id={SELECTION_PANEL_ID}>{children}</HostPortal>;
+}
+
+function HostPortal({
+  id,
+  children,
+}: {
+  id: string;
+  children: React.ReactNode;
+}): React.ReactElement | null {
   // `useSyncExternalStore` AND NOT AN EFFECT THAT SETS STATE. The question is
   // only "is there a document yet", which has one answer on the server and one
   // in the browser and never changes after that — so it is a snapshot, not a
   // synchronisation, and writing it as `setState` inside an effect is the
   // cascading-render shape React's own lint rule refuses.
   const mounted = useSyncExternalStore(subscribeNever, () => true, () => false);
-  const host = mounted ? document.getElementById(SELECTION_PANEL_ID) : null;
+  const host = mounted ? document.getElementById(id) : null;
   if (!host) return null;
   return createPortal(children, host);
 }
