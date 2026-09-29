@@ -135,6 +135,35 @@ test("a sale goes from a spreadsheet to a printed catalogue, and back out", asyn
   await expect(estimate).toBeHidden();
   await expect(page.getByLabel("品名", { exact: true })).toBeVisible();
 
+  // ONE ADDER ON THE RECORD, on Details, whichever tab the column ends up on.
+  await expect(page.getByLabel("New column name")).toHaveCount(1);
+
+  // ── THE THIRD PROVENANCE, WHICH THE DEPLOYED PRODUCT TAUGHT US ─────────
+  //
+  // A real sale on the deployed instance carries a house column called
+  // `provenance` — the specialist's own prose, imported from their own
+  // spreadsheet. Without the cross-reference a registrar opens a tab called
+  // Provenance, sees an empty chain, and concludes the lot has none, while
+  // the answer sits two tabs away in the client's own words. So the tab
+  // names it, and this walks the whole way: type the column onto the record,
+  // save it, and read it back from the other tab.
+  await page.getByLabel("New column name").fill("來源");
+  await page.getByLabel("New column value").fill("林氏家族舊藏，台北");
+  await page.getByRole("button", { name: "Save fields" }).click();
+  await expect(page.getByText(/Every catalogue of this sale prints it this way now/)).toBeVisible({
+    timeout: 30_000,
+  });
+
+  await page.getByRole("tab", { name: "Provenance" }).click();
+  const owned = page.getByRole("tabpanel");
+  await expect(owned).toContainText("來源");
+  await expect(owned).toContainText("林氏家族舊藏，台北");
+  // AND IT SAYS WHOSE WORDS THEY ARE. The value is the specialist's and the
+  // chain below is the system's, and the tab must not let the two be read as
+  // one answer.
+  await expect(owned).toContainText("this system did not write it");
+  await page.screenshot({ path: shot("c2c-lot-provenance-column"), fullPage: true });
+
   // ── 3. THE PHOTOGRAPHER'S FILES ARRIVE, AND ARE FILED LATER ────────────
   // The two halves of that sentence are the whole design of the library: the
   // plate lands in the house's pile first and is attached to a lot by

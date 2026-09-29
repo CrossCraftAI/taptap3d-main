@@ -120,3 +120,54 @@ export function partitionByMoney<T extends { key: string }>(
   for (const row of rows) (isMoneyField(row.key) ? financial : details).push(row);
   return { details, financial };
 }
+
+/**
+ * Headings that mean an ownership chain, normalised by `normaliseHeader`.
+ *
+ * ── THE THIRD PROVENANCE, AND IT WAS FOUND BY LOOKING AT THE PRODUCT ───────
+ *
+ * The Provenance tab already holds two different things called by one word:
+ * where the RECORD came from (a file and a row) and who owned the OBJECT (the
+ * public legs of its movement chain). The tab names both and says which is
+ * which.
+ *
+ * Then a real sale on the deployed instance turned out to carry a house
+ * column called `provenance` — the specialist's own prose, imported from
+ * their spreadsheet, sitting on the Details tab. So a registrar opening a tab
+ * called Provenance can be shown a chain of nothing while the answer they
+ * wanted is two tabs away in the client's own words.
+ *
+ * DELIBERATELY NARROW. 著錄 (published references) and 展覽 (exhibition
+ * history) are catalogue-entry fields a specialist writes beside a
+ * provenance, and they are not one — naming them here would put a
+ * bibliography under a heading about ownership.
+ */
+export const PROVENANCE_HEADERS: readonly string[] = [
+  "來源",
+  "来源",
+  "出處",
+  "出处",
+  "遞藏",
+  "递藏",
+  "舊藏",
+  "旧藏",
+  "provenance",
+  "ownership",
+  "ownershiphistory",
+  "previousowner",
+  "previousowners",
+];
+
+const PROVENANCE = new Set(PROVENANCE_HEADERS.map(normaliseHeader));
+
+/**
+ * The house's own columns that say where the object came from.
+ *
+ * Whatever is here stays on Details — it is the record and it prints, and
+ * moving it would take a value out of the form a specialist edits it in. The
+ * Provenance tab only POINTS at it, which is the smallest honest fix: the two
+ * are not the same fact and neither is a substitute for the other.
+ */
+export function provenanceColumns(keys: readonly string[]): string[] {
+  return keys.filter((key) => !key.startsWith("_") && PROVENANCE.has(normaliseHeader(key)));
+}

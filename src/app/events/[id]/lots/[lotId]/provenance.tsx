@@ -54,12 +54,18 @@ function mappingLines(mapping: readonly unknown[]): { column: number; became: st
 export function Provenance({
   imported,
   chain,
+  onTheRecord,
   movementHref,
 }: {
   /** Null only for a lot that has gone; the page 404s before that. */
   imported: LotImport | null;
   /** What the catalogue would print, oldest first. */
   chain: ProvenanceEntry[];
+  /**
+   * The house's own columns that mean an ownership chain — usually 來源 — as
+   * heading and value. They live on Details and are only named here.
+   */
+  onTheRecord: { key: string; value: string }[];
   /**
    * `Route`, for the reason src/components/switcher.tsx records: `typedRoutes`
    * cannot know a path built at runtime, so the caller says it is one.
@@ -170,6 +176,39 @@ export function Provenance({
           lot&rsquo;s movement, in the order they are printed. A different
           sense of the word from the box beside it.
         </p>
+        {/* THE THIRD SENSE OF THE WORD, AND THE ONE A SPECIALIST WROTE.
+            Above the chain, not below it, because a lot whose chain is empty
+            and whose 來源 column is full would otherwise read as a lot with
+            no provenance — which is the opposite of the truth and exactly the
+            mistake this whole tab exists to prevent. */}
+        {onTheRecord.length > 0 && (
+          <div className="mt-3 border-l-2 border-seal bg-sealSoft px-4 py-2">
+            <p className="text-[12px] font-medium text-ink">
+              The record also carries the house&rsquo;s own{" "}
+              {onTheRecord.map((c) => c.key).join(" and ")} — on Details, where
+              it is edited, and it prints.
+            </p>
+            {onTheRecord.map((column) => (
+              <p
+                key={column.key}
+                className="mt-1 font-serif text-[13px] leading-relaxed text-muted"
+              >
+                {column.value === "" ? (
+                  <span className="font-sans text-[12px] text-faint">
+                    Empty on this lot.
+                  </span>
+                ) : (
+                  column.value
+                )}
+              </p>
+            ))}
+            <p className="mt-1 text-[12px] leading-relaxed text-faint">
+              That is the specialist&rsquo;s own words and this system did not
+              write it. The chain below is what this system knows, and the two
+              are not a substitute for each other.
+            </p>
+          </div>
+        )}
         <div className="mt-3 border border-rule bg-paper px-4 py-3">
           {chain.length === 0 ? (
             <p className="text-[13px] text-faint">

@@ -25,7 +25,7 @@ import {
   type AudienceReading,
 } from "@/lib/engine/visibility";
 import { CORE_FIELDS } from "@/lib/import/fields";
-import { partitionByMoney } from "@/lib/lot-record";
+import { partitionByMoney, provenanceColumns } from "@/lib/lot-record";
 
 import { Provenance } from "./provenance";
 import { LEVEL_WORDS } from "./reach";
@@ -205,6 +205,13 @@ export default async function LotPage({
 
   const title = asText(fields.title) || "Untitled lot";
   const provenance = provenanceOf(chain);
+  // The house's own word for the same thing, which stays on Details and is
+  // named on the Provenance tab. Over `customKeys` and not every key: a core
+  // field is ours and none of them is an ownership chain.
+  const ownRecord = provenanceColumns(customKeys).map((key) => ({
+    key,
+    value: asText(fields[key]),
+  }));
 
   return (
     <div className="px-8 py-8">
@@ -374,6 +381,10 @@ export default async function LotPage({
                   lotId={lot.id}
                   rows={moneyRows}
                   version={lot.updatedAt.getTime()}
+                  // The record has ONE adder and it is on Details. Which tab
+                  // a new column lands on is `isMoneyField`'s answer, not the
+                  // answer of which box it happened to be typed into.
+                  addColumn={false}
                 />
                 <p className="mt-3 text-[12px] leading-relaxed text-faint">
                   {/* THE RULE, ON THE SCREEN. A column lands here because its heading
@@ -412,6 +423,7 @@ export default async function LotPage({
               <Provenance
                 imported={imported}
                 chain={provenance}
+                onTheRecord={ownRecord}
                 movementHref={`/events/${event.id}/lots/${lot.id}/movement` as Route}
               />
             ),

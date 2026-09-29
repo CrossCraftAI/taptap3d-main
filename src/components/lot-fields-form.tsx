@@ -72,11 +72,23 @@ export function LotFieldsForm({
   lotId,
   rows,
   version,
+  addColumn = true,
 }: {
   eventId: string;
   lotId: string;
   rows: FieldRow[];
   version: number;
+  /**
+   * Offer the pair of inputs that adds a column of the house's own.
+   *
+   * ONE ADDER PER RECORD, NOT ONE PER FORM. The record is split between the
+   * Details and Financial tabs and each half is a form of its own, so the
+   * default would put two "new column" pairs on one screen — and which tab
+   * the new column then appeared on would be decided by `isMoneyField`, not
+   * by which box it was typed into. A control that does not do what it looks
+   * like is worse than a control that is somewhere else.
+   */
+  addColumn?: boolean;
 }): React.ReactElement {
   const [state, action, pending] = useActionState<LotFormState, FormData>(
     saveLotFieldsAction.bind(null, eventId, lotId),
@@ -89,7 +101,7 @@ export function LotFieldsForm({
       onSubmit={() => logAction("lot.fields.save", { lotId })}
       className="mt-3 border border-rule bg-paper"
     >
-      <FieldsBody key={version} rows={rows} />
+      <FieldsBody key={version} rows={rows} addColumn={addColumn} />
       <div className="flex items-center justify-between gap-4 border-t border-rule bg-field px-4 py-2.5">
         <p
           key={state.at}
@@ -111,7 +123,13 @@ export function LotFieldsForm({
   );
 }
 
-function FieldsBody({ rows }: { rows: FieldRow[] }): React.ReactElement {
+function FieldsBody({
+  rows,
+  addColumn,
+}: {
+  rows: FieldRow[];
+  addColumn: boolean;
+}): React.ReactElement {
   return (
     <div>
       {rows.map((row) => {
@@ -162,20 +180,22 @@ function FieldsBody({ rows }: { rows: FieldRow[] }): React.ReactElement {
       {/* A column of the house's own. Kept as a separate pair of inputs rather
           than an "add row" button that grows the form, so the no-JavaScript
           path can add one too. */}
-      <div className="flex gap-4 border-t border-rule bg-field px-4 py-2">
-        <input
-          name="newKey"
-          aria-label="New column name"
-          placeholder="new column"
-          className="min-h-[var(--tap)] w-28 shrink-0 border border-rule bg-paper px-2 text-[12px]"
-        />
-        <input
-          name="newValue"
-          aria-label="New column value"
-          placeholder="its value for this lot"
-          className="min-h-[var(--tap)] min-w-0 flex-1 border border-rule bg-paper px-2 text-[13px]"
-        />
-      </div>
+      {addColumn && (
+        <div className="flex gap-4 border-t border-rule bg-field px-4 py-2">
+          <input
+            name="newKey"
+            aria-label="New column name"
+            placeholder="new column"
+            className="min-h-[var(--tap)] w-28 shrink-0 border border-rule bg-paper px-2 text-[12px]"
+          />
+          <input
+            name="newValue"
+            aria-label="New column value"
+            placeholder="its value for this lot"
+            className="min-h-[var(--tap)] min-w-0 flex-1 border border-rule bg-paper px-2 text-[13px]"
+          />
+        </div>
+      )}
     </div>
   );
 }

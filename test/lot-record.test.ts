@@ -8,7 +8,12 @@
 import { describe, expect, it } from "vitest";
 
 import { CORE_FIELDS } from "@/lib/import/fields";
-import { isMoneyField, MONEY_HEADERS, partitionByMoney } from "@/lib/lot-record";
+import {
+  isMoneyField,
+  MONEY_HEADERS,
+  partitionByMoney,
+  provenanceColumns,
+} from "@/lib/lot-record";
 
 const row = (key: string): { key: string } => ({ key });
 
@@ -106,5 +111,29 @@ describe("splitting the record between the two tabs", () => {
 
   it("returns two empty halves for an empty record rather than throwing", () => {
     expect(partitionByMoney([])).toEqual({ details: [], financial: [] });
+  });
+});
+
+describe("the house's own word for provenance", () => {
+  it("finds the column a specialist actually writes it in", () => {
+    // Found by looking at the deployed product: a real sale carries a column
+    // called `provenance`, so a registrar could open a tab of that name, see
+    // an empty chain, and conclude the lot has none — while the answer sat
+    // two tabs away in the client's own words.
+    expect(provenanceColumns(["provenance", "title"])).toEqual(["provenance"]);
+    expect(provenanceColumns(["來源"])).toEqual(["來源"]);
+    expect(provenanceColumns(["出處", "遞藏", "舊藏"])).toHaveLength(3);
+    expect(provenanceColumns(["Previous Owner"])).toEqual(["Previous Owner"]);
+  });
+
+  it("leaves the catalogue-entry fields that sit beside it alone", () => {
+    // 著錄 is published references and 展覽 is exhibition history. Both are
+    // written next to a provenance by the same person and neither is one;
+    // naming them would put a bibliography under a heading about ownership.
+    expect(provenanceColumns(["著錄", "展覽", "備註", "說明"])).toEqual([]);
+  });
+
+  it("never takes a carried key", () => {
+    expect(provenanceColumns(["_provenance"])).toEqual([]);
   });
 });
