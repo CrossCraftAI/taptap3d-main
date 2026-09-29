@@ -38,6 +38,7 @@ import {
   GRID_GAP,
   SHEET_GAP,
   SHEET_GAP_BESIDE,
+  documentPages,
   lotsForTile,
   templateTiles,
   type ProxyBlock,
@@ -326,5 +327,76 @@ describe("what a small sale gets", () => {
       expect(t.blocks, t.id).toEqual([]);
       expect(t.purpose, t.id).not.toBe("");
     }
+  });
+});
+
+// ── THE PAGE RAIL ───────────────────────────────────────────────────────────
+//
+// `documentPages` answers a different question from `templateTiles` and the
+// difference is the reason it exists: a tile is a picture of a TEMPLATE, drawn
+// without this catalogue's pins and overrides and always at the template's own
+// default density; a rail is a picture of THIS DOCUMENT. These assert that it
+// is actually the document's — that it honours the chosen density, that it
+// draws every page rather than the first, and that a pin moves what it shows.
+
+describe("the page rail draws this document, not a template", () => {
+  const MANY = Array.from({ length: 9 }, (_, i) => lot(String(i)));
+
+  const railOf = (
+    lots: EngineLot[] = MANY,
+    params: Partial<CatalogueParams> = {},
+    pins: Parameters<typeof derive>[2] = [],
+  ): ReturnType<typeof documentPages> =>
+    documentPages(derive(lots, { ...DEFAULT_PARAMS, ...params }, pins, []));
+
+  it("draws one proxy per page of the document, numbered as the document numbers them", () => {
+    // Nine lots at four-up is three pages: two full and a last one of one.
+    const rail = railOf(MANY, { perPage: 4 });
+    expect(rail.pages.map((p) => p.number)).toEqual([1, 2, 3]);
+    // AND EVERY PAGE IS DRAWN. `templateTiles` reads `doc.pages[0]` and stops,
+    // which is right for a tile and is the exact bug a rail built by copying
+    // it would have: a 43-page catalogue with one proxy.
+    expect(rail.pages.every((p) => p.blocks.length > 0)).toBe(true);
+  });
+
+  it("honours the density this catalogue is on, not the template's default", () => {
+    // The whole point. A tile of the catalogue template is always drawn at its
+    // default; a rail of a catalogue somebody set to two-up must show two.
+    const four = railOf(MANY, { perPage: 4 });
+    const two = railOf(MANY, { perPage: 2 });
+    expect(four.pages).toHaveLength(3);
+    expect(two.pages).toHaveLength(5);
+    const platesOn = (page: { blocks: ProxyBlock[] }): number =>
+      page.blocks.filter((b) => b.kind === "plate").length;
+    expect(platesOn(four.pages[0]!)).toBe(4);
+    expect(platesOn(two.pages[0]!)).toBe(2);
+  });
+
+  it("shows what a pin did, which is the thing a tile refuses to show", () => {
+    // A pin keeps lots together and can push the rest onto another page. A
+    // tile is deliberately blind to this; a rail that were would be a picture
+    // of a document nobody has.
+    const loose = railOf(MANY, { perPage: 4 });
+    const pinned = railOf(MANY, { perPage: 4 }, [
+      { keepsTogether: true, lotIds: ["2", "3", "4", "5"] },
+    ]);
+    const shape = (r: ReturnType<typeof documentPages>): number[] =>
+      r.pages.map((p) => p.blocks.filter((b) => b.kind === "plate").length);
+    expect(shape(pinned)).not.toEqual(shape(loose));
+  });
+
+  it("is the shape of the paper, from the template the document carries", () => {
+    // Portrait for the catalogue, landscape for the tearsheet — read off the
+    // document rather than looked up again by name, which is the same rule
+    // `CatalogueDocument` states about carrying its template whole.
+    expect(railOf(MANY, { template: CATALOGUE.id }).aspect).toBeCloseTo(210 / 297, 5);
+    const sheet = railOf(MANY, { template: TEARSHEET.id });
+    expect(sheet.aspect).toBeGreaterThan(0);
+  });
+
+  it("gives a sale with no lots no pages rather than an empty diagram", () => {
+    // An empty rail and a rail of one blank page are different claims, and
+    // only one of them is true of a sale nobody has imported into yet.
+    expect(railOf([]).pages).toEqual([]);
   });
 });

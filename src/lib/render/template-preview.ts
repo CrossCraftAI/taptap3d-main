@@ -46,6 +46,7 @@
 import {
   derive,
   units,
+  type CatalogueDocument,
   type CatalogueParams,
   type DocSlot,
   type EngineLot,
@@ -312,13 +313,61 @@ export function templateTiles(input: {
   });
 }
 
+/** One page of a real document, drawn at tile scale. */
+export interface PageProxy {
+  /** 1-based, as `DocPage` numbers it. Nothing is keyed to it. */
+  number: number;
+  blocks: ProxyBlock[];
+}
+
+/**
+ * Every page of THIS document, as proxies — the page rail's picture.
+ *
+ * ── THE OPPOSITE OF A TEMPLATE TILE, AND THAT IS WHY IT IS A SECOND FUNCTION
+ *
+ * `templateTiles` draws page one of each template, deliberately without this
+ * catalogue's pins and overrides and always at the template's own default
+ * density: a tile answers "what does this template DO", and a frame somebody
+ * dragged would leak one lot's exception into a picture of an arrangement.
+ *
+ * A rail is the other question entirely — "where am I in THIS document" — so
+ * it wants the pins, the overrides, the chosen density and every page. The two
+ * could not share a function without one of them lying.
+ *
+ * ── IT DERIVES NOTHING ─────────────────────────────────────────────────────
+ *
+ * It takes the document the caller already has. The editor's page derives once
+ * (src/app/events/[id]/catalogue/page.tsx) to count pages and to say which page
+ * each lot landed on, and a second derive here would be a second answer to a
+ * question already answered — the defect this codebase keeps finding in its own
+ * history. `CatalogueDocument` carries its `template`, `density`, `columns` and
+ * `params`, so everything `drawPage` needs travels inside it.
+ *
+ * A PROXY PER PAGE AND NO CAP. A 43-page sale is 43 diagrams of a handful of
+ * rectangles each; the expensive half is the derive, and that already happened.
+ */
+export function documentPages(doc: CatalogueDocument): {
+  /** Width ÷ height of the SHEET, so a proxy is the shape of the paper. */
+  aspect: number;
+  pages: PageProxy[];
+} {
+  const portrait = doc.template.page.orientation === "portrait";
+  return {
+    aspect: portrait ? 210 / 297 : 297 / 210,
+    pages: doc.pages.map((page) => ({
+      number: page.number,
+      blocks: drawPage(page.slots, doc.template, doc.density, doc.columns, doc.params),
+    })),
+  };
+}
+
 /** What `derive` hands back about a table's columns, as the tile reads it. */
 interface Column {
   key: string;
   width: number;
 }
 
-function drawPage(
+export function drawPage(
   slots: DocSlot[],
   template: Template,
   density: Density,
