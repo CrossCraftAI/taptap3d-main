@@ -3,7 +3,15 @@
 import { and, asc, desc, eq, sql } from "drizzle-orm";
 import type { PgUpdateSetSource } from "drizzle-orm/pg-core";
 
-import { assets, events, getDb, lotAssets, lots } from "@/db";
+import {
+  assets,
+  events,
+  getDb,
+  importRuns,
+  lotAssets,
+  lots,
+  type Writer,
+} from "@/db";
 import type { PreparedLot } from "@/lib/import/apply";
 
 export async function listLots(
@@ -18,6 +26,27 @@ export async function listLots(
     .where(and(eq(lots.orgId, orgId), eq(lots.eventId, eventId)))
     // The same total order as listLotsWithImages, for the same reason.
     .orderBy(asc(lots.position), asc(lots.createdAt), asc(lots.id));
+}
+
+export interface InsertLotsOptions {
+  /**
+   * The import that produced these, when there is one.
+   *
+   * OPTIONAL, because this is not only the importer's function — a later
+   * writer that makes a lot by hand has no run to point at, and a required
+   * argument would make it invent one. Absent means the lot's provenance is
+   * simply unknown, which is a true thing to record and the state every lot
+   * written before `drizzle/0006` is in.
+   */
+  importRunId?: string;
+  /**
+   * Run inside the caller's transaction instead of on its own.
+   *
+   * The commit route needs the run row and its lots to land together: a run
+   * that claims 160 lots and points at none is a provenance record that lies,
+   * and lots with no run are the defect this column exists to fix.
+   */
+  writer?: Writer;
 }
 
 /**
@@ -36,9 +65,10 @@ export async function insertLots(
   orgId: string,
   eventId: string,
   prepared: PreparedLot[],
+  options: InsertLotsOptions = {},
 ): Promise<number> {
   if (prepared.length === 0) return 0;
-  const db = getDb();
+  const db = options.writer ?? getDb();
   const rows = await db
     .insert(lots)
     .values(
@@ -48,6 +78,12 @@ export async function insertLots(
         ref: lot.ref,
         fields: lot.fields,
         position: index,
+        importRunId: options.importRunId ?? null,
+        // THEIR ROW, NOT OUR INDEX. `prepared` has already dropped rows where
+        // every mapped column was empty, so position 3 is routinely row 7 —
+        // and row 7 is the one a person can find when they open the
+        // spreadsheet to check what this lot was supposed to say.
+        sourceRow: lot.sourceRow,
       })),
     )
     .returning({ id: lots.id });
@@ -331,6 +367,82 @@ export async function getLot(
     .where(and(eq(lots.orgId, orgId), eq(lots.id, lotId)))
     .limit(1);
   return row ?? null;
+}
+
+export interface LotImport {
+  /** Which row of the file this lot was, 1-based; null for a lot with no run. */
+  sourceRow: number | null;
+  /** Null when the lot predates `drizzle/0006`, or was not imported at all. */
+  run: {
+    id: string;
+    filename: string;
+    format: string;
+    /** One target per column, positionally — the mapping as a person cleared it. */
+    mapping: unknown[];
+    rowCount: number;
+    lotCount: number;
+    warnings: string[];
+    importedAt: Date;
+  } | null;
+}
+
+/**
+ * Where one lot came from.
+ *
+ * `import_runs` had a writer and no reader for four months, and it was
+ * event-grained besides, so the honest answer to "where did THIS come from"
+ * did not exist. `lots.import_run_id` makes it a join, and this is the only
+ * reader of it.
+ *
+ * A null run is the ordinary case for anything older than the migration, and
+ * for anything a person typed. The caller must render that as "not recorded",
+ * never as an empty import — the difference between "we do not know" and "it
+ * came from nowhere" is the whole value of a provenance tab.
+ *
+ * Scoped by org on BOTH tables. The lot's org is what authorises the read and
+ * the run's is checked again rather than assumed equal, because an assumption
+ * that happens to hold today is not an authorisation.
+ */
+export async function importRunOf(
+  orgId: string,
+  lotId: string,
+): Promise<LotImport | null> {
+  const db = getDb();
+  const [row] = await db
+    .select({
+      sourceRow: lots.sourceRow,
+      runId: importRuns.id,
+      filename: importRuns.sourceFilename,
+      format: importRuns.sourceFormat,
+      mapping: importRuns.mapping,
+      rowCount: importRuns.rowCount,
+      lotCount: importRuns.lotCount,
+      warnings: importRuns.warnings,
+      importedAt: importRuns.createdAt,
+    })
+    .from(lots)
+    .leftJoin(
+      importRuns,
+      and(eq(importRuns.id, lots.importRunId), eq(importRuns.orgId, orgId)),
+    )
+    .where(and(eq(lots.orgId, orgId), eq(lots.id, lotId)))
+    .limit(1);
+  if (!row) return null;
+  return {
+    sourceRow: row.sourceRow,
+    run: row.runId
+      ? {
+          id: row.runId,
+          filename: row.filename ?? "",
+          format: row.format ?? "",
+          mapping: row.mapping ?? [],
+          rowCount: row.rowCount ?? 0,
+          lotCount: row.lotCount ?? 0,
+          warnings: row.warnings ?? [],
+          importedAt: row.importedAt ?? new Date(0),
+        }
+      : null,
+  };
 }
 
 /**

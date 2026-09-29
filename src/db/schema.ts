@@ -168,10 +168,38 @@ export const lots = pgTable(
     fields: jsonb("fields").$type<Record<string, unknown>>().default({}).notNull(),
     // Order within the event, as the house intends it to appear.
     position: integer("position").default(0).notNull(),
+    // ── WHERE THIS LOT CAME FROM ────────────────────────────────────────────
+    //
+    // `import_runs` recorded the file, the format, the cleared mapping and the
+    // warnings from the first commit — and recorded them per EVENT, so it
+    // could say what was imported into a sale and never which run produced
+    // which lot. That is the question a specialist actually asks, three weeks
+    // later, about a title that looks wrong: not "what did we import" but
+    // "where did THIS come from".
+    //
+    // `source_row` is the row number in that file, 1-based. `PreparedLot`
+    // (src/lib/import/apply.ts) has carried it since the matching screen was
+    // built, to point at a problem before the commit; it was thrown away at
+    // insert, so the pointer stopped existing the moment it became useful.
+    //
+    // BOTH NULLABLE, and that is not laziness. Every lot imported before this
+    // migration has no run and no row, and inventing one would be a fact in a
+    // record that exists to be argued from — the same rule the movement chain
+    // keeps when it refuses to invent a first leg.
+    //
+    // `set null` rather than `cascade`: deleting the record of an import must
+    // never delete the lots it made.
+    importRunId: uuid("import_run_id").references(() => importRuns.id, {
+      onDelete: "set null",
+    }),
+    sourceRow: integer("source_row"),
   },
   (t) => [
     index("lots_org").on(t.orgId),
     index("lots_event").on(t.eventId, t.position),
+    // The Provenance tab asks by lot, and the import screen will one day ask
+    // "what did this run produce" — one index answers both.
+    index("lots_import_run").on(t.importRunId),
   ],
 );
 

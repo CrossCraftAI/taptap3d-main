@@ -66,23 +66,56 @@ export async function POST(
   const { table, mapping } = parsed.data;
   const prepared = applyMapping(table as ParsedTable, mapping as Mapping);
 
-  const written = await insertLots(orgId, id, prepared.lots);
-
-  // Provenance, not the file. DFD.md §4.3 requires the mapping to cross this
-  // boundary; it does not require the customer's spreadsheet, and keeping that
-  // would turn a thirty-second decision into a retention policy.
-  await getDb()
-    .insert(importRuns)
-    .values({
-      orgId,
-      eventId: id,
-      sourceFilename: table.source.filename,
-      sourceFormat: table.source.format,
-      mapping,
-      rowCount: table.rows.length,
-      lotCount: written,
-      warnings: prepared.warnings,
+  // THE RUN IS WRITTEN FIRST, AND BOTH WRITES ARE ONE TRANSACTION.
+  //
+  // It used to be written last, which meant the lots existed before there was
+  // anything for them to point at — and once `lots.import_run_id` exists, an
+  // order that cannot fill it is an order that throws the answer away. So the
+  // run row is inserted for its id, and the lots carry it.
+  //
+  // The transaction is the other half of that. A run row alone would claim a
+  // number of lots that do not exist, which is a provenance record that lies,
+  // and lots alone would be exactly the unattributed state this column was
+  // added to end. Neither is reachable now: both land, or neither does.
+  //
+  // `lotCount` is `prepared.lots.length` rather than the insert's own count
+  // because it has to be known before the insert runs. They are the same
+  // number — `insertLots` writes one row per prepared lot — and the assertion
+  // is cheap enough to keep, because a silent disagreement here would be a
+  // number in a record whose entire purpose is to be trusted later.
+  const written = await getDb().transaction(async (tx) => {
+    const [run] = await tx
+      .insert(importRuns)
+      .values({
+        orgId,
+        eventId: id,
+        sourceFilename: table.source.filename,
+        sourceFormat: table.source.format,
+        mapping,
+        rowCount: table.rows.length,
+        lotCount: prepared.lots.length,
+        warnings: prepared.warnings,
+        // Provenance, not the file. DFD.md §4.3 requires the mapping to cross
+        // this boundary; it does not require the customer's spreadsheet, and
+        // keeping that would turn a thirty-second decision into a retention
+        // policy.
+      })
+      .returning({ id: importRuns.id });
+    // One row in, one row back; the check is here because the type says the
+    // array could be empty and a non-null assertion would be a claim rather
+    // than a check.
+    if (!run) throw new Error("The import run could not be recorded.");
+    const count = await insertLots(orgId, id, prepared.lots, {
+      importRunId: run.id,
+      writer: tx,
     });
+    if (count !== prepared.lots.length) {
+      throw new Error(
+        `Import wrote ${count} lots where ${prepared.lots.length} were prepared.`,
+      );
+    }
+    return count;
+  });
 
   return NextResponse.json({ lotCount: written, warnings: prepared.warnings });
 }

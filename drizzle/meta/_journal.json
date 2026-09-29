@@ -43,6 +43,13 @@
       "when": 1790155098645,
       "tag": "0005_field_visibility",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1790672461253,
+      "tag": "0006_lot_provenance",
+      "breakpoints": true
     }
   ]
 }

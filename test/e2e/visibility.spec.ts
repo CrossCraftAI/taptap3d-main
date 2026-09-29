@@ -127,7 +127,14 @@ test("a house field never reaches a public output, and the record says so", asyn
 
     // The record carries both values and no mark at all: the default is that a
     // house which has said nothing sees the screen it saw before this landed.
+    //
+    // 保留價 IS ON THE FINANCIAL TAB. The record is partitioned between
+    // Details and Financial so every field has exactly one editor
+    // (src/lib/lot-record.ts), and a reserve is money by that rule. Pressing
+    // the tab is what a person does, so the spec does it too.
+    await page.getByRole("tab", { name: "Financial" }).click();
     await expect(page.getByLabel(RESERVE, { exact: true })).toHaveValue(RESERVE_VALUE);
+    await page.getByRole("tab", { name: "Details" }).click();
     await expect(page.getByText("Never leaves the building")).toHaveCount(0);
     await expect(page.getByText("internal only")).toHaveCount(0);
     await expect(whereThisPrints(page)).toContainText("nothing held back");
@@ -162,12 +169,24 @@ test("a house field never reaches a public output, and the record says so", asyn
 
     // ── 2. THE RECORD SAYS WHERE EACH VALUE GOES ───────────────────────────
     await page.goto(lotUrl);
-    // The mockup's own words, beside the field they are about.
-    await expect(page.getByText("Never leaves the building").first()).toBeVisible();
+    // The mockup's own words, beside the field they are about. 委託人 is not
+    // money, so its badge is on Details where the page opens.
     await expect(page.getByText("internal only").first()).toBeVisible();
+
+    await page.getByRole("tab", { name: "Financial" }).click();
+    // SCOPED TO THE PANEL THAT IS SHOWING. Every panel is in the document at
+    // once — `hidden`, so a half-typed value survives a tab press — and the
+    // same badge is on the catalogue table over on Details. An unscoped
+    // `.first()` therefore finds the copy inside the hidden panel and reports
+    // that the badge is invisible, which it is, on the tab nobody is looking
+    // at. `getByRole` reads the accessibility tree, and `hidden` is not in it.
+    await expect(
+      page.getByRole("tabpanel").getByText("Never leaves the building").first(),
+    ).toBeVisible();
     // The record still HOLDS both — a level is not a deletion, and the people
     // who may see them are looking at this screen.
     await expect(page.getByLabel(RESERVE, { exact: true })).toHaveValue(RESERVE_VALUE);
+    await page.getByRole("tab", { name: "Details" }).click();
 
     // Where this prints: one row per readership, naming what each is denied.
     const box = whereThisPrints(page);
@@ -238,7 +257,10 @@ test("a house field never reaches a public output, and the record says so", asyn
     await expect(page.getByText(/\d+ held back/)).toHaveCount(0);
     // The record's badges do NOT move, because they are about the field and
     // not about any one output.
-    await expect(page.getByText("Never leaves the building").first()).toBeVisible();
+    await page.getByRole("tab", { name: "Financial" }).click();
+    await expect(
+      page.getByRole("tabpanel").getByText("Never leaves the building").first(),
+    ).toBeVisible();
     await page.screenshot({ path: shot("65-lot-house-audience"), fullPage: true });
 
     // ── 5. THE PRINTED FILE, WHICH IS WHAT ACTUALLY LEAVES ─────────────────

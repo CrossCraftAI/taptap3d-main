@@ -193,6 +193,12 @@ test("photographs arrive unassigned, and are filed when someone gets to it", asy
   await page.getByRole("link", { name: REF_A }).first().click();
   await page.waitForURL(/\/lots\//);
   await expect(page.getByRole("heading", { name: new RegExp(REF_A) })).toBeVisible();
+  // THE PHOTOGRAPHS ARE A TAB OF THE RECORD NOW. The lot's four tabs are
+  // Details, Financial, Images and Provenance, and the tab carries the count
+  // — so the press is also the assertion that the header agrees with what is
+  // behind it.
+  await expect(page.getByRole("tab", { name: /^Images/ })).toContainText("2");
+  await page.getByRole("tab", { name: /^Images/ }).click();
   // Nobody was asked to choose a plate; the first photograph became one, or the
   // catalogue renders a lot that has pictures and shows none.
   //
@@ -345,6 +351,8 @@ test("a lot takes a photograph dropped straight onto it", async ({ page }) => {
   await page.getByRole("link", { name: REF_B }).first().click();
   await page.waitForURL(/\/lots\//);
 
+  // Images is a tab of the record; the dropzone is behind it.
+  await page.getByRole("tab", { name: /^Images/ }).click();
   await expect(page.getByText("No photograph on this lot yet.")).toBeVisible();
   await page.locator('input[type="file"]').setInputFiles([PHOTO_C]);
   await expect(page.locator("figure")).toHaveCount(1, { timeout: 60_000 });

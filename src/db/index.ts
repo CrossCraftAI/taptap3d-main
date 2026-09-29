@@ -40,3 +40,16 @@ export function getDb(): NodePgDatabase<typeof schema> {
   client ??= drizzle(getPool(), { schema });
   return client;
 }
+
+/**
+ * Whatever a write can be handed to — the database itself, or a transaction
+ * opened by a caller who needs two writes to land together or not at all.
+ *
+ * Derived from `transaction`'s own callback rather than named, so it cannot
+ * drift from the driver: a writer function typed `Writer` accepts both, and a
+ * caller that has a `tx` in hand passes it without either side knowing which
+ * it is.
+ */
+export type Writer =
+  | NodePgDatabase<typeof schema>
+  | Parameters<Parameters<NodePgDatabase<typeof schema>["transaction"]>[0]>[0];

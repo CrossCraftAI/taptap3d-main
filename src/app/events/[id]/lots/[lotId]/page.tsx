@@ -1,3 +1,4 @@
+import type { Route } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
@@ -7,10 +8,12 @@ import { LotFieldsForm, type FieldRow } from "@/components/lot-fields-form";
 import { LotPhotographs } from "@/components/lot-photographs";
 import { LotSteps } from "@/components/lot-steps";
 import { PageHeader } from "@/components/page-header";
+import { RecordTabs } from "@/components/record-tabs";
 import { listAssetsForLot } from "@/lib/data/assets";
 import { getCatalogue } from "@/lib/data/catalogues";
 import { getEvent } from "@/lib/data/events";
-import { getLot, lotNeighbours } from "@/lib/data/lots";
+import { getLot, importRunOf, lotNeighbours } from "@/lib/data/lots";
+import { listMovements, provenanceOf } from "@/lib/data/movements";
 import { currentOrgId, fieldPolicyOf } from "@/lib/data/org";
 import { listOverridesForLot } from "@/lib/data/overrides";
 import { asText, normaliseParams } from "@/lib/engine/derive";
@@ -22,7 +25,9 @@ import {
   type AudienceReading,
 } from "@/lib/engine/visibility";
 import { CORE_FIELDS } from "@/lib/import/fields";
+import { partitionByMoney } from "@/lib/lot-record";
 
+import { Provenance } from "./provenance";
 import { LEVEL_WORDS } from "./reach";
 
 export const dynamic = "force-dynamic";
@@ -55,13 +60,20 @@ export default async function LotPage({
 
   // READ, not ensured: a lot page is not a request for a catalogue. Until the
   // catalogue screen has been opened once there is nothing to override in.
-  const [photographs, catalogue, policy] = await Promise.all([
+  //
+  // The two provenance reads ride along here rather than behind a tab press:
+  // the Provenance panel is rendered on the server into the tab shell with
+  // the other three, so a lazy read would only move the cost, and both are
+  // scoped by (org, lot) exactly as the reads beside them are.
+  const [photographs, catalogue, policy, imported, chain] = await Promise.all([
     listAssetsForLot(orgId, lot.id),
     getCatalogue(orgId, event.id),
     // The house's answer for each of its fields. Empty for every house that
     // has not set one, which is every house today, and then every badge and
     // every count below is absent rather than zero.
     fieldPolicyOf(orgId),
+    importRunOf(orgId, lot.id),
+    listMovements(orgId, lot.id),
   ]);
   const overrides = catalogue
     ? await listOverridesForLot(orgId, catalogue.id, lot.id)
@@ -182,7 +194,17 @@ export default async function LotPage({
     (row) => row.withheld !== null && row.record !== "",
   ).length;
 
+  // ── The two halves of the record ──────────────────────────────────────────
+  //
+  // A PARTITION, so every field has exactly one editor. Two forms over one
+  // field would be two places to type a reserve into and one of them showing
+  // a stale value the moment the other saved. What counts as money is decided
+  // once, in `src/lib/lot-record.ts`, where the guess can be listed and
+  // argued with.
+  const { details: detailRows, financial: moneyRows } = partitionByMoney(recordRows);
+
   const title = asText(fields.title) || "Untitled lot";
+  const provenance = provenanceOf(chain);
 
   return (
     <div className="px-8 py-8">
@@ -240,87 +262,162 @@ export default async function LotPage({
         }
       />
 
-      <div className="mt-6 grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-        <section>
-          <h2 className="text-[15px] font-medium">Fields</h2>
-          <p className="mt-1 text-[12px] leading-relaxed text-muted">
-            The record. A change here prints in every catalogue of this sale — a typo
-            is wrong everywhere.
-          </p>
-          <LotFieldsForm
-            eventId={event.id}
-            lotId={lot.id}
-            rows={recordRows}
-            version={lot.updatedAt.getTime()}
-          />
+      <RecordTabs
+        label="This lot"
+        tabs={[
+          {
+            id: "details",
+            label: "Details",
+            hint: "The record, where each value goes, and what this catalogue prints instead",
+            panel: (
+              <>
+                <div className="mt-6 grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+                  <section>
+                    <h2 className="text-[15px] font-medium">Fields</h2>
+                    <p className="mt-1 text-[12px] leading-relaxed text-muted">
+                      The record. A change here prints in every catalogue of this sale — a typo
+                      is wrong everywhere.
+                    </p>
+                    <LotFieldsForm
+                      eventId={event.id}
+                      lotId={lot.id}
+                      rows={detailRows}
+                      version={lot.updatedAt.getTime()}
+                    />
 
-          <WhereThisPrints
-            readings={readings}
-            labels={labels}
-            audience={audience}
-            hasCatalogue={catalogue !== null}
-          />
+                    {carried.length > 0 && (
+                      <details className="mt-6">
+                        <summary className="cursor-pointer text-[13px] text-muted hover:text-ink">
+                          {carried.length} carried values
+                        </summary>
+                        {/* THE HOUSE'S OWN WORD, NOT OURS. This said the values were
+                            "kept from the predecessor", which names a system the reader
+                            has never heard of. What they need is which numbers print. */}
+                        <p className="mt-1 text-[12px] leading-relaxed text-faint">
+                          These do not print — the dimensions above and the estimate on
+                          Financial are what the catalogue uses.
+                        </p>
+                        <dl className="mt-2 border border-rule bg-paper">
+                          {carried.map(([key, value]) => (
+                            <div
+                              key={key}
+                              className="flex gap-4 border-b border-rule px-4 py-1.5 last:border-b-0"
+                            >
+                              <dt className="w-28 shrink-0 truncate text-[12px] text-faint">
+                                {key.slice(1)}
+                              </dt>
+                              <dd className="min-w-0 flex-1 text-[12px] text-muted">
+                                {asText(value)}
+                              </dd>
+                            </div>
+                          ))}
+                        </dl>
+                      </details>
+                    )}
+                  </section>
 
-          {carried.length > 0 && (
-            <details className="mt-6">
-              <summary className="cursor-pointer text-[13px] text-muted hover:text-ink">
-                {carried.length} carried values
-              </summary>
-              {/* THE HOUSE'S OWN WORD, NOT OURS. This said the values were
-                  "kept from the predecessor", which names a system the reader
-                  has never heard of. What they need is which numbers print. */}
-              <p className="mt-1 text-[12px] leading-relaxed text-faint">
-                These do not print — the dimensions and the estimate above are
-                what the catalogue uses.
-              </p>
-              <dl className="mt-2 border border-rule bg-paper">
-                {carried.map(([key, value]) => (
-                  <div
-                    key={key}
-                    className="flex gap-4 border-b border-rule px-4 py-1.5 last:border-b-0"
-                  >
-                    <dt className="w-28 shrink-0 truncate text-[12px] text-faint">
-                      {key.slice(1)}
-                    </dt>
-                    <dd className="min-w-0 flex-1 text-[12px] text-muted">
-                      {asText(value)}
-                    </dd>
-                  </div>
-                ))}
-              </dl>
-            </details>
-          )}
-        </section>
+                  <WhereThisPrints
+                    readings={readings}
+                    labels={labels}
+                    audience={audience}
+                    hasCatalogue={catalogue !== null}
+                  />
+                </div>
 
-        <section>
-          <h2 className="text-[15px] font-medium">Photographs</h2>
-          {/* Dropping onto THIS page attaches to THIS lot — and the file still
-              lands in the library, so nothing is trapped inside one lot. */}
-          <Dropzone lotId={lot.id} label="Add to this lot">
-            <LotPhotographs lotId={lot.id} assets={photographs} />
-          </Dropzone>
-        </section>
-      </div>
-
-      <section className="mt-10">
-        <h2 className="text-[15px] font-medium">In the catalogue</h2>
-        {/* ALWAYS THE FORM, never an errand. This was gated on a catalogue row
-            existing, with a panel saying "This sale has no catalogue yet — open
-            it once and it exists". That was a true instruction while opening
-            the editor made the row; now that a GET makes nothing, it would have
-            been a dead end — go to another screen, cause a side effect, come
-            back. The save makes the row (./actions.ts), so the decision a
-            person came here to make is the thing that creates what holds it. */}
-        <LotCatalogueForm
-          eventId={event.id}
-          lotId={lot.id}
-          catalogueId={catalogue?.id ?? null}
-          catalogueName={catalogue?.name ?? `${event.name} catalogue`}
-          audience={audience}
-          rows={catalogueRows}
-          version={catalogue?.updatedAt.getTime() ?? 0}
-        />
-      </section>
+                <section className="mt-10">
+                  <h2 className="text-[15px] font-medium">In the catalogue</h2>
+                  {/* EVERY FIELD, THE MONEY ONES INCLUDED. The record above is split
+                      across two tabs because each field needs exactly one editor; this
+                      table is not split, because it is one decision per field about one
+                      document and a person reads down it. Splitting it would also make
+                      two `LotCatalogueForm`s over rows of the same catalogue row, each
+                      with its own version and its own save. */}
+                  {/* ALWAYS THE FORM, never an errand. This was gated on a catalogue row
+                      existing, with a panel saying "This sale has no catalogue yet — open
+                      it once and it exists". That was a true instruction while opening
+                      the editor made the row; now that a GET makes nothing, it would have
+                      been a dead end — go to another screen, cause a side effect, come
+                      back. The save makes the row (./actions.ts), so the decision a
+                      person came here to make is the thing that creates what holds it. */}
+                  <LotCatalogueForm
+                    eventId={event.id}
+                    lotId={lot.id}
+                    catalogueId={catalogue?.id ?? null}
+                    catalogueName={catalogue?.name ?? `${event.name} catalogue`}
+                    audience={audience}
+                    rows={catalogueRows}
+                    version={catalogue?.updatedAt.getTime() ?? 0}
+                  />
+                </section>
+              </>
+            ),
+          },
+          {
+            id: "financial",
+            label: "Financial",
+            count: moneyRows.length,
+            hint: "The estimate and the house's own money columns",
+            panel: (
+              <section className="mt-6 max-w-2xl">
+                <h2 className="text-[15px] font-medium">The numbers</h2>
+                {/* WHAT THIS TAB IS, AND WHAT IT IS NOT. ARCHITECTURE.md principle 11:
+                    no bidding, no checkout, no payments, no settlement. This is a view
+                    of fields that already exist on the record — nothing here computes a
+                    total, charges anybody or settles anything. */}
+                <p className="mt-1 text-[12px] leading-relaxed text-muted">
+                  The same record as Details, and the same save. These are together
+                  because a specialist pricing a sale reads them together — nothing on
+                  this tab totals, charges or settles anything.
+                </p>
+                <LotFieldsForm
+                  eventId={event.id}
+                  lotId={lot.id}
+                  rows={moneyRows}
+                  version={lot.updatedAt.getTime()}
+                />
+                <p className="mt-3 text-[12px] leading-relaxed text-faint">
+                  {/* THE RULE, ON THE SCREEN. A column lands here because its heading
+                      matched a list of money words — a guess about somebody else's
+                      spreadsheet, and a reader who can see the rule can see when it is
+                      wrong. */}
+                  估價 is always here. A column of the house&rsquo;s own joins it when its
+                  heading is one this product reads as money; everything else stays on
+                  Details. What each output prints is decided in the catalogue table
+                  there, which lists every field of both tabs.
+                </p>
+              </section>
+            ),
+          },
+          {
+            id: "images",
+            label: "Images",
+            count: photographs.length,
+            hint: "The photographs attached to this lot",
+            panel: (
+              <section className="mt-6">
+                <h2 className="text-[15px] font-medium">Photographs</h2>
+                {/* Dropping onto THIS page attaches to THIS lot — and the file still
+                    lands in the library, so nothing is trapped inside one lot. */}
+                <Dropzone lotId={lot.id} label="Add to this lot">
+                  <LotPhotographs lotId={lot.id} assets={photographs} />
+                </Dropzone>
+              </section>
+            ),
+          },
+          {
+            id: "provenance",
+            label: "Provenance",
+            hint: "Where the record came from, and who owned the object",
+            panel: (
+              <Provenance
+                imported={imported}
+                chain={provenance}
+                movementHref={`/events/${event.id}/lots/${lot.id}/movement` as Route}
+              />
+            ),
+          },
+        ]}
+      />
     </div>
   );
 }

@@ -9,7 +9,7 @@
   "scripts": {
     "build": "next build",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "drizzle-kit migrate",
+    "db:migrate": "node --env-file-if-exists=.env node_modules/drizzle-kit/bin.cjs migrate",
     "db:seed": "tsx --env-file-if-exists=.env scripts/seed.ts",
     "db:studio": "drizzle-kit studio",
     "dev": "next dev",
