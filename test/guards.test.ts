@@ -74,6 +74,30 @@ describe("client material is never committed", () => {
     expect(leaked).toEqual([]);
   });
 
+  /*
+   * ── A SCREENSHOT OF A RUNNING INSTANCE IS CLIENT MATERIAL ────────────────
+   *
+   * The rules above name PDFs, spreadsheets and two folders, because those
+   * are the shapes the sample catalogues arrived in. They did not anticipate
+   * a harness: `scripts/inspect.mjs --base https://taptap3d.fly.dev` writes a
+   * PNG per route per width, and the deployed instance is full of a client's
+   * own artwork. Ninety of them went into two commits before anybody noticed.
+   *
+   * The `.gitignore` entry is the prevention; this is the proof, because an
+   * ignore rule does nothing for a file already tracked, and the next
+   * harness will write somewhere the rule does not name.
+   */
+  it("no tracked file is a screenshot of a running instance", () => {
+    const leaked = trackedFiles().filter((f) => /^ui-inspect[^/]*\//.test(f));
+    expect(leaked).toEqual([]);
+  });
+
+  it("ui-inspect output is gitignored by a wildcard, not by name", () => {
+    // Named folders are how the last one got through: `ui-inspect/` and
+    // `ui-inspect-driven/` were listed, `ui-inspect-fly/` was not.
+    expect(ignore).toContain("ui-inspect*/");
+  });
+
   it("no .env file is tracked", () => {
     // .env.example is the documentation and is meant to be here; anything else
     // called .env carries a real credential.

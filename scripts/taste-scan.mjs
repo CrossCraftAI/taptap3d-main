@@ -65,6 +65,7 @@ taste scan — countable evidence of unintended variety
   --routes <p> [p...] paths (default: /)
   --viewports <list>  e.g. 390x844,1440x900 (default: phone + desktop)
   --accent <hex>      brand accent, to measure how much of the page it covers
+  --basic user:pass   HTTP basic credentials, for a gated staging deployment
   --storage k=v       seed localStorage before boot; repeatable
   --json <file>       write the full result
   --top <n>           offenders listed per finding (default 6)
@@ -97,7 +98,15 @@ function parseArgs(argv) {
           const [w, h] = s.trim().split("x").map(Number);
           return { name: `${w}x${h}`, width: w, height: h };
         });
-    else if (a === "--storage") {
+    else if (a === "--basic") {
+      // A GATED DEPLOYMENT IS THE ONE WITH REAL DATA IN IT, and without this
+      // the scan measures the 401 page — which reports one type size, one
+      // text colour and no accent, and reads as a flawless design system.
+      // `inspect.mjs` carries the same flag and the same reason; a false
+      // clean is worse than a failure, because nobody goes looking.
+      const [user, ...rest] = next().split(":");
+      o.basic = { username: user, password: rest.join(":") };
+    } else if (a === "--storage") {
       const [k, ...rest] = next().split("=");
       o.storage[k] = rest.join("=");
     } else if (a === "--routes") {
@@ -495,6 +504,7 @@ async function main() {
     const ctx = await browser.newContext({
       viewport: { width: vp.width, height: vp.height },
       hasTouch: vp.width <= 820,
+      ...(cli.basic ? { httpCredentials: cli.basic } : {}),
     });
     if (Object.keys(cli.storage).length) {
       await ctx.addInitScript((kv) => {
@@ -534,6 +544,7 @@ async function main() {
   const rmCtx = await browser.newContext({
     viewport: { width: viewports[0].width, height: viewports[0].height },
     reducedMotion: "reduce",
+    ...(cli.basic ? { httpCredentials: cli.basic } : {}),
   });
   if (Object.keys(cli.storage).length) {
     await rmCtx.addInitScript((kv) => {

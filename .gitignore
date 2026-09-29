@@ -50,8 +50,12 @@ test/e2e/screens*/
 # scripts/inspect-driven.mjs regenerate every frame of it, and a hundred PNGs a
 # run is exactly the megabyte the rule above refuses. The SCRIPTS are committed;
 # their pictures are not.
-ui-inspect/
-ui-inspect-driven/
+# The wildcard is the rule, not the two directories that existed when it was
+# written. `ui-inspect-fly/` was added later, pointed at the DEPLOYED instance,
+# and 90 screenshots of a client's own artwork went into two commits before
+# anybody noticed — the entry above named the folders it knew about, which is
+# exactly the shape of ignore rule that fails on the next one.
+ui-inspect*/
 
 # typescript
 *.tsbuildinfo
