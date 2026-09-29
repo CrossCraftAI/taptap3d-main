@@ -17,7 +17,7 @@ import { join } from "node:path";
 import { expect, test, type FrameLocator, type Page } from "@playwright/test";
 
 import { writePlate } from "./plate";
-import { createEvent } from "./sale";
+import { chooseTemplate, createEvent, templateIs } from "./sale";
 import { shot } from "./shots";
 
 const TEMP = join("test-results", "fixtures");
@@ -99,7 +99,7 @@ test("a template changes the shape of the page, and a correction survives it", a
   await expect(frame.locator(".page--grid .grid")).toHaveCount(3);
   await expect(frame.locator("table")).toHaveCount(0);
   await expect(frame.locator(".slot")).toHaveCount(12);
-  await expect(page.getByLabel("Template")).toHaveValue("catalogue");
+  await templateIs(page, "catalogue");
   await expect(page.getByLabel("Per page")).toHaveValue("4");
   await expect(page.getByText(/Catalogue · 3 pages · 12 lots/)).toBeVisible();
   // The grid decides per lot: no maker, no maker line.
@@ -118,7 +118,7 @@ test("a template changes the shape of the page, and a correction survives it", a
   await page.screenshot({ path: shot("50-template-catalogue"), fullPage: true });
 
   // ── THE PRICE LIST: a table ──────────────────────────────────────────────
-  await page.getByLabel("Template").selectOption("price-list");
+  await chooseTemplate(page, "price-list");
   await expect(frame.locator(".page--table table")).toHaveCount(1); // 12 of 20 rows
   await expect(frame.locator(".grid")).toHaveCount(0);
   await expect(frame.locator("tr.slot")).toHaveCount(12);
@@ -151,7 +151,7 @@ test("a template changes the shape of the page, and a correction survives it", a
   await page.screenshot({ path: shot("51-template-price-list"), fullPage: true });
 
   // ── THE TEARSHEET: a page per lot ────────────────────────────────────────
-  await page.getByLabel("Template").selectOption("tearsheet");
+  await chooseTemplate(page, "tearsheet");
   await expect(frame.locator(".page--sheet")).toHaveCount(12);
   await expect(frame.locator(".slot--sheet")).toHaveCount(12);
   await expect(frame.locator("dl.caption")).toHaveCount(12);
@@ -199,7 +199,7 @@ test("a template changes the shape of the page, and a correction survives it", a
   await page.setViewportSize({ width: 1440, height: 900 });
 
   await page.goto(`${eventUrl}/catalogue`);
-  await page.getByLabel("Template").selectOption("price-list");
+  await chooseTemplate(page, "price-list");
   await expect(frame.locator("tr.slot")).toHaveCount(12);
   await page.setViewportSize({ width: 900, height: 1240 });
   await page.emulateMedia({ media: "print" });
@@ -211,7 +211,7 @@ test("a template changes the shape of the page, and a correction survives it", a
 
   // ── And back: the grid, the density, the correction ──────────────────────
   await page.goto(`${eventUrl}/catalogue`);
-  await page.getByLabel("Template").selectOption("catalogue");
+  await chooseTemplate(page, "catalogue");
   await expect(frame.locator(".page--grid .grid")).toHaveCount(3);
   await expect(frame.locator("tr.slot")).toHaveCount(0);
   await expect(page.getByLabel("Per page")).toHaveValue("4");

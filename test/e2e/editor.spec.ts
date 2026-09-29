@@ -18,7 +18,7 @@
 
 import { expect, test, type FrameLocator, type Locator, type Page } from "@playwright/test";
 
-import { createEvent } from "./sale";
+import { chooseTemplate, createEvent, templateControl } from "./sale";
 import { shot } from "./shots";
 
 const RUN = Date.now();
@@ -132,12 +132,17 @@ test("a new event lands on a blank page with the tools live, and the rail put aw
   expect(blank.share).toBeGreaterThan(0.3);
 
   // ── THE TOOLS ARE LIVE on an empty document ──────────────────────────────
-  await expect(page.getByLabel("Template")).toBeEnabled();
+  // SHAPE-AGNOSTIC, because this is the ONE screen that meets the other shape:
+  // a blank sale has no lots, so the engine has no page to draw a proxy of and
+  // the picker falls back to the `<select>` it always was. Asserting the radio
+  // here looked right and failed on the only case that exercises the
+  // fallback — which is the case this test exists for.
+  await expect(templateControl(page)).toBeEnabled();
   await expect(page.getByLabel("Per page")).toBeEnabled();
-  await page.getByLabel("Template").selectOption("tearsheet");
+  await chooseTemplate(page, "tearsheet");
   await expect(page.getByText(/Tearsheet · no lots yet/)).toBeVisible();
   await expect(frame.locator(".page--empty")).toHaveCount(1);
-  await page.getByLabel("Template").selectOption("catalogue");
+  await chooseTemplate(page, "catalogue");
   await expect(page.getByText(/Catalogue · no lots yet/)).toBeVisible();
 
   // ── THE ONE WAY TO FILL IT is on the canvas, and nothing prints yet ──────

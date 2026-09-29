@@ -6,7 +6,7 @@
 // up, so both URLs are returned: the specs wait on the event after importing
 // and open the editor from it, as a person does.
 
-import { expect, type Page } from "@playwright/test";
+import { expect, type Locator, type Page } from "@playwright/test";
 
 export async function createEvent(
   page: Page,
@@ -60,4 +60,60 @@ export async function pasteAndRead(page: Page, text: string): Promise<void> {
     await expect(read).toBeEnabled({ timeout: 2_000 });
   }).toPass({ timeout: 30_000 });
   await read.click();
+}
+
+/**
+ * Choose a template, whichever shape the control is in.
+ *
+ * ── TWO SHAPES, AND THAT IS THE PRODUCT, NOT THE TEST ──────────────────────
+ *
+ * On a sale with lots the picker is a row of page proxies the engine drew —
+ * radios behind them, `name="template"`, one per template. On a sale with no
+ * lots there are no proxies to draw, so it falls back to the `<select>` it
+ * always was. A spec should not have to know which it met, and nine call
+ * sites across three files should not each work it out.
+ *
+ * Written when the tiles landed: `getByLabel("Template").selectOption(id)`
+ * was in nine places and failed in all of them at once, which is the shape of
+ * a helper that should have existed before the change.
+ */
+export async function chooseTemplate(page: Page, id: string): Promise<void> {
+  const radio = page.locator(`input[name="template"][value="${id}"]`);
+  if ((await radio.count()) > 0) {
+    // THE LABEL, NOT THE INPUT, because the input is `sr-only` — a 1px box at
+    // zero opacity under the tile. `check()` on it never settles: Playwright
+    // waits for the element itself to receive the pointer, and the tile is
+    // what is actually on top. Four specs sat at the 240s timeout before this
+    // was written down.
+    //
+    // Clicking the label IS the gesture a person makes, and the browser's own
+    // label-for-input behaviour ticks the radio — so this is also the more
+    // honest thing to drive.
+    await page.locator(`label:has(input[name="template"][value="${id}"])`).click();
+    await expect(radio).toBeChecked();
+    return;
+  }
+  await page.getByLabel("Template").selectOption(id);
+}
+
+/** Which template the control says is current, in either shape. */
+export async function templateIs(page: Page, id: string): Promise<void> {
+  const radio = page.locator(`input[name="template"][value="${id}"]`);
+  if ((await radio.count()) > 0) {
+    await expect(radio).toBeChecked();
+    return;
+  }
+  await expect(page.getByLabel("Template")).toHaveValue(id);
+}
+
+/**
+ * The template control, whichever shape it is in.
+ *
+ * For the assertions that are about the control itself rather than about
+ * choosing with it — "is it live on a blank sale". The blank sale is the one
+ * screen that meets the `<select>`, so a spec that hard-codes the radio passes
+ * everywhere except the case it was written for.
+ */
+export function templateControl(page: Page): Locator {
+  return page.locator('input[name="template"], select[name="template"]').first();
 }

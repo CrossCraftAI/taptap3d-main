@@ -146,6 +146,25 @@ async function boxIn(page: Page, selector: string): Promise<{ x: number; y: numb
   return box;
 }
 
+/**
+ * The preview's scroll once it has stopped moving.
+ *
+ * Two agreeing reads a frame apart. A smooth or deferred scroll is still
+ * running when the call that started it returns, so a baseline read
+ * immediately after one is a value in transit — and every later comparison
+ * against it accuses the product of a movement it did not make.
+ */
+async function settledScroll(page: Page): Promise<number> {
+  let last = await scrollOf(page);
+  for (let i = 0; i < 40; i++) {
+    await page.waitForTimeout(50);
+    const now = await scrollOf(page);
+    if (now === last) return now;
+    last = now;
+  }
+  return last;
+}
+
 /** The preview's own scroll, in child pixels. Read the same way, and why. */
 const scrollOf = (page: Page): Promise<number> =>
   page.evaluate(() => {
@@ -611,7 +630,12 @@ test("the arrows nudge the selection, and leave the page alone when there is non
   // ── SOMETHING SELECTED: THE KEY IS OURS ──────────────────────────────────
   await preview(page).locator(".page").first().evaluate((el) => el.scrollIntoView());
   const { lotId, title, page1 } = await selectTitle(page);
-  const held = await scrollOf(page);
+  // READ ONCE THE SCROLL HAS STOPPED. `scrollIntoView` is not finished when it
+  // returns, so a baseline taken straight after it is a number the frame was
+  // passing through — and the assertion below then reports a page that moved
+  // when nothing touched it. It failed twice that way under a full suite's
+  // load before anybody looked at where the baseline came from.
+  const held = await settledScroll(page);
 
   // Ten coarse presses — Shift is the step lot-steps.tsx never wanted, so this
   // half of the collision never existed — then ten fine ones.

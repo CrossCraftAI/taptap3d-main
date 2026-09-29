@@ -3,9 +3,11 @@
 import { useRef, useState } from "react";
 
 import { setCatalogueParamsAction } from "@/app/events/[id]/catalogue/actions";
+import { TemplateTiles } from "@/components/template-tiles";
 import type { CatalogueParams } from "@/lib/engine/derive";
 import type { TemplateChoice } from "@/lib/engine/templates";
 import { logAction } from "@/lib/log/client";
+import type { TemplateTile } from "@/lib/render/template-preview";
 
 /**
  * Template, density, placement, fit, reference.
@@ -68,12 +70,17 @@ export function CatalogueControls({
   catalogueId,
   params,
   templates,
+  tiles,
 }: {
   eventId: string;
   /** Null on a blank editor: the row is made by the first change (catalogue/actions.ts). */
   catalogueId: string | null;
   params: CatalogueParams;
   templates: TemplateChoice[];
+  /** One page proxy per template, drawn by the engine from this sale's own
+   *  opening lots. Empty on a sale with no lots, where the names are all
+   *  there is to offer. */
+  tiles: readonly TemplateTile[];
 }): React.ReactElement {
   const form = useRef<HTMLFormElement>(null);
   const [local, setLocal] = useState<CatalogueParams>(params);
@@ -116,21 +123,36 @@ export function CatalogueControls({
       // only the axis changes, so there is nothing to keep in step.
       className="flex w-full flex-wrap items-center gap-x-4 gap-y-1.5 lg:flex-col lg:items-stretch lg:gap-y-2.5"
     >
-      <label className="flex items-center gap-2 text-[13px] lg:flex-col lg:items-start lg:gap-1">
-        <span className="text-muted">Template</span>
-        <select
-          name="template"
-          value={template.id}
-          onChange={(e) => chooseTemplate(e.target.value)}
-          className="min-h-[var(--tap)] border border-rule bg-paper px-2 text-[13px] lg:w-full"
-        >
-          {templates.map((t) => (
-            <option key={t.id} value={t.id}>
-              {t.name.en} · {t.name.zh}
-            </option>
-          ))}
-        </select>
-      </label>
+      {/* ── A PICTURE, BECAUSE THE ANSWER IS A PICTURE ─────────────────────
+          This was a `<select>` of three names, and the engine had been able
+          to draw the three arrangements since Phase 2 — `templateTiles` in
+          src/lib/render/template-preview.ts, complete, tested, and called by
+          nothing until scripts/census.mjs went looking. Choosing a layout by
+          name meant choosing it, looking, and choosing again.
+
+          The tiles fall back to the select when the page has no tiles to
+          give, which is a sale with no catalogue row yet: the control still
+          has to work on a blank editor, and a tile of an empty sheet three
+          times over says less than three names. */}
+      {tiles.length > 0 ? (
+        <TemplateTiles tiles={tiles} current={template.id} onPick={chooseTemplate} />
+      ) : (
+        <label className="flex items-center gap-2 text-[13px] lg:flex-col lg:items-start lg:gap-1">
+          <span className="text-muted">Template</span>
+          <select
+            name="template"
+            value={template.id}
+            onChange={(e) => chooseTemplate(e.target.value)}
+            className="min-h-[var(--tap)] border border-rule bg-paper px-2 text-[13px] lg:w-full"
+          >
+            {templates.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name.en} · {t.name.zh}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
 
       <label className="flex items-center gap-2 text-[13px] lg:flex-col lg:items-start lg:gap-1">
         <span className="text-muted">Per page</span>

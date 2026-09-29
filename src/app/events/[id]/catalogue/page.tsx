@@ -13,6 +13,7 @@ import { currentOrgId, fieldPolicyOf } from "@/lib/data/org";
 import { listOverrides, overrideFromValue } from "@/lib/data/overrides";
 import { asText, derive, normaliseParams } from "@/lib/engine/derive";
 import { BUILT_IN_TEMPLATES, templateChoice } from "@/lib/engine/templates";
+import { templateTiles } from "@/lib/render/template-preview";
 import { polishPlateAction } from "@/lib/polish/actions";
 import { PLATE_FIELD } from "@/lib/polish/panel-model";
 
@@ -108,6 +109,11 @@ export default async function CataloguePage({
   // landed on for the list beside the preview. The frame derives it again from
   // the same inputs — one engine, so the two cannot disagree.
   const document = derive(lots, layoutParams, pins, overrides, BUILT_IN_TEMPLATES, policy);
+  // ONE PROXY PER TEMPLATE, from the same engine that drew the sheet beside
+  // them. Deliberately without this catalogue's pins and overrides: the tile
+  // answers "what does this template DO", and a frame somebody dragged would
+  // leak one lot's exception into a picture of a different arrangement.
+  const tiles = lots.length === 0 ? [] : templateTiles({ lots, params: layoutParams });
   const empty = lots.length === 0;
 
   const pageOf = new Map<string, number>();
@@ -245,6 +251,10 @@ export default async function CataloguePage({
           // The built-ins, reduced to what a control needs. A house-authored
           // template joins this list from the data layer the day one exists.
           templates={BUILT_IN_TEMPLATES.map(templateChoice)}
+          // Drawn from THIS sale's opening lots, so the tile is a picture of
+          // this catalogue rather than of a specimen. Empty on a sale with no
+          // lots, and the control falls back to names.
+          tiles={tiles}
         />
       }
       canvas={

@@ -18,7 +18,7 @@ import { join } from "node:path";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
 import { writePlate } from "./plate";
-import { createEvent } from "./sale";
+import { chooseTemplate, createEvent } from "./sale";
 import { shot } from "./shots";
 
 const TEMP = join("test-results", "fixtures");
@@ -157,7 +157,7 @@ test("the ledger says where a sale is, and its button says what to do next", asy
   // Choosing a template is laying out, and it is one of the two gestures that
   // make the row (the other is a pin). One select, and the sale has moved.
   await page.goto(`${eventPath}/catalogue`);
-  await page.getByLabel("Template").selectOption("tearsheet");
+  await chooseTemplate(page, "tearsheet");
   // THE SERVER'S ANSWER, NOT THE SELECT'S. The control is optimistic — it holds
   // the new value in local state and posts on a microtask — so asserting its
   // value proves only that the pointer landed, and the `page.goto` on the next
