@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 
 import { PrintFidelity } from "@/components/print-fidelity";
+import { DEFAULT_FACE } from "@/lib/engine/faces";
 import { mergeOverride, type OverridePatch, type OverrideValue } from "@/lib/data/override-value";
 import {
   GRADE_AXES,
@@ -102,6 +103,16 @@ export interface PolishPanelProps {
   measured?: PlateMeasurement | null;
   /** The writer. Bound by whoever mounts this; see the foot of the file. */
   commit: (patch: OverridePatch) => Promise<PlaceResult>;
+  /**
+   * The face this catalogue is set in, by id, for the print-fidelity line.
+   *
+   * OPTIONAL AND DEFAULTED, because this panel is mounted by the editor today
+   * and the lot record is the second surface that will want it — a required
+   * prop would make the next mount site carry a parameter before it has a
+   * catalogue to read one from. Absent means 明體, which is what a catalogue
+   * with no stored face is.
+   */
+  face?: string;
   /** The Settings tab's contents, owned by the mounting screen. */
   settings?: React.ReactNode;
 }
@@ -135,6 +146,7 @@ export function PolishPanel({
   measured = null,
   commit,
   settings,
+  face = DEFAULT_FACE.id,
 }: PolishPanelProps): React.ReactElement {
   const [tab, setTab] = useState<PolishTab>("polish");
   const [message, setMessage] = useState<string | null>(null);
@@ -496,7 +508,7 @@ export function PolishPanel({
             )}
           </Row>
 
-          <PrintFidelity />
+          <PrintFidelity face={face} />
         </div>
       )}
     </section>

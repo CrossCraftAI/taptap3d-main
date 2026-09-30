@@ -34,6 +34,7 @@ import {
   plateNoticeText,
   workAspect,
 } from "@/lib/polish/plate-note";
+import { faceFor } from "@/lib/engine/faces";
 import { serifVerdict } from "@/lib/polish/serif-check";
 
 const PLATE = { lotId: "a", field: PLATE_FIELD };
@@ -306,29 +307,47 @@ describe("the engine's reservation about a plate", () => {
 });
 
 describe("whether this machine can show the catalogue's type", () => {
-  it("a serif from the stack is the answer the product wants", () => {
-    const v = serifVerdict(["Noto Serif CJK HK"]);
-    expect(v.fidelity).toBe("serif");
+  const SERIF = faceFor("serif");
+  const SANS = faceFor("sans");
+
+  it("a face the catalogue is actually set in is the answer the product wants", () => {
+    const v = serifVerdict(["Noto Serif CJK HK"], SERIF);
+    expect(v.fidelity).toBe("faithful");
     expect(v.message).toContain("Noto Serif CJK HK");
   });
 
-  it("but the sans rung is NOT a pass, which is the whole point of the check", () => {
-    // A sans catalogue is a compromise and tofu is a reprint; the document
-    // names the sans as the last rung before tofu. Counting it as a pass would
-    // be the check quietly agreeing with the thing it exists to catch.
-    const v = serifVerdict(["Noto Sans CJK HK"]);
-    expect(v.fidelity).toBe("sans");
+  it("but the other kind of face is NOT a pass, which is the whole point", () => {
+    // The wrong kind of face is a compromise and tofu is a reprint; each
+    // stack names the other kind as its last rung before tofu. Counting it
+    // as a pass would be the check agreeing with what it exists to catch.
+    const v = serifVerdict(["Noto Sans CJK HK"], SERIF);
+    expect(v.fidelity).toBe("substitute");
     expect(v.message).toContain("PDF");
   });
 
-  it("and a bare machine is told what to install", () => {
-    const v = serifVerdict([]);
-    expect(v.fidelity).toBe("none");
-    expect(v.message).toContain("Noto Serif CJK HK");
+  /**
+   * THE VERDICT INVERTS WITH THE CHOICE, and this is the assertion that says
+   * so. The same machine, the same one font, two catalogues: on the 明體 one
+   * it is a warning and on the 黑體 one it is correct. A check that stayed
+   * serif-shaped after the face became a parameter would tell a house that
+   * chose 黑體 their machine was wrong, every time, forever.
+   */
+  it("and it inverts when the catalogue is set in the other face", () => {
+    expect(serifVerdict(["Noto Sans CJK HK"], SANS).fidelity).toBe("faithful");
+    expect(serifVerdict(["Noto Serif CJK HK"], SANS).fidelity).toBe("substitute");
+  });
+
+  it("and a bare machine is told what to install, for the face it is missing", () => {
+    expect(serifVerdict([], SERIF).message).toContain("Noto Serif CJK HK");
+    // NOT the serif. Telling a 黑體 house to install a serif is an instruction
+    // that does not fix the thing they are being warned about.
+    expect(serifVerdict([], SANS).message).toContain("Noto Sans CJK HK");
+    expect(serifVerdict([], SANS).fidelity).toBe("none");
   });
 
   it("and a face the document does not name does not count", () => {
-    expect(serifVerdict(["Comic Sans MS"]).fidelity).toBe("none");
+    expect(serifVerdict(["Comic Sans MS"], SERIF).fidelity).toBe("none");
+    expect(serifVerdict(["Comic Sans MS"], SANS).fidelity).toBe("none");
   });
 });
 

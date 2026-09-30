@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 
+import { faceFor } from "@/lib/engine/faces";
 import { CJK_PROBE_GLYPH } from "@/lib/render/html";
 import { CJK_FACES, serifVerdict, type SerifVerdict } from "@/lib/polish/serif-check";
 
@@ -29,25 +30,34 @@ import { CJK_FACES, serifVerdict, type SerifVerdict } from "@/lib/polish/serif-c
  * flashes and then says everything is fine is noise on the ninety percent of
  * machines that are fine.
  */
-export function PrintFidelity(): React.ReactElement | null {
+export function PrintFidelity({
+  face,
+}: {
+  /** The face this catalogue is set in, by id. See faces.ts. */
+  face: string;
+}): React.ReactElement | null {
   const [verdict, setVerdict] = useState<SerifVerdict | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     const ask = (): void => {
-      const available = CJK_FACES.filter((face) => {
+      // ASKED ABOUT EVERY FACE, JUDGED AGAINST ONE. The probe is the same ten
+      // questions whatever the catalogue is set in — they cost nothing and
+      // the answer is a property of the machine — and `serifVerdict` narrows
+      // them to the rungs this catalogue actually names.
+      const available = CJK_FACES.filter((named) => {
         // `check` throws on a font shorthand it cannot parse, and a family
-        // name with a quote in it would be exactly that. These six are
-        // constants in this repository, so it cannot happen — and a probe that
-        // took the whole panel down with it if it ever did would be a worse
-        // failure than the one being probed for.
+        // name with a quote in it would be exactly that. These are constants
+        // in this repository, so it cannot happen — and a probe that took the
+        // whole panel down with it if it ever did would be a worse failure
+        // than the one being probed for.
         try {
-          return document.fonts.check(`16px "${face}"`, CJK_PROBE_GLYPH);
+          return document.fonts.check(`16px "${named}"`, CJK_PROBE_GLYPH);
         } catch {
           return false;
         }
       });
-      if (!cancelled) setVerdict(serifVerdict(available));
+      if (!cancelled) setVerdict(serifVerdict(available, faceFor(face)));
     };
     // AFTER THE DOCUMENT'S OWN FONTS HAVE SETTLED. `check` answers about what
     // is available NOW, and asking during load reports a machine as bare that
@@ -56,9 +66,13 @@ export function PrintFidelity(): React.ReactElement | null {
     return () => {
       cancelled = true;
     };
-  }, []);
+    // THE FACE IS A DEPENDENCY. Switching 明體 to 黑體 changes which answer is
+    // the right one without changing a single font on the machine, and a
+    // verdict computed once at mount would go on warning about the face the
+    // house has just stopped using.
+  }, [face]);
 
-  if (!verdict || verdict.fidelity === "serif") return null;
+  if (!verdict || verdict.fidelity === "faithful") return null;
 
   return (
     <p

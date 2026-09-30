@@ -37,15 +37,27 @@
 //   `next/font` in src/app/layout.tsx — would dress the chrome and leave the
 //   one document that matters exactly as it was.
 //
-// A third option, deleting the dead `--font-serif` token from
-// src/app/globals.css, is the right tidy-up and is somebody else's file this
-// cycle. It is unreferenced by any component; whoever owns that file should
-// either spend it on the application's own serif or remove it.
+// A third option, deleting the `--font-serif` token from src/app/globals.css,
+// was proposed here on the belief that it was dead. IT IS NOT: the provenance
+// box on the movement screen sets its lines in it, which is correct — that box
+// quotes what the catalogue will print. What was actually wrong is that the
+// token's stack and this document's did not agree, so the chrome and the
+// preview could resolve to different faces on one machine. Reconciled in
+// globals.css rather than deleted.
 //
 // So: the machine is asked, and what it answers is SHOWN. That is also the
 // honest version of principle 10 — measure, don't assert — applied to the one
 // claim this product cannot make on the specialist's behalf.
+//
+// ── AND IT IS ASKED ABOUT THE FACE THIS CATALOGUE IS SET IN ────────────────
+//
+// This module used to be about a serif, because every catalogue was. Now a
+// house chooses 明體 or 黑體 (src/lib/engine/faces.ts) and the verdict inverts
+// with the choice: on a 黑體 catalogue, a machine holding only the serif is
+// the one seeing the wrong page, and reporting it as correct would be the
+// check agreeing with the thing it exists to catch.
 
+import type { Face } from "@/lib/engine/faces";
 import { CJK_FACES } from "@/lib/render/html";
 
 /**
@@ -58,13 +70,17 @@ import { CJK_FACES } from "@/lib/render/html";
  * READ the preview and is still not seeing the page. Treating it as a pass
  * would be the check quietly agreeing with the thing it exists to catch.
  */
-const SERIF_FACES = CJK_FACES.filter((face) => !face.includes("Sans"));
-
-export type SerifFidelity = "serif" | "sans" | "none";
+/**
+ * `faithful` — this machine holds a face that IS the one the catalogue is set
+ * in, so the preview is the page. `substitute` — it holds one of the stack's
+ * other rungs, so the preview is readable and is the wrong kind of face.
+ * `none` — tofu.
+ */
+export type SerifFidelity = "faithful" | "substitute" | "none";
 
 export interface SerifVerdict {
   fidelity: SerifFidelity;
-  /** Which of the document's faces this machine actually has. */
+  /** Which of the catalogue's own faces this machine actually has. */
   available: string[];
   /** One sentence, in the second person, naming what to do about it. */
   message: string;
@@ -78,35 +94,41 @@ export interface SerifVerdict {
  * the same split every other logic module here makes. The asking is four lines
  * in src/components/print-fidelity.tsx.
  */
-export function serifVerdict(available: readonly string[]): SerifVerdict {
-  const have = CJK_FACES.filter((face) => available.includes(face));
-  const serif = have.filter((face) => SERIF_FACES.includes(face));
-  if (serif.length > 0) {
+export function serifVerdict(
+  available: readonly string[],
+  face: Face,
+): SerifVerdict {
+  // THE CATALOGUE'S OWN RUNGS, in the catalogue's own order — not the union
+  // the component probed with. A machine holding every sans and no serif is a
+  // perfect machine for a 黑體 catalogue and a warning on a 明體 one.
+  const have = face.cjk.filter((named) => available.includes(named));
+  const right = have.filter((named) => face.faithful.includes(named));
+  if (right.length > 0) {
     return {
-      fidelity: "serif",
+      fidelity: "faithful",
       available: [...have],
-      message: `The preview is set in ${serif[0]}, which is what the printer will get.`,
+      message: `The preview is set in ${right[0]}, which is what the printer will get.`,
     };
   }
   if (have.length > 0) {
     return {
-      fidelity: "sans",
+      fidelity: "substitute",
       available: [...have],
       message:
-        `This machine has no Traditional Chinese SERIF from the catalogue's stack, so the ` +
-        `preview is falling back to ${have[0]}. The printed page will be a serif; judge the ` +
-        `type from a PDF rather than from here.`,
+        `This machine has none of the ${face.name.zh} faces this catalogue is set in, so the ` +
+        `preview is falling back to ${have[0]}. The printed page will be ${face.name.zh}; judge ` +
+        `the type from a PDF rather than from here.`,
     };
   }
   return {
     fidelity: "none",
     available: [],
     message:
-      "This machine has none of the catalogue's Traditional Chinese faces, so the preview " +
-      "is set in whatever the browser chose. Install Noto Serif CJK HK, or judge the type " +
-      "from a PDF — the export reports whether the server's own fonts painted.",
+      `This machine has none of the catalogue's Traditional Chinese faces, so the preview ` +
+      `is set in whatever the browser chose. Install ${face.faithful[0]}, or judge the type ` +
+      `from a PDF — the export reports whether the server's own fonts painted.`,
   };
 }
 
-/** The faces to ask about. Exported so the component lists nothing itself. */
+/** Every face to ask about, across every typeface. The component lists none. */
 export { CJK_FACES };

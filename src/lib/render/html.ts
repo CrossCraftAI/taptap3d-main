@@ -40,6 +40,7 @@
 // — already org-scoped by the route that serves it.
 
 import type { CaptionLine, CatalogueDocument, DocPage, DocSlot } from "@/lib/engine/derive";
+import { faceFor } from "@/lib/engine/faces";
 import type { OverrideFrame } from "@/lib/engine/frame";
 
 import {
@@ -84,7 +85,19 @@ export const PREVIEW_CSP =
   "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'";
 
 /**
- * The CJK faces this document asks for, in the order it asks for them.
+ * Every CJK face any of this product's typefaces asks for.
+ *
+ * ── IT USED TO BE THE ONE DOCUMENT'S LIST, AND NOW THERE ARE TWO ────────────
+ *
+ * A catalogue is set in 明體 or 黑體 (src/lib/engine/faces.ts) and each names
+ * its own rungs, so "the faces this document asks for" is now a property of
+ * the document: `faceFor(doc.params.face).cjk`. What survives here is the
+ * UNION, which is the right question for a probe — a machine is asked once
+ * what it has, and the verdict is worked out against the face the catalogue
+ * is actually set in.
+ *
+ * Re-exported from the engine rather than redeclared, because the whole point
+ * of the note below is that this list existed twice and the two disagreed.
  *
  * ── THE LIST WAS WRITTEN TWICE AND THE TWO DID NOT AGREE ────────────────────
  *
@@ -98,24 +111,17 @@ export const PREVIEW_CSP =
  * survived: the probe's headline answer is a PAINT test and was right either
  * way, and only the named list was wrong.
  *
- * So there is one list, and it is here rather than in the probe because the
- * document is what names the faces. It is NOT interpolated into the stylesheet
- * — the declaration below is wrapped and indented, and rebuilding that wrapping
+ * So there is one list. It is NOT interpolated into the stylesheet — each
+ * face's declaration is wrapped and indented, and rebuilding that wrapping
  * from an array would put the bytes of every catalogue at the mercy of a join.
- * `test/polish.test.ts` asserts instead that every face here appears in the
- * rendered stylesheet in this order, which catches a drift in either direction
- * without either copy having to generate the other.
+ * `test/polish.test.ts` asserts instead that every face a typeface names
+ * appears in the stylesheet rendered at that typeface, in that order, which
+ * catches a drift in either direction without either copy generating the
+ * other.
  *
- * WHY HK BEFORE TC is a domain decision and is argued at the declaration.
+ * WHY HK BEFORE TC is a domain decision and is argued in faces.ts.
  */
-export const CJK_FACES = [
-  "Noto Serif CJK HK",
-  "Noto Serif CJK TC",
-  "Noto Serif TC",
-  "Source Han Serif TC",
-  "Songti TC",
-  "Noto Sans CJK HK",
-] as const;
+export { CJK_FACES } from "@/lib/engine/faces";
 
 /**
  * The glyph the probes draw.
@@ -603,6 +609,18 @@ export function renderCatalogue(
   // symptom (a straightened plate sized to its box instead of to its turn,
   // showing paper at the corners).
   const polish = documentIsPolished(doc) ? POLISH_STYLES : "";
+  // ── THE TYPEFACE, resolved the way the template and the density already are.
+  //
+  // It was a literal in the stylesheet below and served every catalogue of
+  // every house. `faceFor` is total and falls back to 明體, so a catalogue row
+  // written before this key existed renders the bytes it always did — which
+  // the four goldens hold to account.
+  //
+  // The face carries BOTH the declaration and the CSS comment above it, and
+  // that is not over-engineering: the comment argues for the serif's last
+  // rung, so emitting it above a sans declaration would ship a sentence
+  // contradicting the line beneath it. faces.ts states the rest.
+  const face = faceFor(doc.params.face);
 
   return `<!doctype html>
 <html lang="zh-Hant">
@@ -616,19 +634,8 @@ export function renderCatalogue(
   * { box-sizing: border-box; }
   body {
     margin: 0; padding: 16px; background: #f6f6f6;
-    /* HK BEFORE TC, AND THAT IS A DOMAIN DECISION RATHER THAN A PREFERENCE.
-       Noto Serif CJK ships separate HK and TC faces because Hong Kong and
-       Taiwan standardise different glyph forms for the same characters, and the
-       first customers are Hong Kong houses printing Hong Kong catalogues. Both
-       are in the image; naming HK first is the difference between a catalogue
-       that looks locally typeset and one that looks imported.
-
-       The container's faces come first, then a specialist's own machine, then
-       Latin. "Noto Sans CJK HK" is the last CJK rung on purpose: a sans
-       catalogue is a compromise, and tofu is a reprint. */
-    font-family: "Noto Serif CJK HK", "Noto Serif CJK TC", "Noto Serif TC",
-      "Source Han Serif TC", "Songti TC", "Noto Sans CJK HK", Georgia,
-      "Times New Roman", serif;
+    ${face.note}
+    font-family: ${face.stack};
     color: #1b1b1b;
   }
   /* SIZED BY HEIGHT, so a WHOLE PAGE is in the frame. A preview scaled to the

@@ -66,9 +66,27 @@
   --font-sans:
     ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
     "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif;
+  /* ── IN STEP WITH THE PRINT PATH, WHICH IT WAS NOT ───────────────────────
+     This began "Noto Serif TC", "Songti TC", … and the catalogue's own stack
+     begins "Noto Serif CJK HK", "Noto Serif CJK TC" — the two faces the
+     container actually carries and the ones a Hong Kong catalogue is set in.
+     So on one machine holding both, the chrome resolved to one face and the
+     preview to another, and the provenance box quoted a line in a face the
+     printer would never use.
+
+     It is used, whatever a comment in serif-check.ts once said: the movement
+     screen's provenance box sets its lines in it, which is right — that box
+     is quoting what the catalogue will print, so it has to look like it.
+
+     THE 明體 STACK, NOT THE 黑體 ONE, and not a variable that follows the
+     catalogue's setting. This token dresses the APPLICATION; a house that
+     sets a sale in 黑體 has not asked for the chrome to change, and the only
+     place the choice belongs is the document it is a choice about
+     (src/lib/engine/faces.ts). What has to match is the family ORDER, so a
+     quoted line and the page it quotes resolve the same way. */
   --font-serif:
-    "Noto Serif TC", "Songti TC", "Source Han Serif TC", Georgia,
-    "Times New Roman", serif;
+    "Noto Serif CJK HK", "Noto Serif CJK TC", "Noto Serif TC",
+    "Source Han Serif TC", "Songti TC", Georgia, "Times New Roman", serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
   /* ── THE GROUNDS. Equal channels, every one — see the header ──────────────

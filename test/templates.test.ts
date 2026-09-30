@@ -134,9 +134,18 @@ describe("parameters resolve against the template, not against the engine", () =
     // catalogues.params from the previous version: no template key at all.
     // `audience` is the same case one key later — a row written before THAT
     // existed names no readership, and the answer is the one every catalogue
-    // in every database already had (src/lib/engine/visibility.ts).
+    // in every database already had (src/lib/engine/visibility.ts). `face` is
+    // the same case again: a row with no typeface is 明體, which is the stack
+    // every catalogue was hardcoded to before it became a choice, so the old
+    // row prints the bytes it always printed.
+    //
+    // EXHAUSTIVE ON PURPOSE. Adding a key to CatalogueParams must fail here,
+    // because the question it asks is "what does a row from before this key
+    // resolve to" — and that question has to be answered deliberately, once,
+    // for every key. Two of the three so far had a wrong answer available
+    // that would have changed what a printed page carried.
     const params = normaliseParams({ perPage: 9, imagePlacement: "beside", showRef: false, fit: "width" });
-    expect(params).toEqual({ template: "catalogue", perPage: 9, imagePlacement: "beside", showRef: false, audience: "public", fit: "width" });
+    expect(params).toEqual({ template: "catalogue", perPage: 9, imagePlacement: "beside", showRef: false, audience: "public", fit: "width", face: "serif" });
     expect(normaliseParams({ template: "nonsense" }).template).toBe("catalogue");
   });
 

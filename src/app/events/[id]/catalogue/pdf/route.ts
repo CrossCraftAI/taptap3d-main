@@ -120,7 +120,9 @@ export async function GET(
   });
 
   try {
-    const { bytes, rendersCjk, fonts } = await renderPdf(html);
+    // The face travels with the document, so `x-taptap3d-cjk` reports on the
+    // faces THIS catalogue asks for rather than on every face the product has.
+    const { bytes, rendersCjk, fonts } = await renderPdf(html, document.params.face);
 
     // THE EXPORT IS A FACT ABOUT THE SALE, and this is the moment it becomes
     // true. The workflow (src/lib/workflow.ts) reads it as the last stage of

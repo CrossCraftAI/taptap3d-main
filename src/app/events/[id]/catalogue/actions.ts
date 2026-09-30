@@ -71,6 +71,18 @@ export async function unpinAction(
  * has no plate for becomes the one it has. The form does not know the
  * template's vocabulary and does not need to.
  */
+/**
+ * One key of the form, and nothing at all when the form did not send it.
+ *
+ * Spread into an object literal, so an absent field leaves whatever is
+ * underneath alone — which is the difference between "the person did not
+ * change this" and "the person set this to the default".
+ */
+function posted(key: string, formData: FormData): Record<string, unknown> {
+  const value = formData.get(key);
+  return typeof value === "string" ? { [key]: value } : {};
+}
+
 export async function setCatalogueParamsAction(
   eventId: string,
   formData: FormData,
@@ -78,12 +90,41 @@ export async function setCatalogueParamsAction(
   const orgId = await currentOrgId();
   const catalogue = await ensureCatalogue(orgId, eventId);
 
+  // ── MERGED ONTO WHAT IS STORED, NOT REBUILT FROM THE FORM ─────────────────
+  //
+  // `updateCatalogueParams` does `set({ params })`: it REPLACES the column.
+  // So an object built from the form alone is an object missing every answer
+  // the form does not carry, and `normaliseParams` then fills those with its
+  // defaults — which means pressing Apply silently answers questions nobody
+  // asked.
+  //
+  // IT WAS ALREADY DOING THAT, AND TO THE WORST POSSIBLE KEY. `audience` is
+  // not on this form and its default is `public`, so a house that set a
+  // catalogue to `house` and then changed the density published it: every
+  // field they had marked internal started printing again. That is precisely
+  // the outcome the whole of Phase 3 exists to make impossible, reached by
+  // pressing a button that says Apply next to a number. The note in
+  // catalogue-workspace.tsx predicted the shape of this — "a panel posting
+  // only `template` would silently reset the fit and the reference" — and did
+  // not name the one answer that matters most.
+  //
+  // `face` would have been the second. Spreading the stored value first means
+  // the form's five fields win where they are given and nothing else moves,
+  // and the whole is still normalised, so a stored value that is nonsense is
+  // still resolved rather than trusted.
   const params = normaliseParams({
+    ...(catalogue.params as Record<string, unknown> | null),
     template: String(formData.get("template") ?? ""),
     perPage: Number(formData.get("perPage")),
     imagePlacement: String(formData.get("imagePlacement") ?? ""),
     showRef: formData.get("showRef") === "on",
     fit: String(formData.get("fit") ?? ""),
+    // ONLY WHEN THE FORM ACTUALLY CARRIES IT, and that is not pedantry: a key
+    // spread in as `undefined` still overrides the stored value beneath it,
+    // so `face: String(get("face") ?? "")` would reset a house's 黑體 to 明體
+    // from any page rendered before the control shipped. The same reasoning
+    // applies to whatever is added to this form next.
+    ...posted("face", formData),
   });
 
   await updateCatalogueParams(orgId, catalogue.id, { ...params });

@@ -5,6 +5,7 @@ import { useRef, useState } from "react";
 import { setCatalogueParamsAction } from "@/app/events/[id]/catalogue/actions";
 import { TemplateTiles } from "@/components/template-tiles";
 import type { CatalogueParams } from "@/lib/engine/derive";
+import { FACES } from "@/lib/engine/faces";
 import type { TemplateChoice } from "@/lib/engine/templates";
 import { logAction } from "@/lib/log/client";
 import type { TemplateTile } from "@/lib/render/template-preview";
@@ -197,6 +198,36 @@ export function CatalogueControls({
           </select>
         </label>
       )}
+
+      {/* ── THE TYPEFACE, BESIDE THE TEMPLATE AND THE DENSITY ────────────────
+          One hardcoded stack served every catalogue of every house until now,
+          which for a Traditional Chinese product is the product deciding most
+          of what a house is buying. Two faces and not six: the PDF is rendered
+          by the server, so a choosable face has to be a face the image holds,
+          and `fc-list` on the container reports exactly two Traditional
+          Chinese families. src/lib/engine/faces.ts argues the rest.
+
+          A SELECT AND NOT TILES. The template picker beside this is tiles
+          because a template is a SHAPE and a proxy shows it; a typeface is not
+          a shape at this size — two 100px page proxies set in 明體 and 黑體
+          are indistinguishable, and a tile that cannot be told from its
+          neighbour is a control that looks like it is doing more than it is.
+          The names carry it, in the trade's own words. */}
+      <label className="flex items-center gap-2 text-[13px] lg:flex-col lg:items-start lg:gap-1">
+        <span className="text-muted">Typeface</span>
+        <select
+          name="face"
+          value={local.face}
+          onChange={(e) => change({ face: e.target.value })}
+          className="min-h-[var(--tap)] border border-rule bg-paper px-2 text-[13px] lg:w-full"
+        >
+          {FACES.map((face) => (
+            <option key={face.id} value={face.id}>
+              {face.name.zh} · {face.name.en}
+            </option>
+          ))}
+        </select>
+      </label>
 
       <label className="flex items-center gap-2 text-[13px] lg:flex-col lg:items-start lg:gap-1">
         <span className="text-muted">Fit</span>

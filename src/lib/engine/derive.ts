@@ -39,6 +39,7 @@ import {
   type Template,
   type TemplateField,
 } from "./templates";
+import { DEFAULT_FACE, faceFor } from "./faces";
 import {
   audienceFor,
   EMPTY_POLICY,
@@ -90,6 +91,23 @@ export interface CatalogueParams {
    * here at every density, which is the whole point of naming them apart.
    */
   fit: "page" | "width";
+  /**
+   * The typeface the catalogue is SET IN (src/lib/engine/faces.ts).
+   *
+   * A PARAMETER OF THE OUTPUT and not of the house, for `audience`'s reason
+   * with a different example: one sale prints a 明體 catalogue for the room
+   * and a 黑體 price list for the desk, from the same records on the same
+   * day. An org column could only ever hold one answer.
+   *
+   * NOT RESOLVED AGAINST THE TEMPLATE. A template says how a page is laid
+   * out; which face it is set in is the house's own signature across every
+   * template they use, and a template that could override it would be a
+   * layout choosing a house's identity.
+   *
+   * By id, never by stack — a corrected stack reaches every catalogue on it,
+   * which is the same argument `template` makes.
+   */
+  face: string;
 }
 
 export const DEFAULT_PARAMS: CatalogueParams = {
@@ -99,6 +117,7 @@ export const DEFAULT_PARAMS: CatalogueParams = {
   showRef: true,
   audience: "public",
   fit: "page",
+  face: DEFAULT_FACE.id,
 };
 
 /**
@@ -127,6 +146,9 @@ export function normaliseParams(
     // could narrow or widen it would be a layout choosing a readership.
     audience: audienceFor(source.audience),
     fit: source.fit === "width" ? "width" : DEFAULT_PARAMS.fit,
+    // Not resolved against the template either, and for a reason of its own —
+    // see `face` on CatalogueParams.
+    face: faceFor(source.face).id,
   };
 }
 

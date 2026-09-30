@@ -32,6 +32,7 @@ import {
   type EngineOverride,
 } from "@/lib/engine/derive";
 import { BUILT_IN_TEMPLATES, CATALOGUE, PRICE_LIST, TEARSHEET } from "@/lib/engine/templates";
+import { DEFAULT_FACE, FACES, faceFor } from "@/lib/engine/faces";
 import { CJK_FACES, renderCatalogue } from "@/lib/render/html";
 import {
   GROUND_GREY,
@@ -465,33 +466,93 @@ describe("the subject box", () => {
 
 describe("the document's faces and the probe's faces are one list", () => {
   /**
-   * `CJK_FACES` is NOT interpolated into the stylesheet — the declaration is
+   * A FACE'S STACK IS NOT INTERPOLATED FROM ITS LIST — the declaration is
    * wrapped and indented, and rebuilding that from a join would put the bytes
    * of every catalogue at the mercy of a template literal. So the two copies
-   * are held together here instead, in both directions: every face the
-   * constant names appears in the document, in order, and the document's own
-   * CJK stack names nothing the constant has not got.
+   * are held together here instead, per face and in both directions: every
+   * rung the face names appears in the document it produces, in order, and
+   * that document's stack names no CJK face the list has not got.
    *
    * It is a real defect and not a hypothetical one: src/lib/render/pdf.ts
    * carried its own list and asked about "Noto Sans CJK TC" while the document
-   * asks for "Noto Sans CJK HK".
+   * asked for "Noto Sans CJK HK".
+   *
+   * PER FACE, since the typeface became a parameter. One assertion over one
+   * hardcoded stack was enough while there was one; with two it would pass
+   * while the second face's rungs and its probe list drifted apart, which is
+   * exactly the defect above with a different name.
    */
-  const html = render([]);
+  it.each(FACES.map((face) => [face.name.en, face] as const))(
+    "%s names its rungs in the order the document asks for them",
+    (_name, face) => {
+      const html = renderCatalogue(
+        derive(SALE, { ...DEFAULT_PARAMS, face: face.id }, [], []),
+      );
+      let at = 0;
+      for (const rung of face.cjk) {
+        const found = html.indexOf(`"${rung}"`, at);
+        expect(found, `${rung} is not in the stack after the one before it`)
+          .toBeGreaterThan(-1);
+        at = found;
+      }
+    },
+  );
 
-  it("in the order the document asks for them", () => {
-    let at = 0;
-    for (const face of CJK_FACES) {
-      const found = html.indexOf(`"${face}"`, at);
-      expect(found, `${face} is not in the document's font stack after the one before it`)
-        .toBeGreaterThan(-1);
-      at = found;
+  it.each(FACES.map((face) => [face.name.en, face] as const))(
+    "%s names no CJK face its own list has not got",
+    (_name, face) => {
+      const html = renderCatalogue(
+        derive(SALE, { ...DEFAULT_PARAMS, face: face.id }, [], []),
+      );
+      const stack = html.slice(html.indexOf("font-family:"), html.indexOf("color: #1b1b1b"));
+      const quoted = [...stack.matchAll(/"([^"]+)"/g)].map((m) => m[1]!);
+      const cjk = quoted.filter((f) => /CJK|TC|Songti|Han|PingFang|JhengHei/.test(f));
+      expect(cjk).toEqual([...face.cjk]);
+    },
+  );
+
+  /** Every rung any face names is one the probe asks a machine about. */
+  it("and the probe's union covers every rung of every face", () => {
+    for (const face of FACES) {
+      for (const rung of face.cjk) {
+        expect(CJK_FACES, `${rung} is named by ${face.name.en} and never probed for`)
+          .toContain(rung);
+      }
     }
   });
 
-  it("and the document names no CJK face the list has not got", () => {
-    const stack = html.slice(html.indexOf("font-family:"), html.indexOf("color: #1b1b1b"));
-    const quoted = [...stack.matchAll(/"([^"]+)"/g)].map((m) => m[1]!);
-    const cjk = quoted.filter((f) => /CJK|TC|Songti|Han/.test(f));
-    expect(cjk).toEqual([...CJK_FACES]);
+  /**
+   * THE FIFTH GOLDEN, AS AN ASSERTION RATHER THAN A FILE.
+   *
+   * A 黑體 catalogue is pinned byte-exactly by this plus the four goldens: the
+   * 明體 render is frozen on disk, and this says the 黑體 render is that
+   * document with the font declaration and its comment changed and nothing
+   * else. A fifth saved page would assert the same thing and cost a file that
+   * a person has to regenerate and re-read every time the page legitimately
+   * changes.
+   *
+   * IT IS A REAL GUARD, not a restatement. The face reaches the renderer
+   * through CatalogueParams, which the engine also reads — so a change that
+   * let the face touch pagination, a caption budget or a column width would
+   * fail here, naming the first byte that moved for the wrong reason.
+   */
+  it("and two faces differ in the type and nowhere else", () => {
+    const at = (id: string): string =>
+      renderCatalogue(derive(SALE, { ...DEFAULT_PARAMS, face: id }, [], []));
+    const cut = (html: string): string => {
+      const from = html.indexOf("    /*", html.indexOf("background: #f6f6f6;"));
+      const to = html.indexOf("color: #1b1b1b");
+      return html.slice(0, from) + html.slice(to);
+    };
+    expect(at("serif")).not.toBe(at("sans"));
+    expect(cut(at("sans"))).toBe(cut(at("serif")));
+  });
+
+  /** An unknown face prints the default rather than failing or printing tofu. */
+  it("and a face nobody recognises is the one every old catalogue is in", () => {
+    const at = (params: Partial<typeof DEFAULT_PARAMS>): string =>
+      renderCatalogue(derive(SALE, { ...DEFAULT_PARAMS, ...params }, [], []));
+    expect(at({ face: "helvetica" })).toBe(at({ face: DEFAULT_FACE.id }));
+    expect(faceFor(undefined).id).toBe(DEFAULT_FACE.id);
   });
 });

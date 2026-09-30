@@ -26,7 +26,9 @@ import { existsSync } from "node:fs";
 
 import puppeteer, { type Browser } from "puppeteer-core";
 
-import { CJK_FACES, CJK_PROBE_GLYPH } from "./html";
+import { faceFor } from "@/lib/engine/faces";
+
+import { CJK_PROBE_GLYPH } from "./html";
 
 /** Where Chromium is. Named explicitly; nothing here downloads a browser. */
 export function browserExecutable(): string | null {
@@ -75,7 +77,22 @@ export interface PdfResult {
   fonts: string[];
 }
 
-export async function renderPdf(html: string): Promise<PdfResult> {
+export async function renderPdf(
+  html: string,
+  /**
+   * The face the catalogue is set in, by id (src/lib/engine/faces.ts).
+   *
+   * OPTIONAL, defaulting to 明體, because that is what every catalogue written
+   * before the key existed is — and because a caller rendering some other
+   * document through this function should not have to know about typefaces to
+   * get a PDF.
+   *
+   * It narrows the NAMED list only. The paint half already follows the face
+   * for free: it reads `getComputedStyle(document.body).fontFamily`, which is
+   * whatever the document asked for.
+   */
+  face?: string,
+): Promise<PdfResult> {
   const executablePath = browserExecutable();
   if (!executablePath) throw new NoBrowserError();
 
@@ -131,6 +148,13 @@ export async function renderPdf(html: string): Promise<PdfResult> {
       // block used to carry its own copy and the copy had drifted: it asked
       // about "Noto Sans CJK TC" while the document names "Noto Sans CJK HK",
       // so it reported on a face the catalogue never requests. See CJK_FACES.
+      //
+      // AND NOW IT IS THIS CATALOGUE'S OWN RUNGS, not the union of every
+      // face's. Since the typeface became a parameter, CJK_FACES is what a
+      // MACHINE is asked about; what belongs in a header describing THIS
+      // document is what THIS document asks for. Sending the union would be
+      // the same drift the paragraph above is about, arriving from the other
+      // direction: a header naming serif faces beside a catalogue set in 黑體.
       const probe = await page.evaluate(
         ([families, glyph]: [readonly string[], string]) => {
           const named = families.filter((family) =>
@@ -158,7 +182,7 @@ export async function renderPdf(html: string): Promise<PdfResult> {
           const notdef = paint(String.fromCodePoint(0x10fffd));
           return { named, rendersCjk: chinese !== notdef && chinese !== blank };
         },
-        [CJK_FACES, CJK_PROBE_GLYPH] as [readonly string[], string],
+        [faceFor(face).cjk, CJK_PROBE_GLYPH] as [readonly string[], string],
       );
 
       await page.emulateMediaType("print");

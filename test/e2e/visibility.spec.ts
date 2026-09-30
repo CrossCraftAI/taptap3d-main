@@ -263,6 +263,59 @@ test("a house field never reaches a public output, and the record says so", asyn
     ).toBeVisible();
     await page.screenshot({ path: shot("65-lot-house-audience"), fullPage: true });
 
+    // ── 4b. AND CHANGING THE DENSITY DOES NOT PUBLISH THE SALE ─────────────
+    //
+    // THE DEFECT THIS WAS WRITTEN FOR, found while adding the typeface.
+    // `catalogues.params` is one jsonb object and `updateCatalogueParams`
+    // REPLACES it, while the editor's settings form carries five of its keys.
+    // `audience` is not one of them and its default is `public` — so
+    // rebuilding the object from the form alone meant that a house which had
+    // set a catalogue to `house` and then changed the density silently
+    // published it. Every field marked internal started printing again, from
+    // a button that says Apply next to a number.
+    //
+    // It is asserted HERE and not in a unit test because the action is what
+    // was wrong, and the action only runs when somebody presses the button.
+    await page.goto(`${eventUrl}/catalogue`);
+    await page.getByLabel("Per page").selectOption("4");
+    // WAIT FOR THE SERVER, NOT FOR THE SELECT. The control posts on change
+    // and answers optimistically, so `toHaveValue("4")` is true before the
+    // action has run — and the first version of this assertion navigated away
+    // mid-flight and passed against the defect it was written for. The page
+    // count comes back from a re-derivation, so it is the write landing.
+    await expect(page.getByText(/1 pages · 3 lots/)).toBeVisible({ timeout: 30_000 });
+    await page.goto(lotUrl);
+    // STILL MADE FOR THE HOUSE. Both halves matter and they fail differently:
+    // the first names the audience the catalogue carries, and the second is
+    // the consequence — a house output holds nothing back, so the moment the
+    // audience silently reverted to `public` this count would appear.
+    await expect(page.getByText(/Made for house/)).toBeVisible();
+    await expect(page.getByText(/\d+ held back/)).toHaveCount(0);
+
+    // ── 4c. THE TYPEFACE REACHES THE DOCUMENT ──────────────────────────────
+    // Two faces, and the one the house picks is the one the preview is set
+    // in. Read off the frame's own computed style rather than the markup: the
+    // question is what a specialist's eye is actually being shown.
+    await page.goto(`${eventUrl}/catalogue`);
+    const faceOf = (): Promise<string> =>
+      page.evaluate(() => {
+        const frames = Array.from(document.querySelectorAll("iframe"));
+        const front = frames.find((f) => f.title === "Catalogue preview");
+        const body = front?.contentDocument?.body;
+        return body ? getComputedStyle(body).fontFamily : "";
+      });
+    await expect.poll(faceOf, { timeout: 30_000 }).toContain("Noto Serif CJK HK");
+    await page.getByLabel("Typeface").selectOption("sans");
+    await expect(page.getByLabel("Typeface")).toHaveValue("sans");
+    await expect.poll(faceOf, { timeout: 30_000 }).toContain("Noto Sans CJK HK");
+    // AND THE HOUSE'S POLICY SURVIVED THAT TOO — the same merge, the other
+    // way round: a control that IS on the form must not reset one that is not.
+    await page.goto(lotUrl);
+    await expect(page.getByText(/Made for house/)).toBeVisible();
+    await page.goto(`${eventUrl}/catalogue`);
+    await page.getByLabel("Typeface").selectOption("serif");
+    await expect.poll(faceOf, { timeout: 30_000 }).toContain("Noto Serif CJK HK");
+
     // ── 5. THE PRINTED FILE, WHICH IS WHAT ACTUALLY LEAVES ─────────────────
     // A preview that dropped the field and a PDF route that did not would be
     // the worst possible outcome of this phase, and the two call the engine

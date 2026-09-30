@@ -132,6 +132,23 @@ test("the catalogue prints, with its plates and its Chinese in it", async ({
   // nothing logged, all the way to the printer.
   expect(headers["x-taptap3d-cjk"]).toBe("rendered");
 
+  // ── AND THE FACES IT NAMES ARE THIS CATALOGUE'S, NOT EVERY FACE WE HAVE ───
+  //
+  // `x-taptap3d-fonts` is the named half of the probe, and it exists because
+  // the list was once written twice and the two disagreed — pdf.ts asked
+  // about "Noto Sans CJK TC" while the document asked for "Noto Sans CJK HK".
+  // Since the typeface became a parameter there is a second way to get that
+  // wrong: report the union of every face the product offers, so a header
+  // beside a 明體 catalogue names the sans faces too. A default catalogue is
+  // 明體, so its serif rungs are named and the sans-only rungs are not.
+  const named = headers["x-taptap3d-fonts"] ?? "";
+  expect(named).toContain("Noto Serif CJK HK");
+  // PingFang and JhengHei are rungs of 黑體 alone. Neither is on this Alpine
+  // container, so this would pass by accident there — it is the assertion
+  // that a machine which HAS them still reports on the face in use.
+  expect(named).not.toContain("PingFang");
+  expect(named).not.toContain("JhengHei");
+
   // The page tree says how many pages, in the file rather than in a header we
   // wrote ourselves.
   const text = body.toString("latin1");
