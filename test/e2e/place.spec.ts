@@ -989,4 +989,35 @@ test("the rail says which page you are on, and takes you to another", async ({ p
     "aria-label",
     "Page 1",
   );
+
+  // ── AND THE SHAPE IT TAKES WHEN THE COLUMN BECOMES A BAND ─────────────────
+  //
+  // Below `lg` the document's settings stop being a column beside the canvas
+  // and stack above it. The first version of the rail kept its two-column
+  // grid there, which at 768 is forty proxies at 180×255 — twenty rows, and
+  // the canvas pushed off the bottom of the screen. The inspection harness
+  // reported `0 fail, 0 warn`: there was no overflow and no exception, the
+  // column simply scrolled. Only the screenshot showed it.
+  //
+  // So the assertion is the one the eye made: the rail is shorter than the
+  // canvas it navigates. A number would have to be re-chosen for every
+  // future proxy size; this stays true whatever the size is.
+  await page.setViewportSize({ width: 768, height: 1024 });
+  const railBox = await rail.boundingBox();
+  const frameBox = await page.locator('iframe[title="Catalogue preview"]').boundingBox();
+  expect(railBox).not.toBeNull();
+  expect(frameBox).not.toBeNull();
+  expect(railBox!.height).toBeLessThan(frameBox!.height);
+  // AND THE PREVIEW IS ON SCREEN, which is the thing that was actually lost.
+  expect(frameBox!.y).toBeLessThan(1024);
+
+  // It still works in that shape — a strip that scrolls sideways is a rail
+  // whose presses must land the same way the column's do.
+  await rail.getByRole("button", { name: "Page 2" }).click();
+  await expect(rail.locator('[aria-current="true"]')).toHaveAttribute(
+    "aria-label",
+    "Page 2",
+  );
+  await page.screenshot({ path: shot("58-page-rail-stacked"), fullPage: true });
+  await page.setViewportSize(WINDOW);
 });

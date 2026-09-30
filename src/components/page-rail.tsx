@@ -53,8 +53,13 @@ export function PageRail({
   // than `center`: a proxy already fully in view must not move, or every
   // scroll of the preview would drag the rail under the hand that is about to
   // press it.
+  //
+  // BOTH AXES, because this rail has two shapes. Beside the canvas it is a
+  // column that scrolls down; stacked above the canvas it is a strip that
+  // scrolls sideways, and `block` alone would never bring page 23 into view
+  // there.
   useEffect(() => {
-    here.current?.scrollIntoView({ block: "nearest" });
+    here.current?.scrollIntoView({ block: "nearest", inline: "nearest" });
   }, [current]);
 
   // A sale with no lots has no pages, and an empty box with a heading is worse
@@ -66,11 +71,25 @@ export function PageRail({
       <h2 className="text-[10px] uppercase tracking-[0.08em] text-muted">
         Pages <span data-numeric>{pages.length}</span>
       </h2>
-      <ol className="mt-2 grid list-none grid-cols-2 gap-2 p-0">
+      {/* ── TWO SHAPES, BECAUSE THE COLUMN AROUND IT HAS TWO ─────────────────
+          Below `lg` the document's settings stop being a column beside the
+          canvas and become a BAND ABOVE IT, and a grid of two in a band is
+          the full window wide. Measured at 768: forty proxies at 180×255,
+          twenty rows of them, and the canvas pushed entirely off the bottom
+          of the screen — a rail that had eaten the document it navigates.
+          Nothing in the harness could see it: no overflow, no exception, the
+          column simply scrolled.
+
+          So in the band it is a strip that scrolls sideways at a size that
+          leaves the page visible, and beside the canvas it stays the grid.
+          One element, two shapes, for the reason catalogue-workspace.tsx
+          gives about the settings themselves: a second copy hidden by CSS is
+          still in the document, and every control in it exists twice. */}
+      <ol className="mt-2 grid list-none grid-cols-2 gap-2 p-0 max-lg:flex max-lg:overflow-x-auto max-lg:pb-1">
         {pages.map((page, index) => {
           const picked = index === current;
           return (
-            <li key={page.number}>
+            <li key={page.number} className="max-lg:w-[68px] max-lg:shrink-0">
               <button
                 ref={picked ? here : undefined}
                 type="button"
