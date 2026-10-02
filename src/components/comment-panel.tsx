@@ -5,7 +5,11 @@ import { useState, useTransition } from "react";
 // ./comment-value and NOT ./comments: this is a client component, and that
 // module reaches the database. See the header of src/lib/data/comment-value.ts
 // for the build error this exact import caused once.
-import { MAX_COMMENT, type CommentThread } from "@/lib/data/comment-value";
+import {
+  MAX_COMMENT,
+  type CommentAuthor,
+  type CommentThread,
+} from "@/lib/data/comment-value";
 import type { MoveResult } from "@/lib/forms";
 import { logAction } from "@/lib/log/client";
 
@@ -43,6 +47,20 @@ import { logAction } from "@/lib/log/client";
  */
 
 const TAP = "min-h-[var(--tap)]";
+
+/**
+ * What to credit a remark to.
+ *
+ * A GATE IDENTITY IS NOT A PERSON. Before sign-in was configured every human
+ * decision was written against one `users` row per org, whose generated name
+ * reads like somebody's — "Demonstration House - via the gate" — and crediting
+ * a thread to it would be the screen claiming more than the record says. The
+ * record's own claim is "a member of the house, before the system could say
+ * which one", and that is what this prints.
+ */
+function who(author: CommentAuthor): string {
+  return author.viaGate ? "Someone at the house, before sign-in" : author.name;
+}
 
 export function CommentPanel({
   threads,
@@ -142,12 +160,12 @@ export function CommentPanel({
                   {thread.field ? ` · ${thread.field}` : " · the lot"}
                 </p>
                 <p className="mt-0.5 text-[13px] leading-relaxed">{thread.body}</p>
-                <p className="mt-0.5 text-[10px] text-faint">{thread.author.name}</p>
+                <p className="mt-0.5 text-[10px] text-faint">{who(thread.author)}</p>
 
                 {thread.replies.map((reply) => (
                   <div key={reply.id} className="mt-1.5 border-l-2 border-rule pl-2">
                     <p className="text-[13px] leading-relaxed">{reply.body}</p>
-                    <p className="text-[10px] text-faint">{reply.author.name}</p>
+                    <p className="text-[10px] text-faint">{who(reply.author)}</p>
                   </div>
                 ))}
 
@@ -155,7 +173,7 @@ export function CommentPanel({
                   {thread.resolvedAt ? (
                     <>
                       <span className="text-[10px] text-go">
-                        Settled{thread.resolvedBy ? ` by ${thread.resolvedBy.name}` : ""}
+                        Settled{thread.resolvedBy ? ` by ${who(thread.resolvedBy)}` : ""}
                       </span>
                       <button
                         type="button"

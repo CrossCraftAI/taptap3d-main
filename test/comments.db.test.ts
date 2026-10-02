@@ -20,6 +20,7 @@ import {
   listComments,
   resolveComment,
 } from "@/lib/data/comments";
+import { GATE_DOMAIN } from "@/lib/data/actor";
 import { ensureCatalogue } from "@/lib/data/catalogues";
 import { createEvent } from "@/lib/data/events";
 import { insertLots, listLots } from "@/lib/data/lots";
@@ -114,6 +115,29 @@ describe("a remark about a part of a catalogue", () => {
     await addComment(orgA, made.id, { lotId: made.lots[0]!, body: "?" }, registrar);
     const [thread] = await listComments(orgA, made.id);
     expect(thread!.author.name).toContain("@house.hk");
+  });
+
+  it("does not credit a remark to the gate identity as though it were a person", async () => {
+    // Before sign-in was configured every human decision was written against
+    // one `users` row per org, whose generated name reads like somebody's.
+    // Crediting a thread to it would be the screen claiming more than the
+    // record says — the record's claim is "a member of the house, before the
+    // system could say which one".
+    const made = await catalogue(orgA, 1);
+    const [gate] = await db
+      .insert(users)
+      .values({ email: `gate@whoever.${GATE_DOMAIN}`, name: "Whoever - via the gate" })
+      .returning({ id: users.id });
+    await addComment(orgA, made.id, { lotId: made.lots[0]!, body: "?" }, gate!.id);
+
+    const [thread] = await listComments(orgA, made.id);
+    expect(thread!.author.viaGate).toBe(true);
+    // And a real person is not marked.
+    const other = await catalogue(orgA, 1);
+    await addComment(orgA, other.id, { lotId: other.lots[0]!, body: "?" }, specialist);
+    expect((await listComments(orgA, other.id))[0]!.author.viaGate).toBe(false);
+
+    await db.delete(users).where(eq(users.id, gate!.id));
   });
 
   it("is about the lot itself when no field is named", async () => {

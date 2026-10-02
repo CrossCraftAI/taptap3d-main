@@ -11,6 +11,7 @@
 import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 
 import { getDb, lotComments, lots, users } from "@/db";
+import { isGateIdentity } from "./actor";
 
 // The shape and the limit live in ./comment-value.ts, which the client panel
 // imports — this module reaches the database and a client component that
@@ -26,6 +27,7 @@ const authorOf = (row: {
   authorEmail: string;
 }): CommentAuthor => ({
   id: row.authorId,
+  viaGate: isGateIdentity(row.authorEmail),
   // THE ADDRESS IS THE FALLBACK AND NOT "Unknown". A person invited by email
   // who has not signed in yet has no name, and a column of "Unknown" beside
   // real remarks is worse than a column of addresses — one of them can be

@@ -41,6 +41,20 @@ export interface CommentAuthor {
   /** What to print. The address when nobody has a name yet. */
   name: string;
   email: string;
+  /**
+   * Whether this is the house's GATE IDENTITY rather than a person.
+   *
+   * Before sign-in was configured, every human decision was written against
+   * one `users` row per org — "a member of the house, before the system could
+   * say which one" (src/lib/data/actor.ts). Those rows are honest and they are
+   * not people, and a thread that credits one by its generated name reads as
+   * though somebody called "Demonstration House - via the gate" said it.
+   *
+   * Computed on the server by `isGateIdentity`, which is where the rule about
+   * what a gate address looks like already lives — a client that matched the
+   * domain itself would be a second copy of it.
+   */
+  viaGate: boolean;
 }
 
 export interface Comment {
