@@ -12,12 +12,19 @@ import {
 import { createPortal } from "react-dom";
 
 import { placePartAction, restorePartFrameAction } from "@/app/events/[id]/catalogue/actions";
-import { PAGE_RAIL_ID, SELECTION_PANEL_ID } from "@/components/catalogue-workspace";
+import {
+  COMMENT_HOST_ID,
+  COMMENT_PANEL_ID,
+  PAGE_RAIL_ID,
+  SELECTION_PANEL_ID,
+} from "@/components/catalogue-workspace";
 import type { PageProxy } from "@/lib/render/template-preview";
+import { CommentPanel } from "@/components/comment-panel";
 import { PageRail } from "@/components/page-rail";
 import { PolishPanel } from "@/components/polish-panel";
 import type { OverridePatch, OverrideValue } from "@/lib/data/overrides";
-import type { PlaceResult } from "@/lib/forms";
+import type { CommentThread } from "@/lib/data/comment-value";
+import type { MoveResult, PlaceResult } from "@/lib/forms";
 import type { PanelSelection } from "@/lib/polish/panel-model";
 import type { PlateMeasurement } from "@/lib/polish/plate-note";
 import { SelectionOverlay } from "@/components/selection-overlay";
@@ -292,6 +299,9 @@ export function PreviewCanvas({
   polish,
   pages,
   pageAspect,
+  threads,
+  addComment,
+  resolveComment,
 }: {
   eventId: string;
   /** Null on a sale with no catalogue row yet; nothing there is selectable. */
@@ -325,6 +335,22 @@ export function PreviewCanvas({
   pages?: PageProxy[];
   /** Width ÷ height of the sheet, from the document's own template. */
   pageAspect?: number;
+  /**
+   * The house's argument about this catalogue, and the two writers for it.
+   *
+   * OWNED HERE FOR THE SELECTION'S SAKE, which is the same reason the polish
+   * panel is: a remark is about a (lot, field), and the only thing that knows
+   * which one a person is pointing at is this component. The threads come
+   * from the server; what this adds is what they are about.
+   */
+  threads?: readonly CommentThread[];
+  addComment?: (
+    lotId: string,
+    field: string | null,
+    body: string,
+    parentId: string | null,
+  ) => Promise<MoveResult>;
+  resolveComment?: (commentId: string, resolved: boolean) => Promise<MoveResult>;
 }): React.ReactElement {
   const [buffers, setBuffers] = useState<BufferState>(() => openBuffers(src));
   /** The mode of the running gesture, or null. Drives the capture layer. */
@@ -366,6 +392,19 @@ export function PreviewCanvas({
    * would make every crossed page boundary a reason to re-examine every ring.
    */
   const [pageAt, setPageAt] = useState(0);
+
+  /**
+   * Comment mode.
+   *
+   * A MODE AND NOT AN ALWAYS-ON PANEL, which is the shape the owner named
+   * (Claude's drawboard). Commenting and placing are different jobs done at
+   * different moments, and a canvas that is always both is a canvas where a
+   * drag sometimes means "move this" and sometimes means "say something about
+   * this". Here the mode changes nothing about what a drag DOES — placement
+   * keeps working — it changes which panel the column is showing and whether
+   * the overlay offers the mark. Nothing is taken away by turning it on.
+   */
+  const [commenting, setCommenting] = useState(false);
 
   const container = useRef<HTMLDivElement>(null);
   const bar = useRef<HTMLDivElement>(null);
@@ -1152,6 +1191,9 @@ export function PreviewCanvas({
     return { lotId, field };
   }, [paint.selection]);
 
+  /** Unsettled threads, for the switch's own count. */
+  const openThreads = (threads ?? []).filter((t) => t.resolvedAt === null).length;
+
   // A run of arrows that was still accumulating when this unmounted is work the
   // specialist did and cannot see; the timer goes, and with it the save.
   useEffect(
@@ -1540,6 +1582,73 @@ export function PreviewCanvas({
           />
         )}
       </SelectionPanelPortal>
+
+      {/* ── COMMENT MODE: THE SWITCH, AND THE CONVERSATION ────────────────
+          The switch sits with the document's other settings, because which
+          job you are doing on this document is a property of the document
+          rather than of the selection. The panel takes the right column's
+          turn ahead of the polish panel, so a reviewer who clicks a plate to
+          see what a remark is about does not lose the remark. */}
+      {threads !== undefined && addComment && resolveComment && (
+        <>
+          <HostPortal id={COMMENT_HOST_ID}>
+            <div className="mt-3 border-t border-rule pt-3">
+              <button
+                type="button"
+                aria-pressed={commenting}
+                onClick={() => setCommenting((on) => !on)}
+                className={`inline-flex min-h-[var(--tap)] w-full items-center justify-between border px-2 text-[13px] ${
+                  commenting
+                    ? "border-seal bg-sealSoft font-medium text-ink"
+                    : "border-rule bg-paper text-muted hover:text-ink"
+                }`}
+              >
+                <span>Comments</span>
+                {/* THE COUNT IS ON THE SWITCH, so a catalogue somebody has
+                    left remarks on says so without the mode being on. A
+                    review nobody can see they have been sent is a review
+                    that happens in email instead. */}
+                {openThreads > 0 && (
+                  <span
+                    className={commenting ? "text-[10px] text-seal" : "text-[10px] text-faint"}
+                    data-numeric
+                  >
+                    {openThreads}
+                  </span>
+                )}
+              </button>
+            </div>
+          </HostPortal>
+
+          {commenting && (
+            <HostPortal id={COMMENT_PANEL_ID}>
+              <CommentPanel
+                threads={threads}
+                // WHAT THE SELECTION IS ABOUT, which is the only thing this
+                // component adds to the server's threads — and the reason the
+                // panel is rendered from here at all.
+                subject={
+                  panelSelection
+                    ? {
+                        lotId: panelSelection.lotId,
+                        field: panelSelection.field === "images" ? null : panelSelection.field,
+                        // THE THREAD CARRIES THE REFERENCE FROM THE SERVER
+                        // (`listComments` joins it), so the panel names every
+                        // existing remark correctly. What a NEW one is about
+                        // is named by the field line beside it; adding a
+                        // second source for the reference here would be a
+                        // second thing to keep in step with the record.
+                        ref: null,
+                      }
+                    : null
+                }
+                add={addComment}
+                resolve={resolveComment}
+              />
+            </HostPortal>
+          )}
+        </>
+      )}
 
       {/* ── THE PAGE RAIL, INTO THE DOCUMENT'S OWN COLUMN ─────────────────
           Rendered from here because the two things it needs — the tops of

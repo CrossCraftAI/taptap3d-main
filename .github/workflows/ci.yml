@@ -93,10 +93,27 @@ jobs:
   # main for a couple of weeks. That is the whole change.
   browser:
     runs-on: ubuntu-latest
-    # Measured at 8–9 minutes locally with one worker; the build in front of it
-    # is most of the rest. Generous rather than tight: a timeout that trips on
-    # a slow runner is indistinguishable from a hang in the product.
-    timeout-minutes: 30
+
+    # ── ONE ENGINE PER JOB, WHICH IS A CORRECTION ─────────────────────────
+    #
+    # The first version ran both in one job with a 30-minute budget, measured
+    # from 11 minutes on a developer laptop. It was killed at exactly 30:00 on
+    # its first run: a two-core hosted runner is not a laptop, and assuming
+    # otherwise is the kind of estimate that reads as a hang.
+    #
+    # Split, each job runs half the tests and the two run at once, so the
+    # wall-clock is one engine plus one build rather than two of each. The
+    # build is duplicated; it is the cheaper half and it buys a failure that
+    # names its engine in the job title rather than in a log.
+    strategy:
+      fail-fast: false
+      matrix:
+        project: [chromium, webkit]
+
+    name: browser (${{ matrix.project }})
+    # Room for a slow runner, because a timeout that trips is indistinguishable
+    # from a hang in the product — which is exactly how the first one read.
+    timeout-minutes: 45
 
     services:
       postgres:
@@ -148,7 +165,9 @@ jobs:
       # a bare runner and whose absence shows up as a browser that will not
       # launch rather than as a missing package.
       - name: Install browsers
-        run: npx playwright install --with-deps chromium webkit
+        # Only the engine this job runs, plus chromium always: the PDF route
+        # uses puppeteer and is pointed at it below.
+        run: npx playwright install --with-deps chromium ${{ matrix.project }}
 
       # THE PDF ROUTE USES PUPPETEER AND NEEDS ITS OWN CHROMIUM. Rather than a
       # second browser download, it is pointed at the one Playwright just
@@ -156,7 +175,7 @@ jobs:
       # and a laptop are doing the same thing.
       - name: Run the browser suite
         run: |
-          PUPPETEER_EXECUTABLE_PATH="$(node -e "console.log(require('playwright').chromium.executablePath())")"             npx playwright test
+          PUPPETEER_EXECUTABLE_PATH="$(node -e "console.log(require('playwright').chromium.executablePath())")"             npx playwright test --project=${{ matrix.project }}
 
       # The report names which test failed and at what width; the trace is how
       # somebody finds out why without reproducing it. Kept only on failure —
@@ -165,7 +184,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-report
+          name: playwright-report-${{ matrix.project }}
           path: |
             playwright-report/
             test-results/

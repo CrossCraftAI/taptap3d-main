@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import { currentActorId } from "@/lib/data/actor";
+import { addComment, resolveComment } from "@/lib/data/comments";
 import {
   createPin,
   deletePin,
@@ -17,7 +18,7 @@ import { normaliseParams } from "@/lib/engine/derive";
 import { frameFromValue, intersectsPage, type OverrideFrame } from "@/lib/engine/frame";
 // From src/lib/forms.ts, because a "use server" file may export only async
 // functions and the panel's initial state is an object.
-import type { PinFormState, PlaceResult } from "@/lib/forms";
+import type { MoveResult, PinFormState, PlaceResult } from "@/lib/forms";
 
 /**
  * Pin the selected lots together.
@@ -293,4 +294,62 @@ async function writeFrame(
   revalidatePath(`/events/${eventId}/catalogue`);
   revalidatePath(`/events/${eventId}/lots/${lotId}`);
   return { ok: true };
+}
+
+/**
+ * Say something about one part of this catalogue.
+ *
+ * ── THE CATALOGUE IS ENSURED, AND THAT IS A LAYOUT DECISION ───────────────
+ *
+ * `ensureCatalogue` here rather than `getCatalogue`, unlike the lot page.
+ * Commenting on a page is a judgement about THIS document, so it is one of
+ * the gestures that legitimately makes the row — the same list the editor's
+ * own note keeps: template, pin, placement, override. A remark is the fifth,
+ * and it is a person deciding something about a layout rather than a read.
+ */
+export async function addCommentAction(
+  eventId: string,
+  lotId: string,
+  field: string | null,
+  body: string,
+  parentId: string | null,
+): Promise<MoveResult> {
+  const orgId = await currentOrgId();
+  const catalogue = await ensureCatalogue(orgId, eventId);
+  const id = await addComment(
+    orgId,
+    catalogue.id,
+    { lotId, field, body, parentId },
+    await currentActorId(orgId),
+  );
+  if (id === null) {
+    // Every refusal `addComment` makes is something a browser can cause by
+    // being a moment out of date, so this is one sentence rather than four.
+    return { ok: false, message: "That comment could not be saved. Reload and try again." };
+  }
+  revalidatePath(`/events/${eventId}/catalogue`);
+  return { ok: true, message: "" };
+}
+
+/** Settle a thread, or reopen one. Never a delete — see the table's own note. */
+export async function resolveCommentAction(
+  eventId: string,
+  commentId: string,
+  resolved: boolean,
+): Promise<MoveResult> {
+  const orgId = await currentOrgId();
+  const catalogue = await getCatalogue(orgId, eventId);
+  if (!catalogue) return { ok: false, message: "This sale has no catalogue." };
+  const changed = await resolveComment(
+    orgId,
+    catalogue.id,
+    commentId,
+    resolved,
+    await currentActorId(orgId),
+  );
+  if (!changed) {
+    return { ok: false, message: "That comment is no longer there. Reload and try again." };
+  }
+  revalidatePath(`/events/${eventId}/catalogue`);
+  return { ok: true, message: "" };
 }

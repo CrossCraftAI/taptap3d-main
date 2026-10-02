@@ -16,6 +16,8 @@ import { crc32, deflateSync } from "node:zlib";
 
 import { expect, test } from "@playwright/test";
 
+import { faceFor } from "@/lib/engine/faces";
+
 import { createEvent } from "./sale";
 import { shot } from "./shots";
 
@@ -153,8 +155,16 @@ test("the catalogue prints, with its plates and its Chinese in it", async ({
   // own rungs. PingFang and JhengHei belong to 黑體 alone, so their absence
   // is the assertion — and the paint probe above already says a Chinese glyph
   // actually rendered, which is the half that matters to a printer.
-  for (const sans of ["PingFang", "JhengHei", "Noto Sans CJK"]) {
-    expect(named, `${sans} is a 黑體 rung and this catalogue is 明體`).not.toContain(sans);
+  // A SUBSET OF 明體'S OWN RUNGS, read from the product rather than listed
+  // here. The first attempt forbade "Noto Sans CJK" outright and failed on a
+  // correct build: "Noto Sans CJK HK" is 明體's LAST rung, deliberately — a
+  // sans catalogue is a compromise and tofu is a reprint (faces.ts). The
+  // faces that are 黑體's alone are the ones that must not appear, and
+  // asking the vocabulary which those are is what keeps this true when a
+  // third face is added.
+  const serif = faceFor("serif").cjk;
+  for (const face of named.split(",").map((f) => f.trim()).filter(Boolean)) {
+    expect(serif, `${face} is not a rung of 明體`).toContain(face);
   }
 
   // The page tree says how many pages, in the file rather than in a header we

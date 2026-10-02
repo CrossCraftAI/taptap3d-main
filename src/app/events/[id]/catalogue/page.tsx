@@ -7,6 +7,7 @@ import { PinPanel, type PinPanelLot, type PinPanelPin } from "@/components/pin-p
 import { PreviewCanvas, type PlateInfo } from "@/components/preview-canvas";
 import { plateGeometry } from "@/lib/data/assets";
 import { getCatalogue, listPins } from "@/lib/data/catalogues";
+import { listComments } from "@/lib/data/comments";
 import { getEvent } from "@/lib/data/events";
 import { listLotsWithImages } from "@/lib/data/lots";
 import { currentOrgId, fieldPolicyOf } from "@/lib/data/org";
@@ -16,6 +17,8 @@ import { BUILT_IN_TEMPLATES, templateChoice } from "@/lib/engine/templates";
 import { documentPages, templateTiles } from "@/lib/render/template-preview";
 import { polishPlateAction } from "@/lib/polish/actions";
 import { PLATE_FIELD } from "@/lib/polish/panel-model";
+
+import { addCommentAction, resolveCommentAction } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -119,6 +122,10 @@ export default async function CataloguePage({
   // ask what a template does and deliberately ignore this catalogue's pins
   // and overrides, while the rail is a picture of the document as it stands.
   const rail = documentPages(document);
+  // Empty for a sale whose catalogue row does not exist yet — a GET must not
+  // make one (the editor's own rule), and a document nobody has laid out has
+  // nothing to have been remarked on.
+  const threads = catalogue ? await listComments(orgId, catalogue.id) : [];
   const empty = lots.length === 0;
 
   const pageOf = new Map<string, number>();
@@ -294,6 +301,12 @@ export default async function CataloguePage({
             // so the two halves meet at this prop.
             pages={rail.pages}
             pageAspect={rail.aspect}
+            // THE HOUSE'S ARGUMENT ABOUT THIS DOCUMENT. Read here, where the
+            // catalogue row already is; the canvas adds the one thing the
+            // server cannot know, which is what a person is pointing at.
+            threads={threads}
+            addComment={addCommentAction.bind(null, event.id)}
+            resolveComment={resolveCommentAction.bind(null, event.id)}
           />
           {empty && (
             /* ON THE CANVAS, at the foot of the blank sheet: one line and the one

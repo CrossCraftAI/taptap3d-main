@@ -18,6 +18,10 @@ import { logAction } from "@/lib/log/client";
 export const SELECTION_PANEL_ID = "selection-panel";
 /** Where the page rail is portalled to — see the note at the element. */
 export const PAGE_RAIL_ID = "page-rail";
+/** Where comment mode's controls go, under the document's settings. */
+export const COMMENT_HOST_ID = "comment-host";
+/** Where the thread list lands, taking the right column's turn. */
+export const COMMENT_PANEL_ID = "comment-panel";
 
 /**
  * The editor's frame: two slim rows of tools, then the canvas with the lots
@@ -199,6 +203,7 @@ export function CatalogueWorkspace({
                 Filled by a portal from src/components/preview-canvas.tsx,
                 which owns the iframe — the page tops and the scroll position
                 live there and cannot be handed to a server component. */}
+            <div id={COMMENT_HOST_ID} />
             <div id={PAGE_RAIL_ID} />
           </div>
           <div className="relative min-h-0 min-w-0 flex-1">{canvas}</div>
@@ -232,8 +237,28 @@ export function CatalogueWorkspace({
                   costs nothing and is the pattern the plan chose from
                   Mailchimp — select a block and the right-hand panel becomes
                   that block's. The lots list comes back on Escape. */}
-              <div id={SELECTION_PANEL_ID} className="peer min-h-0 overflow-y-auto empty:hidden" />
-              <div className="flex min-h-0 flex-1 flex-col peer-[:not(:empty)]:hidden">
+              {/* ── THREE THINGS, ONE COLUMN, IN PRIORITY ORDER ───────────
+                  Comments win over the selection, and the selection wins over
+                  the lots list. NAMED PEERS rather than three nested
+                  containers, because the rule is about siblings and a wrapper
+                  per state is a wrapper that has to be kept in step with the
+                  state it wraps.
+
+                  Why comments first: comment mode is a thing a person turned
+                  ON and is deliberately in, whereas a selection is a thing
+                  that happens whenever a pointer lands. A reviewer reading a
+                  thread must not lose it because they clicked a plate to see
+                  what the remark was about — which is exactly what they will
+                  do. */}
+              <div
+                id={COMMENT_PANEL_ID}
+                className="peer/comments min-h-0 flex-1 overflow-y-auto empty:hidden"
+              />
+              <div
+                id={SELECTION_PANEL_ID}
+                className="peer/selection min-h-0 overflow-y-auto empty:hidden peer-[:not(:empty)]/comments:hidden"
+              />
+              <div className="flex min-h-0 flex-1 flex-col peer-[:not(:empty)]/comments:hidden peer-[:not(:empty)]/selection:hidden">
                 {panel}
               </div>
             </div>

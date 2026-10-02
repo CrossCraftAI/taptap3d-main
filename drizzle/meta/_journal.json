@@ -57,6 +57,13 @@
       "when": 1790758569771,
       "tag": "0007_sign_in",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1790921382218,
+      "tag": "0008_lot_comments",
+      "breakpoints": true
     }
   ]
 }

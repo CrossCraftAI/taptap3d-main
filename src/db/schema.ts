@@ -22,6 +22,7 @@
 
 import { relations, sql } from "drizzle-orm";
 import {
+  type AnyPgColumn,
   boolean,
   doublePrecision,
   index,
@@ -728,6 +729,100 @@ export const importRuns = pgTable(
   (t) => [
     index("import_runs_org").on(t.orgId),
     index("import_runs_event").on(t.eventId),
+  ],
+);
+
+// ── The review layer ────────────────────────────────────────────────────────
+
+/**
+ * Somebody's remark about one part of one catalogue.
+ *
+ * ── A HOUSE REVIEWING A PROOF HAD NOWHERE TO PUT THIS ──────────────────────
+ *
+ * The conversation happened in email, which is the thing this product exists
+ * to replace: a specialist writes "the maker on lot 23 is wrong" into a
+ * message, a cataloguer reads it two days later next to eleven other
+ * messages, and nothing connects either of them to the lot.
+ *
+ * ── KEYED (lot, field), NEVER TO A POINT OR A PAGE ─────────────────────────
+ *
+ * The same keying as `overrides`, for the same reason and with the same
+ * payoff: ARCHITECTURE.md principle 1. A comment pinned to an (x, y) on page
+ * five is a comment about nothing the moment somebody changes the density,
+ * because the same lot is p5-s1 at 4-up and p2-s3 at 9-up. Keyed to the lot
+ * and the field, a remark made at four-up is still attached to the right
+ * caption line in a tearsheet.
+ *
+ * `field` is NULLABLE, and the two cases are different remarks: a comment on
+ * `maker` is about that line, and a comment with no field is about the lot —
+ * "this one should open the sale". The panel groups them apart.
+ *
+ * ── SCOPED TO THE CATALOGUE, NOT TO THE RECORD ─────────────────────────────
+ *
+ * "This caption is wrong" is about an OUTPUT; "this title is wrong" is about
+ * the record and belongs on the lot page. Putting comments on the catalogue
+ * keeps that distinction, and it is the same line `overrides` draws: one
+ * catalogue's decision, not the house's.
+ *
+ * ── THREADS ARE A SELF-REFERENCE AND NOT A SECOND TABLE ────────────────────
+ *
+ * A reply is a comment with a parent. One table means one reader, one
+ * authorisation path and one place where "who may see this" is decided; two
+ * would mean a `comment_replies` whose every column repeated this one.
+ *
+ * ── AND RESOLVING IS RECORDED, NOT A DELETION ──────────────────────────────
+ *
+ * The house's own argument about a lot is worth more than the tidiness of
+ * removing it: "we discussed this and decided no" is the answer to the person
+ * who asks again next week. `resolved_at` and `resolved_by` say it happened
+ * and who did it, which is the same shape `overrides.decided_by` uses and for
+ * the same reason — provenance is a fact, not a flag somebody can flip
+ * silently.
+ */
+export const lotComments = pgTable(
+  "lot_comments",
+  {
+    ...rowBase,
+    orgId: uuid("org_id")
+      .references(() => orgs.id, { onDelete: "cascade" })
+      .notNull(),
+    catalogueId: uuid("catalogue_id")
+      .references(() => catalogues.id, { onDelete: "cascade" })
+      .notNull(),
+    lotId: uuid("lot_id")
+      .references(() => lots.id, { onDelete: "cascade" })
+      .notNull(),
+    /** A field key, or null for a remark about the whole lot. */
+    field: text("field"),
+    /**
+     * A reply's parent. Null is a thread's first remark.
+     *
+     * `cascade`: deleting a thread takes its replies, because a reply to a
+     * question nobody can read is not worth keeping.
+     */
+    parentId: uuid("parent_id").references((): AnyPgColumn => lotComments.id, {
+      onDelete: "cascade",
+    }),
+    body: text("body").notNull(),
+    /**
+     * Who wrote it. NOT NULL, unlike `overrides.decided_by` — that column is
+     * nullable because a machine may propose a correction and nobody has
+     * confirmed it. Nothing proposes a comment: a remark with no author is
+     * not a remark, it is a rumour.
+     */
+    authorId: uuid("author_id")
+      .references(() => users.id, { onDelete: "cascade" })
+      .notNull(),
+    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+    resolvedBy: uuid("resolved_by").references(() => users.id, { onDelete: "set null" }),
+  },
+  (t) => [
+    index("lot_comments_org").on(t.orgId),
+    // The panel's own query: every thread in this catalogue, in one read.
+    index("lot_comments_catalogue").on(t.catalogueId),
+    // And the editor's, which asks "is there anything on THIS lot" per plate.
+    index("lot_comments_lot").on(t.lotId),
+    index("lot_comments_parent").on(t.parentId),
   ],
 );
 

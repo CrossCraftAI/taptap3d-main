@@ -30,6 +30,7 @@ function lot(n: number, over: Partial<LotRow> = {}): LotRow {
     maker: "佚名",
     estimate: "HK$40,000–80,000",
     photographs: 1,
+    comments: 0,
     page: 1,
     overrides: 0,
     ...over,

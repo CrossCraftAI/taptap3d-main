@@ -129,6 +129,19 @@ export interface LotRow {
   page: number | null;
   /** How many fields this catalogue overrides on it. */
   overrides: number;
+  /**
+   * Unsettled comment threads on it.
+   *
+   * ON THIS SCREEN AND NOT ONLY IN THE EDITOR, because the sale's index is
+   * where somebody scans a hundred and sixty lots asking "what still needs
+   * me". A review that can only be seen by opening the editor and turning a
+   * mode on is a review that gets missed, which is the thing the whole
+   * feature exists to stop.
+   *
+   * Settled threads are not counted: a badge that never goes away is a badge
+   * people stop seeing.
+   */
+  comments: number;
 }
 
 // WHERE A LOT IS DOES NOT APPEAR HERE, and leaving it out was a decision. The

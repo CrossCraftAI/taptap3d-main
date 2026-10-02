@@ -280,6 +280,20 @@ export function LotsTable({
                         {lot.overrides} overridden
                       </span>
                     )}
+                    {/* WHAT STILL NEEDS SOMEBODY. The sale's index is where a
+                        hundred and sixty lots get scanned, so a review that
+                        could only be seen by opening the editor and turning a
+                        mode on is a review that gets missed — which is the
+                        thing the comment layer exists to stop. */}
+                    {lot.comments > 0 && (
+                      <span
+                        className="ml-2 text-[10px] text-seal"
+                        data-comments={lot.comments}
+                      >
+                        {lot.comments}{" "}
+                        {lot.comments === 1 ? "comment" : "comments"}
+                      </span>
+                    )}
                   </td>
                   <td className="max-w-0 truncate px-3 py-2 text-muted max-xl:hidden">
                     {lot.maker || "—"}

@@ -6,6 +6,7 @@ import { NextAction } from "@/components/stage";
 import { StageControl } from "@/components/stage-control";
 import { moveLotsAction, reorderLotsAction } from "./actions";
 import { getCatalogue } from "@/lib/data/catalogues";
+import { countOpenComments } from "@/lib/data/comments";
 import { placesInUse } from "@/lib/data/movements";
 import { factsOf, getEventSummary } from "@/lib/data/events";
 import { listLotsWithImages } from "@/lib/data/lots";
@@ -80,6 +81,12 @@ export default async function EventPage({
       for (const slot of page.slots) pageOf.set(slot.lotId, page.number);
     }
   }
+  // Open threads per lot, in one read. `countOpenComments` groups in SQL
+  // rather than returning rows to be counted here: a sale under review has
+  // more remarks than lots.
+  const commentsOf = catalogue
+    ? await countOpenComments(orgId, catalogue.id)
+    : new Map<string, number>();
   const overridesOf = new Map<string, number>();
   for (const o of overrides) overridesOf.set(o.lotId, (overridesOf.get(o.lotId) ?? 0) + 1);
 
@@ -92,6 +99,7 @@ export default async function EventPage({
     photographs: lot.images.length,
     page: pageOf.get(lot.id) ?? null,
     overrides: overridesOf.get(lot.id) ?? 0,
+    comments: commentsOf.get(lot.id) ?? 0,
   }));
   const view = readLots(event.id, rows, query);
 

@@ -21,7 +21,7 @@
 
 import { expect, test, type Page } from "@playwright/test";
 
-import { createEvent } from "./sale";
+import { createEvent, pasteAndRead } from "./sale";
 import { shot } from "./shots";
 
 const RUN = Date.now();
@@ -59,16 +59,18 @@ async function step(page: Page, lotRef: string, key: "ArrowUp" | "ArrowDown"): P
 
 async function importLots(page: Page, eventUrl: string, count: number): Promise<void> {
   await page.goto(`${eventUrl}/import`);
-  await page
-    .locator("textarea")
-    .first()
-    .fill(
-      `編號\t品名\t作者\t估價\n` +
-        Array.from({ length: count }, (_, i) =>
-          [ref(i + 1), `拍品 ${i + 1}`, "佚名", "80,000 – 120,000 HKD"].join("\t"),
-        ).join("\n"),
-    );
-  await page.getByRole("button", { name: "Read this text" }).click();
+  // `pasteAndRead` AND NOT A BARE `fill`, which is what this was and why it
+  // failed on webkit under full-suite load. React tracks the last value it set
+  // on a controlled input, so filling the same string twice is not a change
+  // and no input event fires — the helper clears first and retries until the
+  // button is enabled. test/e2e/sale.ts carries the measurement.
+  await pasteAndRead(
+    page,
+    `編號\t品名\t作者\t估價\n` +
+      Array.from({ length: count }, (_, i) =>
+        [ref(i + 1), `拍品 ${i + 1}`, "佚名", "80,000 – 120,000 HKD"].join("\t"),
+      ).join("\n"),
+  );
   await page.getByRole("button", { name: new RegExp(`Import ${count} lots`) }).click();
   await page.waitForURL(eventUrl);
 }
