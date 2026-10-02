@@ -40,6 +40,15 @@ export interface InsertLotsOptions {
    */
   importRunId?: string;
   /**
+   * The kind of thing these lots are (src/lib/record-types.ts), or absent.
+   *
+   * ON THE WHOLE IMPORT AND NOT PER LOT, because a spreadsheet is a list of
+   * one kind of thing: a watch sale, a ceramics sale. A house with two kinds
+   * in one file has two imports, which is also how they keep the column
+   * mappings apart.
+   */
+  recordType?: string | null;
+  /**
    * Run inside the caller's transaction instead of on its own.
    *
    * The commit route needs the run row and its lots to land together: a run
@@ -101,6 +110,7 @@ export async function insertLots(
         fields: lot.fields,
         position: from + index,
         importRunId: options.importRunId ?? null,
+        recordType: options.recordType ?? null,
         // THEIR ROW, NOT OUR INDEX. `prepared` has already dropped rows where
         // every mapped column was empty, so position 3 is routinely row 7 —
         // and row 7 is the one a person can find when they open the

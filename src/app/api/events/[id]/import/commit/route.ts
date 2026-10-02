@@ -42,6 +42,20 @@ const bodySchema = z.object({
     }),
   }),
   mapping: z.array(targetSchema),
+  /**
+   * Which kind of thing these lots are, or absent for no particular kind,
+   * which is every import until a house defines a type.
+   *
+   * NOT VALIDATED AGAINST THE HOUSE'S TYPES HERE, and that is deliberate.
+   * `recordTypeOf` already answers null for an id it does not recognise
+   * (src/lib/record-types.ts), so a stale id stored on a lot reads as
+   * untyped rather than as an error — the same tolerance `templateFor` and
+   * `faceFor` have, and the reason none of them can make a record
+   * unreadable. What a type says about a lot's VALUES was shown on the
+   * clearance screen before this was posted, and is a report rather than a
+   * gate (principle 9).
+   */
+  recordType: z.string().max(200).nullish(),
 });
 
 export async function POST(
@@ -63,7 +77,7 @@ export async function POST(
     );
   }
 
-  const { table, mapping } = parsed.data;
+  const { table, mapping, recordType } = parsed.data;
   const prepared = applyMapping(table as ParsedTable, mapping as Mapping);
 
   // THE RUN IS WRITTEN FIRST, AND BOTH WRITES ARE ONE TRANSACTION.
@@ -107,6 +121,7 @@ export async function POST(
     if (!run) throw new Error("The import run could not be recorded.");
     const count = await insertLots(orgId, id, prepared.lots, {
       importRunId: run.id,
+      recordType: recordType ?? null,
       writer: tx,
     });
     if (count !== prepared.lots.length) {

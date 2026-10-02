@@ -114,25 +114,33 @@ jobs:
   browser:
     runs-on: ubuntu-latest
 
-    # ── ONE ENGINE PER JOB, WHICH IS A CORRECTION ─────────────────────────
+    # ── ONE ENGINE PER JOB ─────────────────────────────────────────────────
     #
-    # The first version ran both in one job with a 30-minute budget, measured
-    # from 11 minutes on a developer laptop. It was killed at exactly 30:00 on
-    # its first run: a two-core hosted runner is not a laptop, and assuming
-    # otherwise is the kind of estimate that reads as a hang.
+    # Each job runs half the tests and the two run at once, so a failure names
+    # its engine in the job title rather than in a log. The build is
+    # duplicated; it is the cheaper half.
     #
-    # Split, each job runs half the tests and the two run at once, so the
-    # wall-clock is one engine plus one build rather than two of each. The
-    # build is duplicated; it is the cheaper half and it buys a failure that
-    # names its engine in the job title rather than in a log.
+    # NOT FOR SPEED, AND THE FIRST VERSION OF THIS COMMENT SAID OTHERWISE.
+    # It claimed the split was needed because "a two-core hosted runner is not
+    # a laptop" and that an eleven-minute local measurement had been the
+    # defect. Measured once the job could actually finish: chromium 4m13s,
+    # webkit 4m31s — FASTER per engine than the same work here. The runner was
+    # never the problem; a missing `db:seed` was, and every test was failing at
+    # its full timeout while I theorised about hardware.
+    #
+    # The split stays because naming the engine is worth something on its own.
+    # The reasoning it was built on was wrong and is not worth preserving.
+
     strategy:
       fail-fast: false
       matrix:
         project: [chromium, webkit]
 
     name: browser (${{ matrix.project }})
-    # Room for a slow runner, because a timeout that trips is indistinguishable
-    # from a hang in the product — which is exactly how the first one read.
+    # Deliberately generous against a 4–5 minute job. A timeout that trips is
+    # indistinguishable from a hang in the product — which is exactly how the
+    # first one read, for forty-five minutes, while the real fault was a
+    # missing row. Tightening this would buy a faster wrong answer.
     timeout-minutes: 45
 
     services:
