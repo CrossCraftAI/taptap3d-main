@@ -1,0 +1,34 @@
+-- A house's own schema for its own records.
+--
+-- `lots.fields` is open jsonb and the field set belongs to the customer, which
+-- is right and is not changing. What it cannot express is anything ABOUT a
+-- field: that a condition grade is one of four rather than free prose, that a
+-- watch without a calibre is a mistake, that a diameter is a number.
+--
+-- `orgs.record_types` is a map of record-type id to a named set of typed
+-- properties, BESIDE `field_policy` and in the same shape on purpose: per-org
+-- jsonb, nullable with no default, read through a total function, governing
+-- the customer's own field names because there is no `fields` table for a row
+-- to reference. The two govern different things about one field - who may see
+-- it, and what it may be - and neither is a reason to invent a table.
+--
+-- `lots.record_type` is which kind a lot is, or null for no particular kind,
+-- which is every lot in every database today. TEXT and not a foreign key,
+-- because the types live in jsonb on the org; a lot whose type the house later
+-- deletes reads as untyped, which is already what the reader answers for an id
+-- it does not recognise.
+--
+-- NOTHING IS BACKFILLED AND NOTHING IS ENFORCED ON WRITE. The type governs
+-- INPUT, never output: values stay strings in `lots.fields`, `asText` and
+-- `derive` are untouched, and a house defining its first type changes no
+-- printed byte. A record that does not satisfy its type is REPORTED where
+-- somebody can fix it (principle 9), never refused - the values may have
+-- arrived from a client's spreadsheet an hour before a sale.
+--
+-- A COLUMN AND NOT A TABLE PER KIND OF THING. One `lots` table with a type
+-- keeps every existing query, index and org_id guarantee working - and Notion,
+-- the model this follows, stores it the same way: the database is a view over
+-- one table rather than a table of its own.
+
+ALTER TABLE "lots" ADD COLUMN "record_type" text;--> statement-breakpoint
+ALTER TABLE "orgs" ADD COLUMN "record_types" jsonb;

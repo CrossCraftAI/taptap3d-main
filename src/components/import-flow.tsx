@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useMemo, useRef, useState } from "react";
 
 import { applyMapping, type ColumnTarget, type Mapping } from "@/lib/import/apply";
+import { complaints, type RecordType } from "@/lib/record-types";
 import { CORE_FIELDS, type CoreFieldKey } from "@/lib/import/fields";
 import { inferMapping } from "@/lib/import/infer";
 import type { ParsedTable, ParseResult, UnreadableFile } from "@/lib/import/parse";
@@ -32,8 +33,19 @@ function confidenceLabel(confidence: number): string {
 
 export function ImportFlow({
   eventId,
+  recordTypes,
 }: {
   eventId: string;
+  /**
+   * The house's own record types, for the kind-of-thing picker.
+   *
+   * EMPTY FOR EVERY HOUSE TODAY, and then the picker is not rendered at all
+   * — a control offering nothing is a control that does nothing, which is
+   * the one thing a control must never be. The same rule `field_policy`
+   * follows: a house that has defined nothing sees the screen it saw before
+   * any of this existed.
+   */
+  recordTypes: readonly RecordType[];
 }): React.ReactElement {
   const router = useRouter();
   const fileInput = useRef<HTMLInputElement>(null);
@@ -45,11 +57,25 @@ export function ImportFlow({
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
   const [showSkipped, setShowSkipped] = useState(false);
+  const [recordType, setRecordType] = useState<string>("");
 
   const suggestions = useMemo(
     () => (table ? inferMapping(table.headers, table.rows) : []),
     [table],
   );
+
+  // ── WHAT THE CHOSEN KIND WOULD SAY ABOUT THESE ROWS ───────────────────
+  //
+  // VALIDATED HERE, where a person is already looking at the mapping, and not
+  // on save. The whole promise of this screen is "nothing is written until
+  // you have seen it"; a type that only complained afterwards would be a
+  // rule somebody meets for the first time with 160 lots already in the
+  // database.
+  //
+  // COUNTED PER COLUMN, not listed per lot. A 160-lot import with an empty
+  // calibre on every one of them is ONE thing to fix, and 160 lines saying
+  // so is a screen nobody reads to the bottom.
+  const chosen = recordTypes.find((t) => t.id === recordType) ?? null;
 
   // The SAME pure function the server runs on commit. The screen's promise —
   // "this is exactly what will be written" — is only true because there is one
@@ -58,6 +84,20 @@ export function ImportFlow({
     () => (table ? applyMapping(table, mapping) : null),
     [table, mapping],
   );
+
+  /** One line per property that complains, with how many lots raised it. */
+  const typeComplaints = useMemo(() => {
+    if (!chosen || !prepared) return [];
+    const tally = new Map<string, { reason: string; lots: number }>();
+    for (const lot of prepared.lots) {
+      for (const complaint of complaints(chosen, lot.fields)) {
+        const seen = tally.get(complaint.key);
+        if (seen) seen.lots += 1;
+        else tally.set(complaint.key, { reason: complaint.reason, lots: 1 });
+      }
+    }
+    return [...tally.values()];
+  }, [chosen, prepared]);
 
   function receive(result: ParseResult): void {
     if (result.kind === "unreadable") {
@@ -124,7 +164,7 @@ export function ImportFlow({
       const response = await fetch(`/api/events/${eventId}/import/commit`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ table, mapping }),
+        body: JSON.stringify({ table, mapping, recordType: recordType || null }),
       });
       if (!response.ok) {
         const body = (await response.json()) as { error?: string };
@@ -337,6 +377,49 @@ export function ImportFlow({
           <h2 className="text-[15px] font-medium">
             {prepared.lots.length} lots will be created
           </h2>
+
+          {/* ── WHAT KIND OF THING THESE ARE ───────────────────────────
+              Rendered ONLY when the house has defined one. A picker with no
+              options is a control that does nothing, and until there is a
+              screen to author a type there is nothing to offer — so a house
+              that has defined nothing sees exactly the screen it saw before
+              record types existed. */}
+          {recordTypes.length > 0 && (
+            <label className="mt-3 flex flex-wrap items-center gap-2 text-[13px]">
+              <span className="text-muted">These are</span>
+              <select
+                name="recordType"
+                value={recordType}
+                onChange={(e) => setRecordType(e.target.value)}
+                className="min-h-[var(--tap)] border border-rule bg-paper px-2 text-[13px]"
+              >
+                <option value="">no particular kind</option>
+                {recordTypes.map((type) => (
+                  <option key={type.id} value={type.id}>
+                    {type.name.zh} · {type.name.en}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+
+          {/* THE TYPE'S COMPLAINTS, REPORTED AND NEVER REFUSING (principle 9).
+              The values may have come from a client's spreadsheet an hour
+              before a sale, and an import that declined would leave the house
+              with nothing. Counted per column because a 160-lot import with
+              an empty calibre on every one is ONE thing to fix. */}
+          {typeComplaints.length > 0 && (
+            <ul className="mt-2 space-y-1">
+              {typeComplaints.map((complaint) => (
+                <li key={complaint.reason} className="text-[12px] text-seal">
+                  {complaint.reason}{" "}
+                  <span className="text-faint" data-numeric>
+                    on {complaint.lots} of {prepared.lots.length}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
           {prepared.warnings.length > 0 && (
             <ul className="mt-2 space-y-1">
               {prepared.warnings.map((warning) => (

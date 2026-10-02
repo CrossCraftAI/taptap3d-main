@@ -166,6 +166,26 @@ jobs:
       - name: Apply migrations
         run: npm run db:migrate
 
+      # ── AND AN ORGANISATION, WITHOUT WHICH NOTHING RENDERS ────────────
+      #
+      # `currentOrgId()` refuses to guess when there is no org and says so:
+      # "No organisation exists yet. Run `npm run db:seed` to create one." So
+      # every page of a freshly migrated database answers 500, and a browser
+      # suite against it fails every test at its full timeout.
+      #
+      # MEASURED, and it is why the first three runs never reached a verdict:
+      # 64 tests, every one failed, most of them after three minutes of
+      # waiting for a form that was never going to render — then the job hit
+      # its own ceiling and was reported as `cancelled`, which reads like
+      # infrastructure rather than a missing row.
+      #
+      # `verify` does not need this and that is the trap: the vitest database
+      # tests each create their own org (`makeOrg`), so they pass against a
+      # bare database. Only the suite that drives the real application needs
+      # the real application to be usable.
+      - name: Seed the organisation
+        run: npm run db:seed
+
       # ── THE FONTS, AND THEIR ABSENCE IS SILENT ────────────────────────────
       #
       # The PDF route paints 青 on a canvas and compares it to a notdef box

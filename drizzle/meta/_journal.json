@@ -64,6 +64,13 @@
       "when": 1790921382218,
       "tag": "0008_lot_comments",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1790929708347,
+      "tag": "0009_record_types",
+      "breakpoints": true
     }
   ]
 }

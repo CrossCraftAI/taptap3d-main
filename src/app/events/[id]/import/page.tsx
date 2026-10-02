@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 
 import { ImportFlow } from "@/components/import-flow";
 import { getEvent } from "@/lib/data/events";
-import { currentOrgId } from "@/lib/data/org";
+import { currentOrgId, recordTypesOf } from "@/lib/data/org";
 
 export const dynamic = "force-dynamic";
 
@@ -16,6 +16,10 @@ export default async function ImportPage({
   const orgId = await currentOrgId();
   const event = await getEvent(orgId, id);
   if (!event) notFound();
+
+  // The house's own kinds of thing, for the clearance screen's picker. Empty
+  // for every house today, and then the picker is not drawn at all.
+  const recordTypes = Object.values(await recordTypesOf(orgId));
 
   return (
     <div className="px-8 py-8">
@@ -34,7 +38,7 @@ export default async function ImportPage({
         </p>
       </header>
 
-      <ImportFlow eventId={event.id} />
+      <ImportFlow eventId={event.id} recordTypes={recordTypes} />
     </div>
   );
 }

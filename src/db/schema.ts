@@ -81,6 +81,26 @@ export const orgs = pgTable("orgs", {
   // this inside the system yet, and a key-value pair per tenant is not a
   // relation anybody queries across.
   fieldPolicy: jsonb("field_policy").$type<Record<string, unknown>>(),
+  // ── THE HOUSE'S OWN SCHEMA FOR ITS OWN RECORDS ──────────────────────────
+  //
+  // A map of record-type id to a named set of typed PROPERTIES
+  // (src/lib/record-types.ts). `lots.fields` is open jsonb and the field set
+  // belongs to the customer, which is not changing; what this adds is
+  // anything ABOUT a field — that 品相 is one of four grades rather than free
+  // prose, that a watch without a calibre is a mistake, that 直徑 is a number.
+  //
+  // BESIDE `field_policy` AND IN THE SAME SHAPE ON PURPOSE. That column
+  // already proves the pattern this needs: per-org jsonb, nullable with no
+  // default, read through a total function, governing the customer's own
+  // field names because there is no `fields` table for a row to reference.
+  // The two govern different things about one field — who may see it, and
+  // what it may be — and neither is a reason to invent a table.
+  //
+  // THE TYPE GOVERNS INPUT AND NEVER OUTPUT. Values stay strings in
+  // `lots.fields`, `asText` is untouched and `derive` is untouched, so a
+  // house defining its first type changes no printed byte. That is what makes
+  // this addable to a database full of records with no backfill.
+  recordTypes: jsonb("record_types").$type<Record<string, unknown>>(),
 });
 
 export const users = pgTable("users", {
@@ -241,6 +261,24 @@ export const lots = pgTable(
     fields: jsonb("fields").$type<Record<string, unknown>>().default({}).notNull(),
     // Order within the event, as the house intends it to appear.
     position: integer("position").default(0).notNull(),
+    // ── WHICH KIND OF THING THIS IS ─────────────────────────────────────────
+    //
+    // An id into `orgs.record_types`, or null for a lot of no particular kind
+    // — which is every lot in every database today and stays the honest
+    // default. A record type layers a named, typed property schema over the
+    // open `fields` above; it does not replace it, and nothing here is
+    // enforced on write (src/lib/record-types.ts reports, it does not refuse).
+    //
+    // A COLUMN AND NOT A TABLE PER KIND. One `lots` table with a type keeps
+    // every existing query, index and `org_id` guarantee working, and Notion
+    // — the model the owner named — stores it the same way: the database is
+    // a view over one table, not a table of its own.
+    //
+    // TEXT AND NOT A FOREIGN KEY, because the types live in a jsonb column on
+    // the org rather than in a table. A lot whose type the house later deletes
+    // reads as untyped, which is what `recordTypeOf` already answers for an id
+    // it does not recognise.
+    recordType: text("record_type"),
     // ── WHERE THIS LOT CAME FROM ────────────────────────────────────────────
     //
     // `import_runs` recorded the file, the format, the cleared mapping and the

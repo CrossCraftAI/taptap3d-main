@@ -26,6 +26,7 @@ import { eq, sql } from "drizzle-orm";
 
 import { getDb, memberships, orgs } from "@/db";
 import { authConfigured, currentSession } from "@/lib/auth/session";
+import { recordTypesFrom, type RecordTypes } from "@/lib/record-types";
 import { policyFor, type FieldPolicy } from "@/lib/engine/visibility";
 
 export class NoOrgError extends Error {
@@ -176,6 +177,31 @@ export async function fieldPolicyOf(orgId: string): Promise<FieldPolicy> {
     .where(eq(orgs.id, orgId))
     .limit(1);
   return policyFor(row?.fieldPolicy);
+}
+
+/**
+ * The house's own record types.
+ *
+ * ── THE SAME SHAPE AS `fieldPolicyOf`, AND FOR THE SAME REASONS ───────────
+ *
+ * Total over whatever the column holds, read per request rather than cached,
+ * and never second-guessing the reader it delegates to. `recordTypesFrom`
+ * drops a definition it cannot parse rather than failing, because the column
+ * is jsonb a screen will one day write and a lot page must open whatever is
+ * in it.
+ *
+ * Empty for every house today. A record type is a thing a house DEFINES, and
+ * nothing in the product authors one yet — the import clearance screen is
+ * where the first one will be used, and an authoring screen is the sequel.
+ */
+export async function recordTypesOf(orgId: string): Promise<RecordTypes> {
+  const db = getDb();
+  const [row] = await db
+    .select({ recordTypes: orgs.recordTypes })
+    .from(orgs)
+    .where(eq(orgs.id, orgId))
+    .limit(1);
+  return recordTypesFrom(row?.recordTypes);
 }
 
 /**
