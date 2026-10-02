@@ -60,6 +60,19 @@ export interface InsertLotsOptions {
  * Position comes from FILE ORDER. The house sequenced the sheet deliberately;
  * re-sorting it on the way in would silently discard that, and `ref` is a string
  * ("P01", "Lot 12a") so it cannot be sorted numerically anyway.
+ *
+ * ── AND IT APPENDS, WHICH IT DID NOT ──────────────────────────────────────
+ *
+ * This numbered every import from zero, so a SECOND import into a sale that
+ * already had lots did not append — it interleaved. Two lots at position 0,
+ * two at 1, and the order they came out in was whatever the tie-break
+ * (`created_at`, then `id`) decided. A house importing the ceramics and then
+ * the paintings got them shuffled together, and nothing said so.
+ *
+ * It was a latent bug for as long as the order was immutable and nobody
+ * could see it was wrong. It is fixed here rather than in the reorder work
+ * because it is not about reordering: it is about what a second import
+ * means, and the answer is "after the first one".
  */
 export async function insertLots(
   orgId: string,
@@ -69,6 +82,15 @@ export async function insertLots(
 ): Promise<number> {
   if (prepared.length === 0) return 0;
   const db = options.writer ?? getDb();
+  // WHERE THIS IMPORT STARTS. `max + 1`, read inside the caller's transaction
+  // when there is one, so two imports committing at the same moment cannot
+  // both read the same maximum — the commit route wraps this (see its note on
+  // writing the run row first).
+  const [tail] = await db
+    .select({ last: sql<number | null>`max(${lots.position})` })
+    .from(lots)
+    .where(and(eq(lots.orgId, orgId), eq(lots.eventId, eventId)));
+  const from = (tail?.last ?? -1) + 1;
   const rows = await db
     .insert(lots)
     .values(
@@ -77,7 +99,7 @@ export async function insertLots(
         eventId,
         ref: lot.ref,
         fields: lot.fields,
-        position: index,
+        position: from + index,
         importRunId: options.importRunId ?? null,
         // THEIR ROW, NOT OUR INDEX. `prepared` has already dropped rows where
         // every mapped column was empty, so position 3 is routinely row 7 —
@@ -88,6 +110,71 @@ export async function insertLots(
     )
     .returning({ id: lots.id });
   return rows.length;
+}
+
+/**
+ * Write the sale's running order.
+ *
+ * ── ONE STATEMENT, FOR `insertLots`' REASON WITH MORE FORCE ───────────────
+ *
+ * A loop over 160 lots is 160 round trips and — the half that matters — a
+ * failure partway through leaves a sale in an order nobody chose, with some
+ * lots renumbered and some not. There is no "undo" for that because there is
+ * no record of what the order was. A single `update ... from (values ...)` is
+ * atomic by construction, the same way the multi-row insert above is.
+ *
+ * ── IT REFUSES A PARTIAL ORDER RATHER THAN APPLYING ONE ───────────────────
+ *
+ * The caller sends the WHOLE sale, and this checks that what arrived is
+ * exactly the sale's lots — no more, no fewer, no duplicates. A list missing
+ * a lot would leave that lot at its old number, colliding with whatever now
+ * holds it; a list with a stranger in it would be a cross-tenant write.
+ *
+ * It is a real case and not a defensive flourish: the browser builds this
+ * list from the rows it has on screen, and a sale somebody else added a lot
+ * to a moment ago is a list that is one short.
+ *
+ * Returns how many rows were renumbered, or null when the order was refused.
+ */
+export async function reorderLots(
+  orgId: string,
+  eventId: string,
+  order: readonly string[],
+): Promise<number | null> {
+  if (order.length === 0) return null;
+  if (new Set(order).size !== order.length) return null;
+
+  const db = getDb();
+  // BOTH, ALWAYS — an id is not an authorisation, and this one arrives from a
+  // browser as a list.
+  const held = await db
+    .select({ id: lots.id })
+    .from(lots)
+    .where(and(eq(lots.orgId, orgId), eq(lots.eventId, eventId)));
+  if (held.length !== order.length) return null;
+  const mine = new Set(held.map((row) => row.id));
+  if (!order.every((id) => mine.has(id))) return null;
+
+  // `::uuid` and `::int` on the first row only, which is what Postgres needs
+  // to type the VALUES list; the rest follow. Parameterised throughout —
+  // these ids came from a request.
+  const values = sql.join(
+    order.map((id, index) =>
+      index === 0
+        ? sql`(${id}::uuid, ${index}::int)`
+        : sql`(${id}, ${index})`,
+    ),
+    sql`, `,
+  );
+  await db.execute(sql`
+    update ${lots} as l
+       set position = v.position, updated_at = now()
+      from (values ${values}) as v(id, position)
+     where l.id = v.id
+       and l.org_id = ${orgId}
+       and l.event_id = ${eventId}
+  `);
+  return order.length;
 }
 
 export interface LotWithImages {

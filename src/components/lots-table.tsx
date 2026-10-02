@@ -36,6 +36,7 @@ export function LotsTable({
   rows,
   places,
   move,
+  reorder,
 }: {
   eventId: string;
   rows: readonly LotRow[];
@@ -43,6 +44,16 @@ export function LotsTable({
   places: readonly string[];
   /** `moveLotsAction` with the sale bound; the ids are this component's. */
   move: (lotIds: readonly string[], formData: FormData) => Promise<MoveResult>;
+  /**
+   * `reorderLotsAction` with the sale bound: put one lot before another, or
+   * before nothing, which is the end.
+   *
+   * A GESTURE AND NOT AN ORDER, because this screen pages at fifty and
+   * filters — the rows here are routinely a subset of the sale, and a list
+   * built from them would be a list missing a hundred lots. The server
+   * applies the gesture to the whole order, where the pins also live.
+   */
+  reorder: (lotId: string, beforeLotId: string | null) => Promise<MoveResult>;
 }): React.ReactElement {
   const [selection, setSelection] = useState<Selection>(NOTHING);
   const [message, setMessage] = useState<string | null>(null);
@@ -50,6 +61,49 @@ export function LotsTable({
 
   const ids = useMemo(() => rows.map((r) => r.id), [rows]);
   const picked = onScreen(selection, ids);
+
+  // ── REORDERING ────────────────────────────────────────────────────────────
+  //
+  // `held` is the lot a hand or a keyboard has picked up. It is one id and
+  // not a selection: the run that moves with it is decided by the PINS, on
+  // the server, and a second notion of "what is moving" on this side would be
+  // a second answer to that question.
+  const [held, setHeld] = useState<string | null>(null);
+  /** The row a drop would land before, for the line the eye follows. */
+  const [over, setOver] = useState<string | null>(null);
+
+  const sendMove = (lotId: string, beforeLotId: string | null): void => {
+    if (lotId === beforeLotId) return;
+    logAction("lots.reorder", { eventId });
+    startTransition(async () => {
+      const result = await reorder(lotId, beforeLotId);
+      if (!result.ok) setMessage(result.message);
+    });
+  };
+
+  /**
+   * One step up or down, from the keyboard.
+   *
+   * THE ROWS ON SCREEN ARE THE STEPS, which is the honest thing on a paged
+   * and filtered list: moving "up" means before the row above, and the row
+   * above is what a person can see. The server resolves that to the whole
+   * sale's order, so a step on a filtered view still lands where the eye
+   * said — immediately before that lot, wherever it sits among the hundred
+   * and fifty that are not drawn.
+   */
+  const step = (index: number, direction: "up" | "down"): void => {
+    const lotId = rows[index]?.id;
+    if (!lotId) return;
+    if (direction === "up") {
+      const target = rows[index - 1];
+      if (target) sendMove(lotId, target.id);
+      return;
+    }
+    // Past the row below: before the one after it, or to the end of the sale
+    // when the row below is the last one drawn.
+    const after = rows[index + 2];
+    sendMove(lotId, after ? after.id : null);
+  };
 
   const onSend = (formData: FormData): void => {
     logAction("lots.move", { eventId, lots: picked.length });
@@ -79,6 +133,9 @@ export function LotsTable({
                 re-running the inspection at every width, not picked because it
                 sounded right. */}
             <tr className="border-b border-rule text-left text-[10px] tracking-wide text-muted">
+              <th className="w-8 px-1 py-2 font-medium">
+                <span className="sr-only">Running order</span>
+              </th>
               <th className="w-10 px-2 py-2 font-medium">
                 <span className="sr-only">Picked</span>
               </th>
@@ -112,11 +169,72 @@ export function LotsTable({
                 <tr
                   key={lot.id}
                   data-lot={lot.id}
+                  // `data-ref` for `data-page`'s reason, one column later: a
+                  // driven test that reads the house's reference by counting
+                  // cells breaks the day a column arrives — and one just did,
+                  // which is how this attribute came to exist.
+                  data-ref={lot.ref ?? ""}
                   aria-selected={isPicked}
+                  // THE WHOLE ROW IS THE DROP TARGET, not the handle: a hand
+                  // aiming at a 24px grip to drop on is a hand that misses.
+                  // The handle is only where a drag STARTS, which is what
+                  // keeps an ordinary click on a title a click.
+                  onDragOver={(e) => {
+                    if (!held) return;
+                    e.preventDefault();
+                    setOver(lot.id);
+                  }}
+                  onDrop={(e) => {
+                    if (!held) return;
+                    e.preventDefault();
+                    sendMove(held, lot.id);
+                    setHeld(null);
+                    setOver(null);
+                  }}
                   className={`border-b border-rule last:border-b-0 ${
                     isPicked ? "bg-sunk" : "hover:bg-sunk"
+                  } ${held === lot.id ? "opacity-50" : ""} ${
+                    over === lot.id && held !== lot.id
+                      ? "border-t-2 border-t-seal"
+                      : ""
                   }`}
                 >
+                  <td className="px-1 py-2">
+                    {/* ── THE GRIP, AND THE KEYBOARD'S WHOLE PATH THROUGH IT ─
+                        A drag that cannot be done from a keyboard is a feature
+                        a specialist with a trackpad injury cannot use, and —
+                        the part that is checkable — one no test can drive
+                        deterministically. So the grip is a BUTTON: focus it
+                        and the arrows move the lot, which is the same gesture
+                        through the same action.
+
+                        `aria-label` names the lot, because a column of
+                        identical "Move" buttons is a screen reader reading
+                        "Move, Move, Move" down a hundred and sixty rows. */}
+                    <button
+                      type="button"
+                      draggable
+                      disabled={pending}
+                      data-grip={lot.id}
+                      aria-label={`Move ${lot.ref ?? (lot.title || "this lot")} in the running order`}
+                      title="Drag to re-sequence, or use the arrow keys"
+                      onDragStart={() => setHeld(lot.id)}
+                      onDragEnd={() => {
+                        setHeld(null);
+                        setOver(null);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+                        // The page scrolls under an arrow otherwise, and the
+                        // row the hand is holding leaves the screen.
+                        e.preventDefault();
+                        step(index, e.key === "ArrowUp" ? "up" : "down");
+                      }}
+                      className="flex min-h-[var(--tap)] w-full cursor-grab items-center justify-center text-faint hover:text-ink disabled:cursor-not-allowed"
+                    >
+                      <span aria-hidden="true">⠿</span>
+                    </button>
+                  </td>
                   <td className="px-2 py-2">
                     {/* THE WHOLE CELL IS THE TARGET, not the twelve-pixel box
                         inside it: `--tap` is the house floor and a checkbox is

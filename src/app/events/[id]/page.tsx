@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import { LotsIndex } from "@/components/lots-index";
 import { NextAction } from "@/components/stage";
 import { StageControl } from "@/components/stage-control";
-import { moveLotsAction } from "./actions";
+import { moveLotsAction, reorderLotsAction } from "./actions";
 import { getCatalogue } from "@/lib/data/catalogues";
 import { placesInUse } from "@/lib/data/movements";
 import { factsOf, getEventSummary } from "@/lib/data/events";
@@ -176,6 +176,7 @@ export default async function EventPage({
           // every id against the org and the event again regardless — a bound
           // argument is a convenience, not an authorisation.
           move={moveLotsAction.bind(null, event.id)}
+          reorder={reorderLotsAction.bind(null, event.id)}
         />
       )}
     </div>

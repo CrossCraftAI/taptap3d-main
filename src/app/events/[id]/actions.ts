@@ -3,11 +3,14 @@
 import { revalidatePath } from "next/cache";
 
 import { currentActorId } from "@/lib/data/actor";
+import { getCatalogue, listPins } from "@/lib/data/catalogues";
 import { setStageOverride } from "@/lib/data/events";
+import { listLots, reorderLots } from "@/lib/data/lots";
 import { MAX_PLACE, logMovements } from "@/lib/data/movements";
 import { currentOrgId } from "@/lib/data/org";
-import type { MoveResult } from "@/lib/forms";
 import { workflowOf } from "@/lib/data/workflow";
+import type { MoveResult } from "@/lib/forms";
+import { moveBefore } from "@/lib/lot-order";
 
 /**
  * Set where the sale is by hand, or go back to what the data says.
@@ -102,4 +105,70 @@ export async function moveLotsAction(
     ok: true,
     message: `${written} ${written === 1 ? "lot is" : "lots are"} at ${toPlace} now.`,
   };
+}
+
+/**
+ * Put one lot before another in the sale's running order.
+ *
+ * ── THE BROWSER SENDS A GESTURE, NOT A LIST ────────────────────────────────
+ *
+ * "Move this lot before that one" rather than "here is the new order of the
+ * sale", and the difference carries three things:
+ *
+ *   IT WORKS ON ANY VIEW. The sale's index pages at fifty, searches and
+ *   filters, so the rows on screen are routinely a subset — and a list built
+ *   from them would be a list missing a hundred lots. A gesture names two
+ *   lots, and the server applies it to the whole order.
+ *
+ *   THE PIN RULE IS ENFORCED WHERE THE PINS ARE. `moveBefore` moves a pinned
+ *   run as one block, which is what makes the broken state unreachable
+ *   (src/lib/lot-order.ts) — and the pins live on the catalogue, on this side.
+ *   A browser that computed the order would have to know them, and a browser
+ *   that knew them could be wrong about them.
+ *
+ *   IT IS NOT POSITIONAL. Principle 1: the same drop is index 4 before the
+ *   move and index 3 after it. Two lot ids mean the same thing either way.
+ *
+ * `beforeLotId` null means the end of the sale.
+ */
+export async function reorderLotsAction(
+  eventId: string,
+  lotId: string,
+  beforeLotId: string | null,
+): Promise<MoveResult> {
+  const orgId = await currentOrgId();
+
+  const order = (await listLots(orgId, eventId)).map((lot) => lot.id);
+  if (!order.includes(lotId)) {
+    return { ok: false, message: "That lot is not in this sale." };
+  }
+
+  // A sale with no catalogue row has no pins, which is most sales most of the
+  // time — read, never ensured: reordering is not a request for a catalogue.
+  const catalogue = await getCatalogue(orgId, eventId);
+  const pins = catalogue ? await listPins(orgId, catalogue.id) : [];
+
+  const next = moveBefore(order, pins, lotId, beforeLotId);
+  // NOTHING MOVED IS NOT A FAILURE. A drag that ends where it began is an
+  // ordinary thing a hand does, and renumbering the sale for it would bump
+  // the catalogue and reload every open preview in the building.
+  if (next.every((id, i) => id === order[i])) {
+    return { ok: true, message: "" };
+  }
+
+  const written = await reorderLots(orgId, eventId, next);
+  if (written === null) {
+    // `reorderLots` refuses an order it cannot account for — which here means
+    // the sale changed under the gesture, because the list came from it a
+    // moment ago.
+    return { ok: false, message: "This sale changed while you were moving that. Try again." };
+  }
+
+  // THE ORDER IS THE DOCUMENT. Every page a lot lands on, every pin's run and
+  // the preview's own pagination follow from it, so the editor is revalidated
+  // beside the index — and `previewKey` already folds `max(lots.updatedAt)`,
+  // so the frame reloads without anything here knowing how.
+  revalidatePath(`/events/${eventId}`);
+  revalidatePath(`/events/${eventId}/catalogue`);
+  return { ok: true, message: "" };
 }

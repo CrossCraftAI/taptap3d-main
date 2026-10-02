@@ -35,6 +35,7 @@ export function LotsIndex({
   view,
   places,
   move,
+  reorder,
 }: {
   eventId: string;
   view: LotsView;
@@ -42,6 +43,8 @@ export function LotsIndex({
   places: readonly string[];
   /** `moveLotsAction` with the sale bound. Crosses to the client table. */
   move: (lotIds: readonly string[], formData: FormData) => Promise<MoveResult>;
+  /** `reorderLotsAction` with the sale bound. One gesture, not an order. */
+  reorder: (lotId: string, beforeLotId: string | null) => Promise<MoveResult>;
 }): React.ReactElement {
   return (
     <>
@@ -131,6 +134,7 @@ export function LotsIndex({
           rows={view.rows}
           places={places}
           move={move}
+          reorder={reorder}
         />
       )}
 
