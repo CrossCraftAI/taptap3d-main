@@ -6,11 +6,31 @@ on:
   pull_request:
   workflow_dispatch:
 
-# One run per branch. Cancel superseded runs on branches, but never on main —
-# a cancelled main run leaves the branch with no verdict at all.
+# ── ONE RUN PER BRANCH, AND MAIN NEVER CANCELS ITSELF ──────────────────────
+#
+# THE GROUP VARIES, THE FLAG DOES NOT. It used to be one group per ref with
+#
+#     cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+#
+# and a comment saying main was protected because that expression is false
+# there. IT IS NOT PROTECTED, and the comment was wrong for as long as it
+# existed - it simply was not exercised, because pushes to main used to be
+# further apart than a run took.
+#
+# MEASURED, on three consecutive pushes to main inside half an hour: all
+# three runs came back `cancelled`, including one whose `verify` and `deploy`
+# had already gone green and whose browser jobs were still running. The
+# browser suite's first real CI verdict was destroyed by the next push.
+#
+# So the protection is in the GROUP instead, where it does not depend on how
+# an expression is coerced: on main the group carries the commit, so every
+# push gets a group of its own and there is never a run to supersede. On a
+# branch the group is the ref, so a new push supersedes the old one - which
+# is the behaviour worth having there, where the only reader is the person
+# who just pushed.
 concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+  group: ci-${{ github.ref }}-${{ github.ref == 'refs/heads/main' && github.sha || 'branch' }}
+  cancel-in-progress: true
 
 jobs:
   verify:
