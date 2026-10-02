@@ -70,6 +70,107 @@ jobs:
       - name: Build
         run: npm run build
 
+  # ── THE BROWSER SUITE ──────────────────────────────────────────────────────
+  #
+  # 123 tests across chromium and webkit, driving the BUILT application against
+  # a real Postgres. Until now they ran only when a person remembered, which
+  # for a suite that has caught every defect the unit tests structurally cannot
+  # — a GET that advanced a sale's stage, a panel covering the plates it
+  # treats, a rail that ate the document it navigates — is the wrong place to
+  # keep them.
+  #
+  # ── IT DOES NOT GATE THE DEPLOY, YET, AND THAT IS DELIBERATE ───────────────
+  #
+  # `deploy` needs `verify` and not this. An eight-minute browser suite that
+  # has never run on this runner will have environment failures that are not
+  # product failures, and a deploy blocked by one of those on the day
+  # something needs shipping is how a gate gets removed permanently.
+  #
+  # It still shows a red X on the commit, which is what makes it a check
+  # rather than a cron job nobody reads.
+  #
+  # PROMOTE IT by adding `browser` to `deploy.needs` once it has run green on
+  # main for a couple of weeks. That is the whole change.
+  browser:
+    runs-on: ubuntu-latest
+    # Measured at 8–9 minutes locally with one worker; the build in front of it
+    # is most of the rest. Generous rather than tight: a timeout that trips on
+    # a slow runner is indistinguishable from a hang in the product.
+    timeout-minutes: 30
+
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: taptap3d
+          POSTGRES_PASSWORD: taptap3d
+          POSTGRES_DB: taptap3d
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U taptap3d -d taptap3d"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 20
+
+    env:
+      DATABASE_URL: postgres://taptap3d:taptap3d@localhost:5432/taptap3d
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Apply migrations
+        run: npm run db:migrate
+
+      # ── THE FONTS, AND THEIR ABSENCE IS SILENT ────────────────────────────
+      #
+      # The PDF route paints 青 on a canvas and compares it to a notdef box
+      # (src/lib/render/pdf.ts), so a runner with no CJK face does not fail
+      # loudly — it exports a catalogue of empty boxes and reports TOFU. The
+      # Dockerfile installs the Alpine equivalents and says the same thing
+      # there: font-noto-cjk alone is SANS, and the extra package is what
+      # carries the serif this product sets catalogues in.
+      - name: Install CJK fonts
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends fonts-noto-cjk fonts-noto-cjk-extra
+          fc-cache -f
+          fc-list : family | grep -i "noto serif cjk" | head -3 || echo "NO CJK SERIF FOUND"
+
+      # `--with-deps` pulls the shared libraries webkit needs, which are not on
+      # a bare runner and whose absence shows up as a browser that will not
+      # launch rather than as a missing package.
+      - name: Install browsers
+        run: npx playwright install --with-deps chromium webkit
+
+      # THE PDF ROUTE USES PUPPETEER AND NEEDS ITS OWN CHROMIUM. Rather than a
+      # second browser download, it is pointed at the one Playwright just
+      # installed — which is what .env.example tells a developer to do, so CI
+      # and a laptop are doing the same thing.
+      - name: Run the browser suite
+        run: |
+          PUPPETEER_EXECUTABLE_PATH="$(node -e "console.log(require('playwright').chromium.executablePath())")"             npx playwright test
+
+      # The report names which test failed and at what width; the trace is how
+      # somebody finds out why without reproducing it. Kept only on failure —
+      # a green run's artifacts are megabytes nobody opens.
+      - name: Keep the report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
+
   deploy:
     # NEEDS: verify. That dependency is the whole point of putting deploy in this
     # workflow rather than in its own — a deploy that can outrun the tests is a

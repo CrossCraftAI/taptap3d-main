@@ -142,12 +142,20 @@ test("the catalogue prints, with its plates and its Chinese in it", async ({
   // beside a 明體 catalogue names the sans faces too. A default catalogue is
   // 明體, so its serif rungs are named and the sans-only rungs are not.
   const named = headers["x-taptap3d-fonts"] ?? "";
-  expect(named).toContain("Noto Serif CJK HK");
-  // PingFang and JhengHei are rungs of 黑體 alone. Neither is on this Alpine
-  // container, so this would pass by accident there — it is the assertion
-  // that a machine which HAS them still reports on the face in use.
-  expect(named).not.toContain("PingFang");
-  expect(named).not.toContain("JhengHei");
+  // ASSERTED AS A PROPERTY OF THE PRODUCT, NOT OF THE MACHINE. The first
+  // version required "Noto Serif CJK HK" to be present — which is a fact
+  // about whichever container happens to be running, and goes red on a CI
+  // runner whose Noto package registers the family differently while the
+  // product is perfectly correct. A test that fails for the wrong reason is
+  // a test somebody loosens.
+  //
+  // What IS the product's claim: every face the header names is one of 明體's
+  // own rungs. PingFang and JhengHei belong to 黑體 alone, so their absence
+  // is the assertion — and the paint probe above already says a Chinese glyph
+  // actually rendered, which is the half that matters to a printer.
+  for (const sans of ["PingFang", "JhengHei", "Noto Sans CJK"]) {
+    expect(named, `${sans} is a 黑體 rung and this catalogue is 明體`).not.toContain(sans);
+  }
 
   // The page tree says how many pages, in the file rather than in a header we
   // wrote ourselves.

@@ -104,18 +104,46 @@ demo.
 
 ---
 
-## 4. The demo data reads as broken in one place — hours
+## 4. The demo data — one thing fixed, one thing needing your call
 
-The UAT sale's lot P01 is titled `01.04.97 / 01.04.97`. That is a date mapped
-to the wrong column in the client's own spreadsheet, not an importer defect —
-but on a screen someone is being sold, it reads as a bug, and it is the first
-lot in the sale.
+### Fixed, 2 Oct
 
-Two honest options: correct that one record through the product's own lot form
-(it is their data and the correction is a real one a registrar would make), or
-open the demo on a different lot.
+Lot P01 of the UAT sale read `01.04.97 / 01.04.97`.
 
----
+**I had this wrong in the first version of this document**, which called it "a
+date mapped to the wrong column in the client's own spreadsheet". It was not.
+The lot's own notes say so: *此作《01.04.97》為趙無極晚期重要油畫* — the work
+genuinely IS titled 01.04.97, because Zao Wou-Ki dated his paintings instead
+of naming them. The title was right and the record was wrong in a different
+way: every other lot carries `{zh, en}` as two keys, and this one had the two
+concatenated into `zh` because they are identical strings.
+
+Corrected to `{"zh": "01.04.97", "en": "01.04.97"}` on the deployed instance.
+Four rows — the same lot in each of the four copies of the sale — and nothing
+else in the database had a slash in a title.
+
+### Still open: the ledger is four copies of one sale, named for testers
+
+    TEST                                            0 lots
+    ★ UAT 測試用 — 43 件拍品・42 張圖（請用這一本）   43
+    （備份示範・43 件・42 張圖）                      43
+    （系統測試檔・沒有圖，不適合測試）                 43
+    （舊版示範・只有 10 張圖）                        43
+
+A prospect opening the product sees five sales, four of which are the same
+sale, with names that are instructions to us: *please use this one*, *backup
+demo*, *system test file, not suitable for testing*, *old demo, only 10
+images*. That is the "developer note" category the owner asked to have
+removed — scaffolding showing through the product.
+
+**Not acted on, because it is destructive and outward-facing.** The owner's
+standing instruction is to keep the UAT sale; the other three were never
+mentioned, and deleting a sale carrying a client's archived artwork is not a
+thing to infer. Renaming is the reversible alternative and still edits their
+data.
+
+Needs one decision: delete the three duplicates, rename all of them to
+plausible sale names, or leave them.
 
 ## What I would NOT build for a demo
 
