@@ -35,6 +35,7 @@
 import { eq } from "drizzle-orm";
 
 import { getDb, memberships, orgs, users } from "@/db";
+import { authConfigured, currentSession } from "@/lib/auth/session";
 
 /**
  * Reserved by RFC 2606 so it can never resolve. Exported so a screen can tell a
@@ -60,6 +61,26 @@ export function isGateIdentity(email: string): boolean {
  * back, the same shape as `recordAsset`.
  */
 export async function currentActorId(orgId: string): Promise<string> {
+  // ── THE SESSION, WHEN THERE IS ONE ────────────────────────────────────────
+  //
+  // The header above predicted this: "when sign-in lands it becomes a session
+  // lookup and nothing that calls `currentActorId()` changes shape." It did,
+  // and nothing did — twenty-eight callers, none of them touched.
+  //
+  // The gate identity below is now the fallback rather than the answer, and
+  // it is still the RIGHT fallback: local development has no Google project,
+  // and a row decided before sign-in existed stays honest, because "a member
+  // of the house, before the system could name them" is exactly what it was.
+  const signedIn = await currentSession();
+  if (signedIn) return signedIn.userId;
+  // AND IF SIGN-IN IS CONFIGURED, THE GATE IDENTITY IS NOT AN ANSWER. Falling
+  // back to it on a deployment that has sign-in would mean a forged cookie
+  // acts as "a member of the house" — see the same guard in org.ts, which is
+  // where a request without a session is actually stopped. This is the second
+  // lock on the same door: every writer resolves an org before it resolves an
+  // actor, so in practice org.ts has already refused.
+  if (authConfigured()) throw new Error("Not signed in; there is no actor.");
+
   const db = getDb();
   const [org] = await db
     .select({ slug: orgs.slug, name: orgs.name })

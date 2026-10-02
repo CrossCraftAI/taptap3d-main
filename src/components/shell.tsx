@@ -95,11 +95,14 @@ import { paletteFor } from "@/lib/palette";
  */
 export function Shell({
   org,
+  signedIn = null,
   events,
   counts,
   children,
 }: {
   org: string | null;
+  /** The signed-in person, for the top bar. Null when sign-in is not set up. */
+  signedIn?: { name: string | null; email: string } | null;
   events: readonly EventChoice[];
   /** The house's numbers. The open sale's own is looked up here, below. */
   counts: Omit<NavCounts, "lots">;
@@ -181,7 +184,7 @@ export function Shell({
       </button>
 
       <header id={TOP_BAR.id} hidden={!open} className="shrink-0">
-        <TopBar org={org} events={events} />
+        <TopBar org={org} events={events} signedIn={signedIn} />
       </header>
       <InlineScript html={applyBeforePaint(TOP_BAR, fallback)} />
 

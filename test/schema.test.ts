@@ -19,6 +19,11 @@ const NOT_ORG_SCOPED: Record<string, string> = {
   orgs: "it IS the tenant; a self-reference would be noise",
   users:
     "identity is global — one person may belong to several orgs, and membership is what scopes them",
+  sessions:
+    "a session belongs to a PERSON, not a house — the same reason `users` does not carry one. " +
+    "Which house a signed-in person is looking at is a property of the request and of their " +
+    "memberships, and putting an org on the session would make signing in a second place that " +
+    "chooses a tenant — the one thing src/lib/data/org.ts refuses to let anything do",
 };
 
 function tables(): Array<{ name: string; columns: string[] }> {

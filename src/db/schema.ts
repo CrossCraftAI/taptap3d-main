@@ -86,11 +86,83 @@ export const users = pgTable("users", {
   ...rowBase,
   email: text("email").notNull().unique(),
   name: text("name"),
-  // No password column, no session table, no provider id. The identity system
-  // is deferred (ROADMAP D14) and this row exists so that everything which
-  // references a person has something to reference. Adding auth adds columns
-  // here; it does not reshape anything that points at this table.
+  // ── THE COLUMN THIS TABLE SAID WOULD ARRIVE ─────────────────────────────
+  //
+  // It read: "No password column, no session table, no provider id. The
+  // identity system is deferred (ROADMAP D14) and this row exists so that
+  // everything which references a person has something to reference. Adding
+  // auth adds columns here; it does not reshape anything that points at this
+  // table." That held — nothing pointing here moved.
+  //
+  // STILL NO PASSWORD COLUMN, and there will not be one. Google is the only
+  // way in, so this product never stores, hashes, resets or leaks a password.
+  //
+  // `google_sub` IS THE IDENTITY AND THE EMAIL IS NOT. Google's `sub` is
+  // stable for the life of the account; an address can be renamed, and a
+  // renamed address that is later reissued to somebody else would otherwise
+  // hand them the first person's memberships. So the email is what a human
+  // is invited by and the sub is what the session is bound to, and the first
+  // sign-in is where one is attached to the other.
+  //
+  // NULLABLE, because the gate identities predate it and because a person
+  // invited by email has a row before they have ever signed in.
+  googleSub: text("google_sub").unique(),
 });
+
+/**
+ * A signed-in browser.
+ *
+ * ── A TABLE AND NOT A SIGNED COOKIE, WHICH WAS THE OTHER CHOICE ────────────
+ *
+ * Next's own guide offers stateless JWTs or database sessions and recommends
+ * a library for either. This is the database kind, for three reasons that all
+ * point the same way in this product:
+ *
+ *   IT CAN BE REVOKED. A house that removes somebody expects them out, and a
+ *   signed token is valid until it expires whatever the database says. This
+ *   product holds a client's unpublished reserves; "valid for another seven
+ *   days" is not an answer a registrar accepts.
+ *
+ *   THERE IS ALREADY A POSTGRES, and it is on the other side of every request
+ *   this application serves. A session read costs one indexed lookup next to
+ *   the several the page makes anyway.
+ *
+ *   IT ADDS NO DEPENDENCY. A JWT needs a signing library; a random 256-bit id
+ *   needs `crypto.randomUUID`-grade entropy and a unique index.
+ *
+ * NO `org_id`, and that is deliberate in a schema where everything else has
+ * one. A session belongs to a PERSON, not to a house — the same person may be
+ * a member of two houses, and which one they are looking at is a property of
+ * the request, not of being signed in.
+ */
+export const sessions = pgTable(
+  "sessions",
+  {
+    ...rowBase,
+    userId: uuid("user_id")
+      .references(() => users.id, { onDelete: "cascade" })
+      .notNull(),
+    /**
+     * A SHA-256 of the cookie's value, never the value.
+     *
+     * The cookie is a bearer token: whoever holds it is the person. Storing
+     * it verbatim means a database backup, a log line or a stray `select *`
+     * hands over live sessions for every signed-in user. A hash of a 256-bit
+     * random string needs no salt and no work factor — there is no dictionary
+     * to attack — and it makes the table useless to anyone who reads it.
+     */
+    tokenHash: text("token_hash").notNull().unique(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    /**
+     * Bumped on use, so "last seen" is answerable and an idle session can be
+     * swept. Not an audit trail: the action log is that (ROADMAP D9).
+     */
+    seenAt: timestamp("seen_at", { withTimezone: true })
+      .default(sql`now()`)
+      .notNull(),
+  },
+  (t) => [index("sessions_user").on(t.userId), index("sessions_expires").on(t.expiresAt)],
+);
 
 export const memberRole = pgEnum("member_role", ["owner", "admin", "member"]);
 

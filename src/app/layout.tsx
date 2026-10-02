@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { Shell } from "@/components/shell";
 import { countAssets } from "@/lib/data/assets";
 import { listEventChoices } from "@/lib/data/events";
+import { authConfigured, currentSession } from "@/lib/auth/session";
 import { currentOrgOrNull } from "@/lib/data/org";
 
 import "./globals.css";
@@ -19,6 +20,27 @@ export const dynamic = "force-dynamic";
 export default async function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
+  // ── A SIGNED-OUT BROWSER GETS NO CHROME ──────────────────────────────────
+  //
+  // The sign-in page is the first screen anybody outside the team ever sees,
+  // and wrapping it in an empty rail, an empty switcher and a house name that
+  // is not there would make the product look broken before it has been shown.
+  //
+  // IT IS DECIDED WITHOUT A PATHNAME, which a layout does not get, and it does
+  // not need one: `src/proxy.ts` redirects every path but /sign-in and the two
+  // auth routes when sign-in is configured and no session cookie is carried,
+  // so "configured and not signed in" IS "this is the sign-in page".
+  const signedIn = await currentSession();
+  if (authConfigured() && !signedIn) {
+    return (
+      <html lang="zh-Hant">
+        <body className="min-h-full bg-field font-sans text-ink antialiased">
+          {children}
+        </body>
+      </html>
+    );
+  }
+
   const org = await currentOrgOrNull();
   // The chrome's numbers, and the switcher's list. Empty when there is no org,
   // so the chrome renders on a machine that has not been seeded rather than
@@ -56,6 +78,7 @@ export default async function RootLayout({
             to be true before a second one can be chosen here. */}
         <Shell
           org={org?.name ?? null}
+          signedIn={signedIn}
           events={events}
           counts={{
             events: events.length,

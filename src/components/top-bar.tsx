@@ -64,10 +64,16 @@ import { openEventId, switchEvent } from "@/lib/nav";
 export function TopBar({
   org,
   events,
+  signedIn = null,
 }: {
   /** The acting house, or null when none has resolved. */
   org: string | null;
   events: readonly EventChoice[];
+  /**
+   * The person, when there is one. Null on a deployment with no sign-in
+   * configured, which is every developer machine and every e2e run.
+   */
+  signedIn?: { name: string | null; email: string } | null;
 }): React.ReactElement {
   const pathname = usePathname();
   const openId = openEventId(pathname);
@@ -156,6 +162,38 @@ export function TopBar({
         </>
       )}
       </div>
+
+      {/* ── WHO IS SIGNED IN, AND THE WAY OUT ───────────────────────────────
+          At the far right, which is where every product this trade's staff
+          already use puts it, and hidden below the window the product says it
+          needs for the reason the crumbs beside it are.
+
+          NOTHING AT ALL WHEN NOBODY IS SIGNED IN, rather than a "Sign in"
+          link: on a deployment with no Google project there is nobody to sign
+          in as, and on one with a project the signed-out browser never gets
+          this far — src/proxy.ts sends it to /sign-in before a layout runs.
+
+          A FORM POSTING TO A ROUTE, not a link. A GET that ends a session is
+          a session anybody can end from an <img> on another site, and Next
+          would prefetch a link to it. */}
+      {signedIn && (
+        <div className="ml-auto flex min-w-0 items-center gap-2 too-small:hidden">
+          <span
+            className="min-w-0 max-w-[14rem] truncate text-[12px] text-faint"
+            title={signedIn.email}
+          >
+            {signedIn.name ?? signedIn.email}
+          </span>
+          <form action="/api/auth/signout" method="POST">
+            <button
+              type="submit"
+              className="inline-flex min-h-[var(--tap)] items-center px-2 text-[12px] text-muted hover:text-ink"
+            >
+              Sign out
+            </button>
+          </form>
+        </div>
+      )}
     </div>
   );
 }
