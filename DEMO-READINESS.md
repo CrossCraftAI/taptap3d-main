@@ -159,23 +159,47 @@ plausible sale names, or leave them.
 
 ---
 
-## Suggested order, and the trade in each
+## The order, and what happened to each
 
-| | Item | Days | Serves | If you skip it |
-|---|---|---|---|---|
-| **A** | Sign-in + org switcher | 3–5 | Both | Cannot show two houses; cannot answer "who can log in" |
-| **B** | The running order, with the pin rule | 2–3 | House prospect | The first thing a specialist tries does not work |
-| **C** | Demo data tidy-up | hours | Both | First lot looks broken |
-| **D** | Playwright in CI | 1 | Neither, directly | The safety net stays manual |
-| **E** | Comments | ~3 | House prospect | Review happens in email |
+*Updated 2 Oct 2026. All five are built; two carry a decision that is the
+owner's, not mine.*
 
-**A before B** because it serves both audiences and because the org switcher
-is nearly free once sessions exist. **C at any point** — it is an afternoon.
-**D whenever there is a gap**; it protects everything above it but shows
-nobody anything.
+| | Item | Days | State |
+|---|---|---|---|
+| **A** | Sign-in + org switcher | 3–5 | **Built and deployed**, inert until a Google client exists |
+| **B** | The running order, with the pin rule | 2–3 | **Done** |
+| **C** | Demo data tidy-up | hours | **Half done** — the title is fixed, the ledger needs a decision |
+| **D** | Playwright in CI | 1 | **Done**, and it does not gate the deploy yet |
+| **E** | Comments | ~3 | **Done** |
 
-If only one thing gets built: **A**. If only one thing gets built for an
-auction house specifically: **B**.
+### What is waiting on you, and nothing else is
+
+**A needs a Google OAuth client.** Console → Credentials → OAuth client ID →
+Web application, with the authorised redirect URI exactly
+`https://taptap3d.fly.dev/api/auth/google/callback` and no trailing slash.
+Then `flyctl secrets set GOOGLE_CLIENT_ID=… GOOGLE_CLIENT_SECRET=…
+TAPTAP3D_PUBLIC_ORIGIN=https://taptap3d.fly.dev`, and a `memberships` row per
+person. Until both are set the deployed instance behaves exactly as before,
+still behind the shared gate — which is a supported state, not a broken one.
+
+**C needs a decision about four sales.** See §4 above: the deployed ledger is
+four copies of one sale plus an empty `TEST`, named for testers. Delete the
+three duplicates, rename them all, or leave them.
+
+**D is promoted by one word.** `browser` added to `deploy.needs` in
+`.github/workflows/ci.yml`, once it has been green on main for a fortnight.
+It is deliberately not there yet: an eight-minute browser suite that has
+never run on a hosted runner will have environment failures that are not
+product failures, and a deploy blocked by one of those on the day something
+needs shipping is how a gate gets removed permanently.
+
+### What the first CI run taught, which is worth keeping
+
+The browser job was killed at exactly 30:00 on its first attempt. Not a hang
+— the timeout was sized from eleven minutes on a developer laptop, and a
+two-core hosted runner is not a laptop. It runs as a matrix now, one engine
+per job in parallel, with a 45-minute budget. The estimate was the defect,
+not the suite.
 
 ---
 
