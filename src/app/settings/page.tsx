@@ -1,8 +1,10 @@
 import { PageHeader } from "@/components/page-header";
-import { currentOrgOrNull, fieldPolicyOf, listFieldKeys } from "@/lib/data/org";
+import { currentOrgOrNull, fieldPolicyOf, listFieldKeys, recordTypesOf } from "@/lib/data/org";
+import { rowsOf } from "@/lib/record-type-form";
 import { policyRows } from "@/lib/settings";
 
 import { FieldPolicyForm } from "./field-policy-form";
+import { RecordTypesForm } from "./record-types-form";
 
 export const dynamic = "force-dynamic";
 
@@ -11,11 +13,16 @@ export const dynamic = "force-dynamic";
  *
  * ── ONE SETTING, AND THE SCREEN SAYS WHICH ──────────────────────────────────
  *
- * There is exactly one thing a house can set today: which of its fields may
- * leave the building. A hub page listing one link to it would be a door in
- * front of a door, so this screen IS that setting, under the heading the rail
- * points at. It grows a second section the day there is a second thing, and
- * nothing here has to move for that.
+ * It said there was exactly one thing a house could set, and that the screen
+ * would grow a second section the day there was a second thing. That day
+ * arrived: a house can now also say what KINDS of thing it sells and what it
+ * knows about each (src/lib/record-types.ts). Nothing moved for it, which is
+ * what the note was promising.
+ *
+ * THE TWO ARE IN THIS ORDER ON PURPOSE. What may leave the building is the
+ * one a house can get catastrophically wrong, so it stays first and keeps the
+ * top of the screen. Record types are additive: a house that defines none has
+ * the product it has always had.
  *
  * ── WHY IT IS A HOUSE-LEVEL SCREEN AND NOT A CONTROL ON A LOT ───────────────
  *
@@ -50,9 +57,10 @@ export default async function SettingsPage(): Promise<React.ReactElement> {
     );
   }
 
-  const [policy, discovered] = await Promise.all([
+  const [policy, discovered, types] = await Promise.all([
     fieldPolicyOf(org.id),
     listFieldKeys(org.id),
+    recordTypesOf(org.id),
   ]);
   const view = policyRows(policy, discovered);
 
@@ -91,6 +99,33 @@ export default async function SettingsPage(): Promise<React.ReactElement> {
         </div>
 
         <FieldPolicyForm view={view} version={org.updatedAt.getTime()} />
+      </section>
+
+      <section className="mt-8 border border-rule bg-paper">
+        <div className="border-b border-rule px-4 py-2.5">
+          <h2 className="text-[13px] font-medium">What kinds of thing this house sells</h2>
+          {/* WHAT A KIND IS AND WHAT IT IS NOT, in the first sentence. The
+              mistake available here is believing this changes the printed
+              page — it does not, and a house that thinks it might will not
+              touch the screen. */}
+          <p className="mt-1 max-w-prose text-[12px] leading-relaxed text-muted">
+            A kind is a name and a list of what you already import, with an
+            answer about each: whether it is a measurement, whether it is one
+            of a list you name, whether a lot of this kind must carry it. The
+            columns stay the customer&rsquo;s own — this adds nothing to a
+            record and removes nothing from one.
+          </p>
+          <p className="mt-1.5 max-w-prose text-[12px] leading-relaxed text-faint">
+            It governs what is TYPED IN, never what is printed. An import is
+            checked against the kind on the clearance screen, before anything
+            is written, and what does not match is reported rather than
+            refused. Nothing here changes a single byte of a catalogue.
+          </p>
+        </div>
+
+        <div className="px-4 py-3">
+          <RecordTypesForm initial={rowsOf(types)} />
+        </div>
       </section>
 
       <p className="mt-4 max-w-prose text-[12px] leading-relaxed text-faint">

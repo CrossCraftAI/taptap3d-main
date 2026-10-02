@@ -412,9 +412,15 @@ export function ImportFlow({
             <ul className="mt-2 space-y-1">
               {typeComplaints.map((complaint) => (
                 <li key={complaint.reason} className="text-[12px] text-seal">
-                  {complaint.reason}{" "}
+                  {/* THE FULL STOP COMES OFF before the count is appended.
+                      `check`'s reasons are whole sentences because they are
+                      read alone elsewhere; here one is a clause, and
+                      "品相 is one of: A、B、C. on 1 of 2" reads as two
+                      sentences that have been glued together, which is what
+                      it was. */}
+                  {complaint.reason.replace(/\.$/, "")}{" "}
                   <span className="text-faint" data-numeric>
-                    on {complaint.lots} of {prepared.lots.length}
+                    — on {complaint.lots} of {prepared.lots.length}
                   </span>
                 </li>
               ))}

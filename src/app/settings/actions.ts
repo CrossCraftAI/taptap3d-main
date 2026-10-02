@@ -2,7 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 
-import { currentOrgId, setFieldPolicy } from "@/lib/data/org";
+import { currentOrgId, setFieldPolicy, setRecordTypes } from "@/lib/data/org";
+import { typesFromForm } from "@/lib/record-type-form";
 import { MAX_KEY, isAudience, policyOf, type PolicyFormState } from "@/lib/settings";
 
 /** How the form names one field's level. The rest of the name is the key. */
@@ -94,4 +95,44 @@ export async function setFieldPolicyAction(
 
 function refuse(message: string): PolicyFormState {
   return { ok: false, message, at: Date.now() };
+}
+
+/**
+ * Set the house's record types.
+ *
+ * ── THE FORM IS THE WHOLE TRUTH, FOR THE SAME REASON AS THE POLICY ABOVE ───
+ *
+ * `setRecordTypes` replaces rather than merges, so the screen posts every
+ * type and every property on every submit. That is what makes deleting one
+ * expressible from the only screen that can delete one — a merge would leave
+ * "remove this type" with no way to say it.
+ *
+ * ── IT REFUSES NOTHING AND DROPS WHAT IT CANNOT USE ────────────────────────
+ *
+ * `typesFromForm` is total, and the empty row at the bottom that an "add
+ * another" button leaves behind is the reason: a screen that declined to save
+ * eleven good types over one blank row would be unusable by the second
+ * afternoon. What arrives half-filled is dropped and what is good is kept,
+ * and the screen then redraws what was actually stored — so a person can see
+ * which of their rows survived rather than being told a number.
+ */
+export async function setRecordTypesAction(
+  _previous: PolicyFormState,
+  formData: FormData,
+): Promise<PolicyFormState> {
+  const orgId = await currentOrgId();
+  const stored = await setRecordTypes(orgId, typesFromForm(formData.entries()));
+  const kinds = Object.keys(stored).length;
+  // THE SAME REVALIDATION ARGUMENT AS THE POLICY, with one addition: the
+  // import clearance screen reads these to draw its picker, and a house that
+  // has just defined its first type expects to find it there.
+  revalidatePath("/settings");
+  return {
+    ok: true,
+    message:
+      kinds === 0
+        ? "No kinds are defined. Every lot is of no particular kind."
+        : `Saved. ${kinds} ${kinds === 1 ? "kind" : "kinds"} of thing.`,
+    at: Date.now(),
+  };
 }

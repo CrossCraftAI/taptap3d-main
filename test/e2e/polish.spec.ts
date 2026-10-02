@@ -168,7 +168,21 @@ async function saleWithPlate(page: Page, tag: string): Promise<string> {
   const file = plate(tag);
   await assign(page, file, ref);
 
-  await page.goto(editorUrl);
+  // ── THE NAVIGATION THE APPLICATION MAY BE MAKING TOO ────────────────
+  //
+  // Observed in CI on webkit: "Navigation to …/catalogue is interrupted by
+  // another navigation to the same URL". The upload above finishes with a
+  // server action that revalidates, and the router's own navigation can still
+  // be in flight when this one starts — to the SAME address, so the page ends
+  // up exactly where it should and only the call fails.
+  //
+  // `toPass` around the whole arrival, which is the form this file already
+  // uses for the keyline reading and for the same reason: the retry has to
+  // include the thing that throws, not sit outside it.
+  await expect(async () => {
+    await page.goto(editorUrl);
+    await expect(preview(page).locator(".page").first()).toBeVisible({ timeout: 10_000 });
+  }).toPass({ timeout: 60_000 });
   await preview(page).locator('[data-field="images"]').first().click();
   await requirePanel(page);
   return editorUrl;

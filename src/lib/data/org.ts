@@ -205,6 +205,37 @@ export async function recordTypesOf(orgId: string): Promise<RecordTypes> {
 }
 
 /**
+ * Set the house's record types, whole.
+ *
+ * WHOLE AND NOT A PATCH, for `setFieldPolicy`'s reason: there is one writer
+ * and it is a screen showing every type at once, so what it sends IS the
+ * answer. A merge would make deleting a type impossible from the one place
+ * that can delete one.
+ *
+ * DELETING A TYPE DOES NOT TOUCH THE LOTS THAT NAME IT. `lots.record_type`
+ * is text rather than a foreign key precisely so that it cannot: those lots
+ * read as untyped, which is what `recordTypeOf` answers for an id it does
+ * not recognise, and their values are untouched. A house changing its mind
+ * about its schema must not lose its records.
+ *
+ * Passed through `recordTypesFrom` on the way in, so what is stored is what
+ * a reader will get back — a column that could hold something the reader
+ * drops is a column whose contents nobody can predict.
+ */
+export async function setRecordTypes(
+  orgId: string,
+  types: Record<string, unknown>,
+): Promise<RecordTypes> {
+  const clean = recordTypesFrom(types);
+  const db = getDb();
+  await db
+    .update(orgs)
+    .set({ recordTypes: { ...clean }, updatedAt: new Date() })
+    .where(eq(orgs.id, orgId));
+  return clean;
+}
+
+/**
  * Set it, whole.
  *
  * WHOLE AND NOT A PATCH, which is the opposite of how an override is written
