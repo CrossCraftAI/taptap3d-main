@@ -7,6 +7,7 @@
 
 import { NextResponse, type NextRequest } from "next/server";
 
+import { publicOrigin } from "@/lib/auth/origin";
 import { closeSession, SESSION_COOKIE } from "@/lib/auth/session";
 
 export const runtime = "nodejs";
@@ -17,7 +18,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   // live session for anyone who copied it, which is the whole reason this
   // product keeps sessions in a table it can delete from.
   await closeSession(request.cookies.get(SESSION_COOKIE)?.value);
-  const response = NextResponse.redirect(new URL("/sign-in", request.url));
+  const response = NextResponse.redirect(new URL("/sign-in", publicOrigin(request)));
   response.cookies.delete({ name: SESSION_COOKIE, path: "/" });
   return response;
 }

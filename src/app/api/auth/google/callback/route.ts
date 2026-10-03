@@ -24,6 +24,7 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import { admit } from "@/lib/auth/admit";
 import { GoogleError, identityFromCode } from "@/lib/auth/google";
+import { publicOrigin } from "@/lib/auth/origin";
 import {
   authConfigured,
   cookieOptions,
@@ -41,7 +42,7 @@ export const dynamic = "force-dynamic";
 /** Back to the sign-in page, saying only which of the four things went wrong. */
 function refuse(request: NextRequest, code: string, detail: string): NextResponse {
   console.warn(`sign-in refused (${code}): ${detail}`);
-  const back = new URL("/sign-in", request.url);
+  const back = new URL("/sign-in", publicOrigin(request));
   back.searchParams.set("refused", code);
   const response = NextResponse.redirect(back);
   response.cookies.delete({ name: STATE_COOKIE, path: "/api/auth" });
@@ -90,7 +91,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const wanted = params.get("next");
   const destination =
     wanted && wanted.startsWith("/") && !wanted.startsWith("//") ? wanted : "/";
-  const response = NextResponse.redirect(new URL(destination, request.url));
+  const response = NextResponse.redirect(new URL(destination, publicOrigin(request)));
   response.cookies.set(SESSION_COOKIE, token, cookieOptions(expiresAt));
   response.cookies.delete({ name: STATE_COOKIE, path: "/api/auth" });
   return response;
