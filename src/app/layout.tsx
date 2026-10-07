@@ -4,12 +4,14 @@ import { Shell } from "@/components/shell";
 import { countAssets } from "@/lib/data/assets";
 import { listEventChoices } from "@/lib/data/events";
 import { authConfigured, currentSession } from "@/lib/auth/session";
-import { currentOrgOrNull } from "@/lib/data/org";
+import { HousePicker } from "@/components/house-picker";
+import { Brand } from "@/components/brand";
+import { availableHouses, currentOrgOrNull } from "@/lib/data/org";
 
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "taptap3d",
+  title: "Taptap3D",
   description:
     "One inventory record, two destinations: the printed catalogue page and the online listing.",
 };
@@ -42,6 +44,22 @@ export default async function RootLayout({
   }
 
   const org = await currentOrgOrNull();
+  const allHouses = signedIn ? await availableHouses() : [];
+  const pinned = process.env.TAPTAP3D_ORG_SLUG;
+  const houses = pinned ? allHouses.filter((house) => house.slug === pinned) : allHouses;
+  if (signedIn && !org) {
+    return <html lang="zh-Hant"><body className="bg-field font-sans text-ink">
+      <main className="flex min-h-dvh items-center justify-center p-6">
+        <div className="max-w-sm space-y-5">
+          <Brand className="text-[16px]" />
+          <h1 className="text-[15px] font-semibold">Choose your house</h1>
+          {houses.length ? <HousePicker houses={houses} currentId={null} /> :
+            <p>Your account has no access to this deployment. Ask your house administrator.</p>}
+          <form action="/api/auth/signout" method="POST"><button className="min-h-[var(--tap)] px-2 text-[13px] underline">Sign out</button></form>
+        </div>
+      </main>
+    </body></html>;
+  }
   // The chrome's numbers, and the switcher's list. Empty when there is no org,
   // so the chrome renders on a machine that has not been seeded rather than
   // throwing and leaving a blank page with no way to find out why.
@@ -78,6 +96,8 @@ export default async function RootLayout({
             to be true before a second one can be chosen here. */}
         <Shell
           org={org?.name ?? null}
+          houses={houses}
+          currentOrgId={org?.id ?? null}
           signedIn={signedIn}
           events={events}
           counts={{

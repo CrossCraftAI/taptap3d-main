@@ -32,6 +32,15 @@ export TAPTAP3D_ASSET_ROOT="$ASSET_ROOT"
 
 echo "boot: taptap3d starting"
 
+# Cloud Run's local filesystem is ephemeral. Refuse incomplete production
+# configuration before accepting requests or losing the first upload.
+if [ -n "${K_SERVICE:-}" ]; then
+  : "${TAPTAP3D_GCS_BUCKET:?Cloud Run requires a private GCS assets bucket}"
+  : "${GOOGLE_CLIENT_ID:?Cloud Run requires Google sign-in}"
+  : "${GOOGLE_CLIENT_SECRET:?Cloud Run requires Google sign-in}"
+  : "${TAPTAP3D_PUBLIC_ORIGIN:?Cloud Run requires the public OAuth origin}"
+fi
+
 if [ "$(id -u)" = "0" ]; then
   mkdir -p "$ASSET_ROOT"
   chown "$APP_UID:$APP_GID" /data "$ASSET_ROOT" 2>/dev/null || true
@@ -59,7 +68,9 @@ fi
 # Migrations run before the server starts, and a failure is FATAL: a container
 # serving requests against a schema it does not match produces a hundred
 # confusing errors downstream, none of which name the cause.
-$AS_APP node /app/migrate.mjs
+if [ "${TAPTAP3D_RUN_MIGRATIONS:-true}" = "true" ]; then
+  $AS_APP node /app/migrate.mjs
+fi
 
 echo "boot: starting server on ${HOSTNAME:-::}:${PORT:-3000}"
 exec $AS_APP node /app/server.js

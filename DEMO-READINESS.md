@@ -166,7 +166,7 @@ owner's, not mine.*
 
 | | Item | Days | State |
 |---|---|---|---|
-| **A** | Sign-in + org switcher | 3–5 | **Built and deployed**, inert until a Google client exists |
+| **A** | Sign-in + org switcher | 3–5 | **Live** — a Google client is configured and the round trip reaches Google's consent screen |
 | **B** | The running order, with the pin rule | 2–3 | **Done** |
 | **C** | Demo data tidy-up | hours | **Half done** — the title is fixed, the ledger needs a decision |
 | **D** | Playwright in CI | 1 | **Done**, and it does not gate the deploy yet |
@@ -174,13 +174,39 @@ owner's, not mine.*
 
 ### What is waiting on you, and nothing else is
 
-**A needs a Google OAuth client.** Console → Credentials → OAuth client ID →
-Web application, with the authorised redirect URI exactly
-`https://taptap3d.fly.dev/api/auth/google/callback` and no trailing slash.
-Then `flyctl secrets set GOOGLE_CLIENT_ID=… GOOGLE_CLIENT_SECRET=…
-TAPTAP3D_PUBLIC_ORIGIN=https://taptap3d.fly.dev`, and a `memberships` row per
-person. Until both are set the deployed instance behaves exactly as before,
-still behind the shared gate — which is a supported state, not a broken one.
+**A is done, and what it cost is worth writing down.** The client, the
+secrets and three `memberships` rows are in place; `/` now redirects a
+browser with no session to `/sign-in`, and the authorise call reaches
+Google's account chooser rather than an error.
+
+Two days went into one error message, `redirect_uri_mismatch`, and **the
+cause was never in this repository**. Three wrong explanations were offered
+before the right one — a signed-in Google account on the wrong domain, a
+missing *Authorised redirect URIs* section, a project owned by the wrong
+organisation. The answer was that the OAuth client had been created as a
+**desktop** client rather than a web one, which a console screenshot showed
+in a single word (`電腦`) and no amount of reading this codebase could have.
+A desktop client has no redirect-URI field at all and rejects every `https`
+URI unconditionally. **When the failure is on the far side of an API, ask for
+the screen rather than re-reading the caller** — the caller had been correct
+and verified three times over.
+
+What a new deployment needs: Console → Clients → Create client →
+**Web application** (the type cannot be changed afterwards) → *Authorised
+redirect URIs* → `https://taptap3d.fly.dev/api/auth/google/callback`, no
+trailing slash. Then `flyctl secrets set GOOGLE_CLIENT_ID=…
+GOOGLE_CLIENT_SECRET=… TAPTAP3D_PUBLIC_ORIGIN=https://taptap3d.fly.dev`, and
+a `memberships` row per person. With neither client id nor secret set the
+instance behaves exactly as before, behind the shared gate — a supported
+state, not a broken one.
+
+**And one defect only the deployed instance could show.** Both auth routes
+built their redirects with `new URL(path, request.url)`, which on Fly is the
+standalone server's bind address: every refusal and every *successful*
+sign-in sent the browser to `https://[::]:3000/…`. Green locally, green in
+e2e, dead in production — `request.url` carries a real host in both of those.
+Fixed by `publicOrigin()` (`src/lib/auth/origin.ts`), which the redirect URI
+Google is told about now shares, so the two cannot drift apart.
 
 **C needs a decision about four sales.** See §4 above: the deployed ledger is
 four copies of one sale plus an empty `TEST`, named for testers. Delete the

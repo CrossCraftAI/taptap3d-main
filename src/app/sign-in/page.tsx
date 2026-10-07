@@ -1,3 +1,4 @@
+import { Brand } from "@/components/brand";
 import type { Route } from "next";
 import { redirect } from "next/navigation";
 
@@ -47,9 +48,7 @@ export default async function SignInPage({
   return (
     <main className="flex min-h-dvh items-center justify-center px-6 py-12">
       <div className="w-full max-w-sm">
-        <h1 className="text-[16px] font-semibold tracking-[-0.01em]">
-          taptap<span className="text-seal">3d</span>
-        </h1>
+        <h1><Brand className="text-[16px]" /></h1>
         <p className="mt-1 text-[13px] leading-relaxed text-muted">
           Catalogue production for auction houses.
         </p>

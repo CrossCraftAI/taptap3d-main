@@ -18,6 +18,8 @@
 // functions: M1.md §5 says scaling past one machine is an implementation of this
 // same shape, and nothing above it changes.
 
+import { GcsAssetStore } from "./gcs";
+
 import { createHash } from "node:crypto";
 import { constants } from "node:fs";
 import { access, mkdir, readFile, rename, writeFile } from "node:fs/promises";
@@ -107,6 +109,8 @@ let store: AssetStore | undefined;
 
 /** Lazy, for the same reason `getDb` is: importing must not touch the disk. */
 export function getAssetStore(): AssetStore {
-  store ??= new FilesystemAssetStore();
+  store ??= process.env.TAPTAP3D_GCS_BUCKET
+    ? new GcsAssetStore(process.env.TAPTAP3D_GCS_BUCKET)
+    : new FilesystemAssetStore();
   return store;
 }
