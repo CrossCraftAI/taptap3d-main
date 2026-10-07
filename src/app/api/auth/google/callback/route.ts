@@ -20,6 +20,7 @@
 // cannot fix it themselves anyway. They need to ask the house, which is what
 // the page says.
 
+import { HOUSE_COOKIE } from "@/lib/auth/house";
 import { NextResponse, type NextRequest } from "next/server";
 
 import { admit } from "@/lib/auth/admit";
@@ -92,6 +93,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const destination =
     wanted && wanted.startsWith("/") && !wanted.startsWith("//") ? wanted : "/";
   const response = NextResponse.redirect(new URL(destination, publicOrigin(request)));
+  response.cookies.delete({ name: HOUSE_COOKIE, path: "/" });
   response.cookies.set(SESSION_COOKIE, token, cookieOptions(expiresAt));
   response.cookies.delete({ name: STATE_COOKIE, path: "/api/auth" });
   return response;

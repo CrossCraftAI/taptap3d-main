@@ -137,53 +137,20 @@
   --color-muted: #4a6070;
   --color-faint: #58707e;
 
-  /* ── THE ACCENT IS UNDECIDED, AND THAT IS WHY IT IS A TOKEN ───────────────
-     The house colour has not been chosen. #a32a24 below is what shipped and is
-     a placeholder; a candidate was proposed and declined, and the owner will
-     pick one. What this block buys is that picking it is ONE EDIT: every filled
-     button, every hover, every checkbox, every focus ring and every soft ground
-     in the application resolves through `--color-seal`, and thirteen hard-coded
-     hexes that used to sit in components (#8d241f seven times as the hover of
-     every seal button, #a32a24 five more as `accent-[…]` and a ring shadow) are
-     gone.
-
-     TO SET THE HOUSE COLOUR: change `--color-seal`, and `--color-sealSoft` to a
-     tint of it. `--color-sealPress` follows on its own. Then re-measure — a
-     filled button carries white text, so the chosen colour needs 4.5:1 against
-     #ffffff, and a colour that fails it needs a deeper twin for the fill rather
-     than a lighter one for the text.
-
-     WHAT THE ACCENT MEANS, so that whatever is chosen is spent in the right
-     places: a person is needed here, or is acting here. It is the accent AND
-     the alarm, which is only coherent while it is rare — a column of sixty
-     filled buttons is no seal at all, which is why the ledger's call to action
-     is quiet unless the sale is actually blocked. */
-  --color-seal: #a32a24;
+  --color-brandRed: #e63946;
+  --color-brandOlive: #838921;
+  --color-brandSlate: #6c8494;
+  /* Accessible twins of the supplied swatches for small labels and buttons. */
+  --color-seal: #bd2532;
   /* The pressed and hovered twin, DERIVED so it cannot fall out of step. oklab
      because mixing toward black in sRGB shifts the hue of a warm red toward
      brown; in oklab it stays the same colour, darker. */
   --color-sealPress: color-mix(in oklab, var(--color-seal) 82%, black);
-  --color-sealSoft: #f7ecec;
+  --color-sealSoft: #fcecee;
 
-  /* DONE, PASSED, PRESENT — and nothing else. The one other hue in the house,
-     added for the progress indicator after it shipped as five greys and read
-     as decoration: a bar that cannot say which end is finished is not a bar,
-     it is a texture.
-
-     It is not a second accent and it never asks for anything. The pair is a
-     sentence the drawing makes explicitly — NOTHING IS BOTH FINISHED AND
-     WAITING — so seal means a person is needed and go means nobody is. A
-     control painted in this would be claiming to be done, which is why there
-     is no filled-button twin of it and no hover state.
-
-     #597928 was named by the owner. It carries 10px text on `goSoft` at
-     4.9:1 and on paper at 4.6:1, so the label beside the bar may use it; the
-     bar itself is a block and has only to be distinguishable from `--rule`,
-     which at these two lightnesses it comfortably is. The house accent above
-     is still undecided and this does not pre-empt it: a green that means
-     "finished" is a convention rather than a brand. */
-  --color-go: #597928;
-  --color-goSoft: #f4f7ee;
+  /* Brand olive, deepened for readable completion labels. */
+  --color-go: #626719;
+  --color-goSoft: #f6f7e9;
 }
 
 :root {

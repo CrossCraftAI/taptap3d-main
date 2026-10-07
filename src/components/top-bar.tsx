@@ -2,72 +2,23 @@
 
 import { usePathname } from "next/navigation";
 
+import { Brand } from "@/components/brand";
+import { HousePicker } from "@/components/house-picker";
 import { Switcher, type SwitcherItem } from "@/components/switcher";
 import type { EventChoice } from "@/lib/data/events";
 import { openEventId, switchEvent } from "@/lib/nav";
 
-/**
- * The strip across the top: who you are working for, and which of their sales
- * is open.
- *
- * ── WHAT IS HERE AND WHAT IS NOT ────────────────────────────────────────────
- *
- * The drawing put five more things on this row — a workspace nav (Projects,
- * Records, Workflows, Storefront, Admin), a vocabulary select, a design-notes
- * toggle and a Download PDF. None of them ship:
- *
- *   - The WORKSPACE NAV is a second navigation axis, and this product has one.
- *     Three of its five entries have no page at all and two of them fell
- *     through to the ledger in the drawing itself; the other two would be the
- *     rail's own places written twice, which is two controls for one job and
- *     two places to be wrong about where you are.
- *   - The VOCABULARY select relabels the whole interface per tenant. It is
- *     Phase 10 and it is not started; a select that relabels nothing is a
- *     control that lies.
- *   - DESIGN NOTES is an annotation layer belonging to the drawing.
- *   - DOWNLOAD PDF is real here, unlike in the drawing — but it is a property
- *     of one document, not of the application, and it already sits on the
- *     editor's header, on the exports ledger and in the palette's Document
- *     panel. A fourth copy on every screen would have to answer "which sale?"
- *     and the top bar is the wrong place to ask.
- *
- * ── THE TENANCY SEAM: WHERE THE ORG SWITCHER GOES ───────────────────────────
- *
- * The house's name is rendered below as TEXT, immediately before the event
- * switcher. That position is the org switcher's seat and the second axis is a
- * second `<Switcher>` there, taking orgs where the one below takes events —
- * the component knows no nouns, so adding the axis is data and a query.
- *
- * It cannot be built yet, and the list of what has to be true first is short
- * and exact:
- *
- *   1. AN IDENTITY (ROADMAP D14). Until a request carries a person, "which
- *      orgs may I switch to" has no answer; a switcher over every row of
- *      `orgs` is an admin tool for anyone who reaches the URL.
- *   2. A MEMBERSHIP table — person × org — because the menu's items are that
- *      table, not the org table.
- *   3. `currentOrgId()` (src/lib/data/org.ts) must stop REFUSING when more
- *      than one org exists and start reading the session. It refuses today on
- *      purpose: a silent "pick the first" works perfectly on a one-tenant
- *      machine and mixes two customers' data the first time it does not. That
- *      throw is the thing that has to change, and nothing else below it does
- *      — every data function already takes `orgId` as its first argument.
- *   4. `TAPTAP3D_ORG_SLUG` comes out of fly.toml. It pins the deployment to
- *      one tenant, which is exactly right while there is no sign-in and
- *      exactly wrong once there is.
- *
- * Note what is NOT on that list: nothing in this component, and no constant
- * anywhere. The org arrives as a prop resolved per request
- * (`currentOrgOrNull`), so a second one changes what is passed in, not what is
- * written down.
- */
 export function TopBar({
   org,
+  houses = [],
+  currentOrgId = null,
   events,
   signedIn = null,
 }: {
   /** The acting house, or null when none has resolved. */
   org: string | null;
+  houses?: readonly { id: string; name: string }[];
+  currentOrgId?: string | null;
   events: readonly EventChoice[];
   /**
    * The person, when there is one. Null on a deployment with no sign-in
@@ -95,9 +46,7 @@ export function TopBar({
     // it entirely. Long names are held by `truncate` on each part instead, and
     // the shell's own root is what stops anything reaching a scrollbar.
     <div className="flex h-[38px] items-center gap-3 border-b border-rule bg-paper pl-9 pr-3">
-      <p className="shrink-0 text-[15px] font-semibold tracking-tight">
-        taptap<span className="text-seal">3d</span>
-      </p>
+      <Brand className="shrink-0 text-[15px] text-ink" />
 
       {/* ── THE CRUMBS FOLLOW THE APP'S OWN BOUNDARY ────────────────────────
           Below the window this product says it needs, `main` is a sentence and
@@ -113,16 +62,11 @@ export function TopBar({
           them. `too-small` is defined once in src/app/globals.css, beside the
           reason. */}
       <div className="flex min-w-0 items-center gap-3 too-small:hidden">
-      {/* THE HOUSE. Text today, the org switcher's seat tomorrow — see above. */}
+      {/* The house list contains the signed-in person's memberships only. */}
       <span aria-hidden="true" className="shrink-0 text-ruleStrong">
         /
       </span>
-      <span
-        className="min-w-0 max-w-[16rem] truncate text-[13px] text-muted"
-        title={org ? `${org} — the organisation every row here belongs to` : undefined}
-      >
-        {org ?? "No organisation"}
-      </span>
+      {houses.length > 1 ? <HousePicker houses={houses} currentId={currentOrgId} /> : <span className="min-w-0 max-w-[16rem] truncate text-[13px] text-muted">{org ?? "No organisation"}</span>}
 
       {/* THE SALE. Not rendered at all when the house has no sales: a switcher
           over nothing is a control that cannot do the one thing it offers, and

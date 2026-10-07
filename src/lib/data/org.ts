@@ -1,27 +1,5 @@
-// Which org is acting.
-//
-// IT WAS A STOPGAP WRITTEN TO DIE, and half of it has. Sign-in landed, so
-// there IS a person to ask which house they belong to, and the membership
-// branch below is that question. The rest stays because the deployment is
-// still pinned to one org by TAPTAP3D_ORG_SLUG while the move off Fly is
-// planned, and because a machine with no Google project — every developer's,
-// and every end-to-end run — has no session to read.
-//
-// The original reasoning, which still holds for the unsigned path:
-// there was no user to ask which org they belong to — but
-// ARCHITECTURE.md principle 7 says every row carries `org_id` from the first
-// commit, and that rule is worth nothing if the application writes a hardcoded
-// constant into it.
-//
-// So the org is RESOLVED, not assumed, and the resolution is deliberately
-// fragile in the one way that matters: if there is more than one org, it refuses
-// rather than picking. A silent "pick the first" would work perfectly on a
-// single-tenant development machine and start mixing two customers' data the
-// first time it did not.
-//
-// When auth lands, this file is replaced by a session lookup and nothing that
-// calls `currentOrgId()` changes shape.
-
+import { cookies } from "next/headers";
+import { HOUSE_COOKIE, selectedHouse } from "@/lib/auth/house";
 import { eq, sql } from "drizzle-orm";
 
 import { getDb, memberships, orgs } from "@/db";
@@ -43,91 +21,35 @@ export class NoOrgError extends Error {
  * possible before auth exists, and how a deployment pins itself to one tenant.
  * Otherwise there must be exactly one.
  */
+export async function availableHouses(): Promise<{ id: string; slug: string; name: string }[]> {
+  const session = await currentSession();
+  if (!session) return [];
+  return getDb().select({ id: orgs.id, slug: orgs.slug, name: orgs.name })
+    .from(memberships).innerJoin(orgs, eq(orgs.id, memberships.orgId))
+    .where(eq(memberships.userId, session.userId)).orderBy(orgs.name);
+}
+
 export async function currentOrgId(): Promise<string> {
   const db = getDb();
-  const slug = process.env.TAPTAP3D_ORG_SLUG;
-
-  if (slug) {
-    const [row] = await db
-      .select({ id: orgs.id })
-      .from(orgs)
-      .where(eq(orgs.slug, slug))
-      .limit(1);
-    if (!row) {
-      throw new NoOrgError(
-        `TAPTAP3D_ORG_SLUG is "${slug}" but no org has that slug.`,
-      );
-    }
+  const pinned = process.env.TAPTAP3D_ORG_SLUG;
+  // An environment pin restricts selection, never grants membership.
+  if (authConfigured()) {
+    const session = await currentSession();
+    if (!session) throw new NoOrgError("Not signed in.");
+    const houses = await availableHouses();
+    const selected = (await cookies()).get(HOUSE_COOKIE)?.value;
+    const house = selectedHouse(houses, selected, pinned);
+    if (house) return house.id;
+    throw new NoOrgError("Choose an organisation you belong to.");
+  }
+  if (pinned) {
+    const [row] = await db.select({ id: orgs.id }).from(orgs).where(eq(orgs.slug, pinned)).limit(1);
+    if (!row) throw new NoOrgError("TAPTAP3D_ORG_SLUG has no matching org: " + pinned);
     return row.id;
   }
-
-  // ── THE SIGNED-IN PERSON'S OWN HOUSE, WHEN THERE IS ONE ───────────────────
-  //
-  // AFTER the env slug and not before it, which is the whole shape of the
-  // deployment right now: Fly stays pinned to a single org while the move to
-  // GCP is planned, so the variable is set there and this branch never runs
-  // in production yet. It runs locally and in the tests, and it is what makes
-  // two houses possible the day the pin comes off.
-  //
-  // STILL EXACTLY ONE ANSWER OR NONE. A person who is a member of two houses
-  // is the org switcher's problem (ROADMAP D14, scheduled as S3) and this
-  // must not guess between them — a write that picks a tenant by fetch order
-  // is the failure this function has refused since the first commit. So two
-  // memberships throws exactly as two orgs always did.
-  // ── IF SIGN-IN IS CONFIGURED, SIGN-IN IS REQUIRED ────────────────────────
-  //
-  // THE HOLE THIS CLOSES. `src/proxy.ts` can only look at whether a session
-  // COOKIE is present — Next's own guidance is that proxy code must not reach
-  // for shared modules or a database, and it runs before the application. So
-  // a forged cookie gets past the proxy, and if this function then fell
-  // through to "there is exactly one org, use it", the forgery would be a
-  // full sign-in. The proxy is a redirect for people who are not signed in;
-  // THIS is the check.
-  //
-  // Guarded on `authConfigured` rather than applied always, because a machine
-  // with no Google project must keep working exactly as it did — every e2e
-  // spec in this repository builds a sale against one.
-  const signedIn = await currentSession();
-  if (authConfigured() && !signedIn) {
-    throw new NoOrgError("Not signed in.");
-  }
-  if (signedIn) {
-    const mine = await db
-      .select({ id: memberships.orgId })
-      .from(memberships)
-      .where(eq(memberships.userId, signedIn.userId))
-      .limit(2);
-    if (mine.length === 1) return mine[0]!.id;
-    if (mine.length > 1) {
-      throw new NoOrgError(
-        `${signedIn.email} is a member of more than one house and there is no ` +
-          "switcher yet. Set TAPTAP3D_ORG_SLUG to choose one.",
-      );
-    }
-    // Zero is not a fall-through to "the only org": a person whose membership
-    // was removed must not keep working because the database happens to hold
-    // one house. `admit` refuses them at the door; this refuses them if the
-    // row goes away while they are signed in.
-    throw new NoOrgError(`${signedIn.email} is not a member of any house.`);
-  }
-
-  // Two is fetched rather than one, so "there are several" is distinguishable
-  // from "there is one". Asking for one row would make the ambiguous case
-  // indistinguishable from the fine case, which is the failure this exists to
-  // prevent.
-  const rows = await db.select({ id: orgs.id, slug: orgs.slug }).from(orgs).limit(2);
-
-  if (rows.length === 0) {
-    throw new NoOrgError(
-      "No organisation exists yet. Run `npm run db:seed` to create one.",
-    );
-  }
-  if (rows.length > 1) {
-    throw new NoOrgError(
-      "More than one organisation exists and nobody is signed in. " +
-        "Set TAPTAP3D_ORG_SLUG to choose one.",
-    );
-  }
+  const rows = await db.select({ id: orgs.id }).from(orgs).limit(2);
+  if (!rows.length) throw new NoOrgError("No organisation exists yet. Run npm run db:seed.");
+  if (rows.length > 1) throw new NoOrgError("More than one organisation exists and nobody is signed in. Set TAPTAP3D_ORG_SLUG to choose one.");
   return rows[0]!.id;
 }
 

@@ -95,12 +95,16 @@ import { paletteFor } from "@/lib/palette";
  */
 export function Shell({
   org,
+  houses = [],
+  currentOrgId = null,
   signedIn = null,
   events,
   counts,
   children,
 }: {
   org: string | null;
+  houses?: readonly { id: string; name: string }[];
+  currentOrgId?: string | null;
   /** The signed-in person, for the top bar. Null when sign-in is not set up. */
   signedIn?: { name: string | null; email: string } | null;
   events: readonly EventChoice[];
@@ -184,7 +188,7 @@ export function Shell({
       </button>
 
       <header id={TOP_BAR.id} hidden={!open} className="shrink-0">
-        <TopBar org={org} events={events} signedIn={signedIn} />
+        <TopBar org={org} houses={houses} currentOrgId={currentOrgId} events={events} signedIn={signedIn} />
       </header>
       <InlineScript html={applyBeforePaint(TOP_BAR, fallback)} />
 

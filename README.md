@@ -35,14 +35,22 @@ and an orphaned research surface that no route reached.
 `main` deploys to <https://taptap3d.fly.dev> when CI is green — migrations run at
 boot, before the server accepts a request (`docker/entrypoint.sh`).
 
-The whole application sits behind a shared Basic-auth secret (`src/proxy.ts`,
-`GATE_USER`/`GATE_PASSWORD`). That is the M0 access gate, not authentication: it
-exists so a public URL is not a public database until the identity system lands
-(ROADMAP D14). `/api/health` is exempt on purpose, so the platform can tell
-whether the app is alive without holding a credential.
+With Google OAuth configured, the application uses database-backed sessions
+and organisation memberships. Users with several memberships choose their
+house; every request checks the selection against their memberships again.
+`TAPTAP3D_ORG_SLUG`, when set, restricts the deployment to one house and never
+bypasses authentication or membership checks.
+
+Without Google OAuth, the shared Basic-auth secret (`src/proxy.ts`,
+`GATE_USER`/`GATE_PASSWORD`) remains the local/demo access gate. `/api/health`
+is exempt so the platform can check whether the app is alive.
 
 Leave `GATE_PASSWORD` empty locally and the gate disappears.
 
 ## Status
 
-M0 complete. M1 — the pitch — is next; see [`ROADMAP.md`](ROADMAP.md).
+The catalogue workflow, Google sign-in and house selection are implemented.
+Assets use a local filesystem by default, or a private Cloud Storage bucket
+when `TAPTAP3D_GCS_BUCKET` is set. GCP provisioning and data cutover are still
+pending; see [`deploy/gcp/README.md`](deploy/gcp/README.md). The optional Fly beta
+domain is tracked in [`deploy/fly-beta-domain.md`](deploy/fly-beta-domain.md).

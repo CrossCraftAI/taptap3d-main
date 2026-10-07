@@ -1,0 +1,28 @@
+apiVersion: run.googleapis.com/v1
+kind: Job
+metadata:
+  name: taptap3d-migrate
+spec:
+  template:
+    spec:
+      taskCount: 1
+      parallelism: 1
+      template:
+        metadata:
+          annotations:
+            run.googleapis.com/cloudsql-instances: PROJECT_ID:asia-east2:SQL_INSTANCE
+            run.googleapis.com/execution-environment: gen2
+        spec:
+          serviceAccountName: taptap3d-runtime@PROJECT_ID.iam.gserviceaccount.com
+          maxRetries: 0
+          timeoutSeconds: '300'
+          containers:
+            - image: asia-east2-docker.pkg.dev/PROJECT_ID/taptap3d/app:COMMIT_SHA
+              command: [node]
+              args: [/app/migrate.mjs]
+              env:
+                - name: DATABASE_URL
+                  valueFrom:
+                    secretKeyRef:
+                      name: taptap3d-database-url
+                      key: latest

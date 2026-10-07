@@ -5,6 +5,7 @@
 // shell, which is also why this is a route rather than a server action: it
 // has to work on the sign-in page and anywhere else, and it redirects.
 
+import { HOUSE_COOKIE } from "@/lib/auth/house";
 import { NextResponse, type NextRequest } from "next/server";
 
 import { publicOrigin } from "@/lib/auth/origin";
@@ -20,5 +21,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   await closeSession(request.cookies.get(SESSION_COOKIE)?.value);
   const response = NextResponse.redirect(new URL("/sign-in", publicOrigin(request)));
   response.cookies.delete({ name: SESSION_COOKIE, path: "/" });
+  response.cookies.delete({ name: HOUSE_COOKIE, path: "/" });
   return response;
 }
