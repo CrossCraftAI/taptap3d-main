@@ -76,3 +76,7 @@ primary_region = "sin"
   # other — intermittently, which is the worst way for this to fail. Scaling past
   # one machine is the S3 implementation of the AssetStore interface in
   # src/lib/assets/store.ts, and nothing above that interface changes.
+
+# Private application: public discovery belongs to landing and docs.
+[http_service.http_options.response.headers]
+  X-Robots-Tag = "noindex, nofollow"

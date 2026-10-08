@@ -123,6 +123,6 @@ export const config = {
     // Everything except Next's own static output and the health endpoint.
     // The health check must stay reachable or the platform will conclude the
     // application is down and keep restarting a container that is working.
-    "/((?!_next/static|_next/image|favicon.ico|api/health).*)",
+    "/((?!_next/static|_next/image|favicon.ico|robots\\.txt$|api/health).*)",
   ],
 };

@@ -9,7 +9,8 @@ import { currentOrgOrNull } from "@/lib/data/org";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "taptap3d",
+  title: "Taptap3D",
+  robots: { index: false, follow: false },
   description:
     "One inventory record, two destinations: the printed catalogue page and the online listing.",
 };
