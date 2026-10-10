@@ -10,9 +10,9 @@
 //
 // ── WHAT IS NOT HERE ────────────────────────────────────────────────────────
 //
-// No listing, no logistics, no money. DFD.md names them; they get a table the
-// day someone performs that work in the system. Empty tables shipped in advance
-// are a promise the schema cannot keep.
+// No money or settlement tables. Publication tables arrive with explicit
+// approval and withdrawal screens; approved snapshots are separate from private
+// records. Empty tables shipped in advance are a promise the schema cannot keep.
 //
 // The condition report and the warehouse location USED to be on that list, and
 // they came off it the day a person could perform either one here: `movements`
@@ -201,6 +201,28 @@ export const memberships = pgTable(
   },
   (t) => [uniqueIndex("memberships_org_user").on(t.orgId, t.userId)],
 );
+
+/** Public identifiers and withdrawal state; private records never serve directly. */
+export const publications = pgTable("publications", {
+  ...rowBase,
+  orgId: uuid("org_id").references(() => orgs.id, { onDelete: "cascade" }).notNull(),
+  lotId: uuid("lot_id").references(() => lots.id, { onDelete: "cascade" }).notNull(),
+  withdrawnAt: timestamp("withdrawn_at", { withTimezone: true }),
+  withdrawnBy: uuid("withdrawn_by").references(() => users.id),
+  origins: jsonb("origins").$type<string[]>().notNull().default([]),
+}, t => [index("publications_org_lot").on(t.orgId, t.lotId)]);
+
+/** Append-only approvals. Withdrawal on the parent invalidates every revision. */
+export const publicationRevisions = pgTable("publication_revisions", {
+  ...rowBase,
+  orgId: uuid("org_id").references(() => orgs.id, { onDelete: "cascade" }).notNull(),
+  publicationId: uuid("publication_id").references(() => publications.id, { onDelete: "cascade" }).notNull(),
+  approvedBy: uuid("approved_by").references(() => users.id).notNull(),
+  snapshot: jsonb("snapshot").$type<{
+    title: string; description: string; language: string; fields: Record<string, string>;
+    images: { hash: string; mimeType: string; alt: string; width: number; height: number }[];
+  }>().notNull(),
+}, t => [index("publication_revisions_parent").on(t.publicationId, t.createdAt)]);
 
 // ── The cycle's objects ─────────────────────────────────────────────────────
 

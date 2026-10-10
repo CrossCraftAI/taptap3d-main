@@ -1,4 +1,5 @@
 import { PageHeader } from "@/components/page-header";
+import { organisationRole } from "@/lib/data/access";
 import { currentOrgOrNull, fieldPolicyOf, listFieldKeys, recordTypesOf } from "@/lib/data/org";
 import { rowsOf } from "@/lib/record-type-form";
 import { policyRows } from "@/lib/settings";
@@ -57,6 +58,8 @@ export default async function SettingsPage(): Promise<React.ReactElement> {
     );
   }
 
+  const role = await organisationRole(org.id);
+  if (role !== "owner" && role !== "admin") return <main className="p-8"><h1>Settings</h1><p>Your organisation administrator manages field visibility and record types.</p></main>;
   const [policy, discovered, types] = await Promise.all([
     fieldPolicyOf(org.id),
     listFieldKeys(org.id),
@@ -66,6 +69,7 @@ export default async function SettingsPage(): Promise<React.ReactElement> {
 
   return (
     <div className="px-8 py-8">
+      {role === "owner" && <a href="/settings/team" className="mb-4 inline-flex min-h-[var(--tap)] items-center underline">Manage team access</a>}
       <PageHeader
         title="Settings"
         meta={

@@ -1,5 +1,12 @@
 # Roadmap — what ships, what waits, and what never comes
 
+Pilot update, 10 October 2026: administrator settings, owner-managed team access,
+explicit publication approval with immutable revisions, public JSON/HTML and
+per-lot embeds are implemented in the release candidate. D2/D3 now have working
+source and automated acceptance coverage; they are not yet a production release.
+GCP provisioning, deployment acceptance, named customer owners and real source
+files remain prerequisites. See [pilot readiness](PILOT-READINESS.md).
+
 Companion to `DFD.md` (what the system is for) and `ARCHITECTURE.md` (how it may
 be built). This one is commercial: it says what opens a door, and what is being
 consciously left undone so that it can.

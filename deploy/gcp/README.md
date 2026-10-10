@@ -45,12 +45,20 @@ gcloud builds submit --project=$projectId --tag=$image .
 gcloud run jobs deploy taptap3d-migrate --project=$projectId --region=$region --image=$image --service-account=$runtimeAccount --set-cloudsql-instances=$instance --set-secrets=DATABASE_URL=taptap3d-database-url:latest --command=node --args=/app/migrate.mjs --tasks=1 --parallelism=1 --max-retries=0
 gcloud run jobs execute taptap3d-migrate --project=$projectId --region=$region --wait
 # Stop here if migration failed. Release only after it completes.
-gcloud run deploy taptap3d --project=$projectId --region=$region --image=$image --service-account=$runtimeAccount --execution-environment=gen2 --add-cloudsql-instances=$instance --memory=2Gi --cpu=2 --concurrency=2 --min-instances=0 --max-instances=3 --timeout=300 --allow-unauthenticated --set-env-vars="HOSTNAME=0.0.0.0,TAPTAP3D_GCS_BUCKET=$bucketName,TAPTAP3D_PUBLIC_ORIGIN=$publicOrigin,TAPTAP3D_RUN_MIGRATIONS=false" --set-secrets="DATABASE_URL=taptap3d-database-url:latest,GOOGLE_CLIENT_ID=taptap3d-google-client-id:latest,GOOGLE_CLIENT_SECRET=taptap3d-google-client-secret:latest"
+gcloud run deploy taptap3d --project=$projectId --region=$region --image=$image --service-account=$runtimeAccount --execution-environment=gen2 --add-cloudsql-instances=$instance --memory=2Gi --cpu=2 --concurrency=2 --min-instances=0 --max-instances=3 --timeout=300 --allow-unauthenticated --set-env-vars="HOSTNAME=0.0.0.0,TAPTAP3D_GCS_BUCKET=$bucketName,TAPTAP3D_PUBLIC_ORIGIN=$publicOrigin,TAPTAP3D_RUN_MIGRATIONS=false,TAPTAP3D_REQUIRE_AUTH=true" --set-secrets="DATABASE_URL=taptap3d-database-url:latest,GOOGLE_CLIENT_ID=taptap3d-google-client-id:latest,GOOGLE_CLIENT_SECRET=taptap3d-google-client-secret:latest"
 ```
 
 `allow-unauthenticated` makes the Google sign-in page reachable; the app's database-backed session and membership checks protect house data. Initially use the generated Run hostname (obtain it from a private first deployment, then add public access after configuring origin and OAuth). Add its exact `/api/auth/google/callback` to the Web OAuth client's authorised redirects. Cap instances and concurrency initially because the PDF renderer runs Chromium and the pg pool permits ten connections per instance. Measure a full 300-lot export before raising these limits.
 
 ## Transfer and prove isolation before cutover
+
+Render the prepared manifests after the project resources and hostname exist:
+
+```powershell
+./deploy/gcp/render.ps1 -ProjectId YOUR_PROJECT -SqlInstance YOUR_SQL_INSTANCE -Bucket YOUR_PRIVATE_BUCKET -PublicOrigin https://YOUR_RUN_HOST -ImageTag YOUR_COMMIT
+```
+
+The renderer writes `.data/gcp/service.yaml` and `.data/gcp/migration-job.yaml`; it does not provision or deploy. `-Region` changes the default Hong Kong region in both manifests. Keep the generated files out of source control. After transferring the database and blobs, set the destination environment variables and run `npm run assets:verify`. It downloads and hashes every unique referenced object, checks its byte size and exits nonzero on a mismatch, without printing customer identifiers.
 
 1. Pause writes on Fly. Back up its database and copy the asset volume; keep Fly intact for rollback.
 2. Restore the full database into Cloud SQL, preserving UUIDs, memberships, policies and audit history. Invalidate copied sessions so users sign in afresh on the new host.
@@ -60,6 +68,6 @@ gcloud run deploy taptap3d --project=$projectId --region=$region --image=$image 
 6. Switch houses and verify the ledger resets, an old event URL cannot be opened, and house A's settings do not alter house B's output.
 7. Rehearse backup restore and rollback. Point the beta domain at Run only after these checks pass. Retain Fly and its volume until acceptance.
 
-The current code still relies on application query scoping; this is not database row-level security. Membership roles exist but administrator-only settings policies are a separate follow-up. Enterprise SSO remains ROADMAP D14.
+The current code still relies on application query scoping; this is not database row-level security. The pilot release enforces administrator-only settings and publication approval, and owner-only team management. Existing memberships are not automatically promoted: confirm a first owner for each organisation before release. See [pilot readiness](../../PILOT-READINESS.md) for the implementation and acceptance sequence. Enterprise SSO remains ROADMAP D14.
 
 References: [Cloud SQL connections](https://docs.cloud.google.com/sql/docs/postgres/connect-run), [Cloud Run container contract](https://docs.cloud.google.com/run/docs/container-contract), [immutable object preconditions](https://docs.cloud.google.com/storage/docs/request-preconditions).

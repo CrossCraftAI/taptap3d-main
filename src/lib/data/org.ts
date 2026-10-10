@@ -6,6 +6,7 @@ import { getDb, memberships, orgs } from "@/db";
 import { authConfigured, currentSession } from "@/lib/auth/session";
 import { recordTypesFrom, type RecordTypes } from "@/lib/record-types";
 import { policyFor, type FieldPolicy } from "@/lib/engine/visibility";
+import { requireAdministrator } from "./access";
 
 export class NoOrgError extends Error {
   constructor(message: string) {
@@ -30,6 +31,7 @@ export async function availableHouses(): Promise<{ id: string; slug: string; nam
 }
 
 export async function currentOrgId(): Promise<string> {
+  if (process.env.TAPTAP3D_REQUIRE_AUTH === "true" && !authConfigured()) throw new NoOrgError("Authentication configuration is required.");
   const db = getDb();
   const pinned = process.env.TAPTAP3D_ORG_SLUG;
   // An environment pin restricts selection, never grants membership.
@@ -148,6 +150,7 @@ export async function setRecordTypes(
   orgId: string,
   types: Record<string, unknown>,
 ): Promise<RecordTypes> {
+  await requireAdministrator(orgId);
   const clean = recordTypesFrom(types);
   const db = getDb();
   await db
@@ -194,6 +197,7 @@ export async function setFieldPolicy(
   orgId: string,
   policy: Record<string, unknown>,
 ): Promise<FieldPolicy> {
+  await requireAdministrator(orgId);
   const clean = policyFor(policy);
   const db = getDb();
   await db

@@ -37,7 +37,7 @@ async function clearKinds(page: Page): Promise<void> {
     await remove.first().click();
   }
   await kinds(page).getByRole("button", { name: "Save kinds" }).click();
-  await expect(kinds(page).getByText(/No kinds are defined|kinds? of thing/)).toBeVisible({
+  await expect(kinds(page).getByRole("status")).toContainText(/No kinds are defined|kinds? of thing/, {
     timeout: 30_000,
   });
 }
