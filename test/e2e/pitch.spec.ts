@@ -123,11 +123,12 @@ test("the pitch, end to end", async ({ page }) => {
     (el) => el.getBoundingClientRect().width,
   );
   await page.getByLabel("Fit").selectOption("width");
-  await expect
-    .poll(async () =>
-      frame.locator(".page").first().evaluate((el) => el.getBoundingClientRect().width),
-    )
-    .toBeGreaterThan(wholePageWidth);
+  // A fit change can replace the preview document between locating and
+  // evaluating it. Reacquire and measure until the new document is ready.
+  await expect(async () => {
+    const width = await frame.locator(".page").first().evaluate(el => el.getBoundingClientRect().width);
+    expect(width).toBeGreaterThan(wholePageWidth);
+  }).toPass({ timeout: 10_000 });
   // Changing the fit must not have carried the density away with it.
   await expect(page.getByLabel("Per page")).toHaveValue("9");
   await expect(page.getByText(/2 pages · 10 lots/)).toBeVisible();
