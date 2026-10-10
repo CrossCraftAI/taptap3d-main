@@ -15,7 +15,7 @@ export async function publicHtml(request: Request, id: string, embed: boolean): 
       listing.images.map(image => `<img src="${escapeHtml(image.url)}" alt="${escapeHtml(image.alt)}" width="${image.width}" height="${image.height}" loading="lazy">`).join("");
     const script = embed ? `
       const allowed=[...${JSON.stringify(origins)},location.origin],publicationId=${JSON.stringify(id)},revision=${JSON.stringify(listing.revision)};
-      function send(type){ const height=Math.min(1600,Math.max(240,Math.ceil(document.documentElement.scrollHeight))); for(const origin of allowed) parent.postMessage({version:1,type,publicationId,revision,height,...(type==='taptap3d:unavailable'?{code:'publication_withdrawn'}:{})},origin); }
+      function send(type){ const height=Math.min(1600,Math.max(240,Math.ceil(document.querySelector('main').getBoundingClientRect().height))); for(const origin of allowed) parent.postMessage({version:1,type,publicationId,revision,height,...(type==='taptap3d:unavailable'?{code:'publication_withdrawn'}:{})},origin); }
       new ResizeObserver(()=>send('taptap3d:resize')).observe(document.body);
       addEventListener('load',()=>send('taptap3d:ready')); send('taptap3d:ready');
       setInterval(async()=>{try{const r=await fetch(${JSON.stringify(`/v1/publications/${id}?revision=${listing.revision}`)},{cache:'no-store'});if(r.status===410||r.status===404){document.querySelector('main').textContent='This listing is no longer available.';send('taptap3d:unavailable');}}catch{}},30000);` : "";

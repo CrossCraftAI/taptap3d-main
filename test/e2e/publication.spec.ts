@@ -37,10 +37,11 @@ test("approve, read without a login, embed on mobile, and withdraw every public 
   await page.screenshot({ path: testInfo.outputPath("publication-mobile.png") });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   const frameUrl = listingUrl.replace("/p/", "/embed/");
-  await page.route("**/__publication-host", route => route.fulfill({ contentType: "text/html", body: `<!doctype html><html><body><script>window.messages=[];addEventListener('message',event=>{if(event.origin===location.origin && event.source===document.querySelector('iframe').contentWindow)window.messages.push(event.data);});</script><iframe title="Listing" src="${frameUrl}"></iframe></body></html>` }));
+  await page.route("**/__publication-host", route => route.fulfill({ contentType: "text/html", body: `<!doctype html><html><body><script>window.messages=[];addEventListener('message',event=>{if(event.origin===location.origin && event.source===document.querySelector('iframe').contentWindow)window.messages.push(event.data);});</script><iframe title="Listing" height="720" src="${frameUrl}"></iframe></body></html>` }));
   await page.goto("/__publication-host");
   await expect(page.frameLocator('iframe').getByRole("heading", { name: "Public vessel" })).toBeVisible();
   await expect.poll(() => page.evaluate(() => (window as unknown as { messages: { type: string; version: number; publicationId: string }[] }).messages.some(message => message.type === "taptap3d:ready" && message.version === 1 && message.publicationId.startsWith("pub_")))).toBe(true);
+  await expect.poll(() => page.evaluate(() => (window as unknown as { messages: { type: string; height: number }[] }).messages.some(message => message.type === "taptap3d:resize" && message.height === 240))).toBe(true);
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto(`/events/${eventId}/lots/${lotId}/publish`);
   await page.getByLabel("Withdraw this publication").check();
