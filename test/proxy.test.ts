@@ -51,6 +51,13 @@ describe("with sign-in configured", () => {
     expect(proxy(ask("/events/abc", "whatever")).status).toBe(200);
   });
 
+  it("lets public publication routes validate identifiers without a login", () => {
+    for (const path of ["/v1/publications/pub_invalid", "/v1/publications/private-lot-id", "/embed/pub_invalid", "/p/pub_invalid"])
+      expect(proxy(ask(path)).status).toBe(200);
+    expect(proxy(ask("/api/assets/abc")).status).toBe(307);
+    expect(proxy(ask("/settings/team")).status).toBe(307);
+  });
+
   it("sends a browser with no session to sign in", () => {
     const response = proxy(ask("/events/abc"));
     expect(response.status).toBe(307);

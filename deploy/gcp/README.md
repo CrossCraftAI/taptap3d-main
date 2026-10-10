@@ -52,6 +52,14 @@ gcloud run deploy taptap3d --project=$projectId --region=$region --image=$image 
 
 ## Transfer and prove isolation before cutover
 
+Render the prepared manifests after the project resources and hostname exist:
+
+```powershell
+./deploy/gcp/render.ps1 -ProjectId YOUR_PROJECT -SqlInstance YOUR_SQL_INSTANCE -Bucket YOUR_PRIVATE_BUCKET -PublicOrigin https://YOUR_RUN_HOST -ImageTag YOUR_COMMIT
+```
+
+The renderer writes `.data/gcp/service.yaml` and `.data/gcp/migration-job.yaml`; it does not provision or deploy. `-Region` changes the default Hong Kong region in both manifests. Keep the generated files out of source control. After transferring the database and blobs, set the destination environment variables and run `npm run assets:verify`. It downloads and hashes every unique referenced object, checks its byte size and exits nonzero on a mismatch, without printing customer identifiers.
+
 1. Pause writes on Fly. Back up its database and copy the asset volume; keep Fly intact for rollback.
 2. Restore the full database into Cloud SQL, preserving UUIDs, memberships, policies and audit history. Invalidate copied sessions so users sign in afresh on the new host.
 3. Copy the volume's `objects/` directory to `gs://BUCKET/objects/`, preserving paths. Compare asset row hashes and object counts; download and hash samples from the destination.
@@ -60,6 +68,6 @@ gcloud run deploy taptap3d --project=$projectId --region=$region --image=$image 
 6. Switch houses and verify the ledger resets, an old event URL cannot be opened, and house A's settings do not alter house B's output.
 7. Rehearse backup restore and rollback. Point the beta domain at Run only after these checks pass. Retain Fly and its volume until acceptance.
 
-The current code still relies on application query scoping; this is not database row-level security. Membership roles exist but administrator-only settings policies are a separate follow-up. Enterprise SSO remains ROADMAP D14.
+The current code still relies on application query scoping; this is not database row-level security. The pilot release enforces administrator-only settings and publication approval, and owner-only team management. Existing memberships are not automatically promoted: confirm a first owner for each organisation before release. See [pilot readiness](../../PILOT-READINESS.md) for the implementation and acceptance sequence. Enterprise SSO remains ROADMAP D14.
 
 References: [Cloud SQL connections](https://docs.cloud.google.com/sql/docs/postgres/connect-run), [Cloud Run container contract](https://docs.cloud.google.com/run/docs/container-contract), [immutable object preconditions](https://docs.cloud.google.com/storage/docs/request-preconditions).

@@ -242,6 +242,7 @@ export default async function LotPage({
             {/* Where in the sale this is, and the two lots either side. First
                 in the row because it is where the hand goes back to. */}
             {step && <LotSteps eventId={event.id} step={step} />}
+            <Link href={`/events/${event.id}/lots/${lot.id}/publish`} className="inline-flex min-h-[var(--tap)] items-center border border-ruleStrong bg-paper px-3 text-[13px] font-medium hover:bg-sunk">Publish listing</Link>
             {/* THE TWO THINGS THAT HAPPEN TO AN OBJECT RATHER THAN TO ITS
                 RECORD. They are reachable from the sale's own registers as
                 well; they are here because the lot is where a registrar is

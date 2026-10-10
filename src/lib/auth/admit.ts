@@ -11,8 +11,9 @@
 // ── MEMBERSHIP IS THE ANSWER, AND THE TABLE ALREADY EXISTED ────────────────
 //
 // `memberships(org_id, user_id, role)` has been in the schema since the first
-// migration, carrying an `owner | admin | member` role that nothing has ever
-// read. It is the right answer rather than a convenient one: an allowlist in
+// migration, carrying an `owner | admin | member` role. Pilot settings and
+// publication approval now enforce those roles; owners manage team access.
+// It is the right answer rather than a convenient one: an allowlist in
 // an environment variable would be a second place identity lives, could not
 // express a role, and could not say WHICH house somebody belongs to — which
 // is the question that matters the moment there are two.

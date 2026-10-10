@@ -72,11 +72,19 @@ function unauthorised(): NextResponse {
 /** The paths a signed-out browser must be able to reach, or it can never
  *  sign in: the page itself, and the two halves of the Google round trip. */
 function isPublic(pathname: string): boolean {
-  return pathname === "/sign-in" || pathname.startsWith("/api/auth/");
+  return pathname === "/sign-in" || pathname.startsWith("/api/auth/") ||
+    isPublicationPath(pathname);
+}
+
+function isPublicationPath(pathname: string): boolean {
+  return pathname.startsWith("/v1/publications/") || pathname.startsWith("/embed/") || pathname.startsWith("/p/");
 }
 
 export function proxy(request: NextRequest): NextResponse {
   const { pathname } = request.nextUrl;
+  // These routes resolve approved snapshots themselves. The shared staging gate
+  // must also allow public integrations; private asset and app routes remain gated.
+  if (isPublicationPath(pathname)) return NextResponse.next();
 
   if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
     if (isPublic(pathname)) return NextResponse.next();

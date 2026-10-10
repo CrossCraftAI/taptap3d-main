@@ -236,7 +236,7 @@ export async function listAssetsForLot(
     })
     .from(lotAssets)
     .innerJoin(assets, eq(assets.id, lotAssets.assetId))
-    .where(and(eq(lotAssets.orgId, orgId), eq(lotAssets.lotId, lotId)))
+    .where(and(eq(lotAssets.orgId, orgId), eq(assets.orgId, orgId), eq(lotAssets.lotId, lotId)))
     .orderBy(desc(lotAssets.isPrimary), lotAssets.position, assets.contentHash);
 
   return rows.map((r) => ({ ...r, useCount: 1 }));

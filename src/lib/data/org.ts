@@ -6,6 +6,7 @@ import { getDb, memberships, orgs } from "@/db";
 import { authConfigured, currentSession } from "@/lib/auth/session";
 import { recordTypesFrom, type RecordTypes } from "@/lib/record-types";
 import { policyFor, type FieldPolicy } from "@/lib/engine/visibility";
+import { requireAdministrator } from "./access";
 
 export class NoOrgError extends Error {
   constructor(message: string) {
@@ -148,6 +149,7 @@ export async function setRecordTypes(
   orgId: string,
   types: Record<string, unknown>,
 ): Promise<RecordTypes> {
+  await requireAdministrator(orgId);
   const clean = recordTypesFrom(types);
   const db = getDb();
   await db
@@ -194,6 +196,7 @@ export async function setFieldPolicy(
   orgId: string,
   policy: Record<string, unknown>,
 ): Promise<FieldPolicy> {
+  await requireAdministrator(orgId);
   const clean = policyFor(policy);
   const db = getDb();
   await db

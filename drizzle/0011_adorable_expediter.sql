@@ -1,0 +1,2 @@
+ALTER TABLE "publications" ADD COLUMN "withdrawn_by" uuid;--> statement-breakpoint
+ALTER TABLE "publications" ADD CONSTRAINT "publications_withdrawn_by_users_id_fk" FOREIGN KEY ("withdrawn_by") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;
