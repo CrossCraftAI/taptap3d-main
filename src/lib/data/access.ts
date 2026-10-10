@@ -5,6 +5,7 @@ import { authConfigured, currentSession } from "@/lib/auth/session";
 export type Role = "owner" | "admin" | "member";
 
 export async function organisationRole(orgId: string): Promise<Role | null> {
+  if (process.env.TAPTAP3D_REQUIRE_AUTH === "true" && !authConfigured()) return null;
   // The existing single-house developer/shared-gate mode has no human roles.
   if (!authConfigured()) return "owner";
   const session = await currentSession();

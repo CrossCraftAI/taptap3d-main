@@ -26,6 +26,7 @@ primary_region = "sin"
 [env]
   PORT = "3000"
   NODE_ENV = "production"
+  TAPTAP3D_REQUIRE_AUTH = "true"
   # The photographs live on the volume, never in the image. Content-addressed
   # under objects/, so a redeploy cannot disturb them and two orgs holding the
   # same plate hold one blob.

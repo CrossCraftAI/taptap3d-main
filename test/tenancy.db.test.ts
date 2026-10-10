@@ -2,9 +2,9 @@ import { randomUUID } from "node:crypto";
 import { eq, inArray } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-const identity = vi.hoisted(() => ({ userId: "", selected: undefined as string | undefined, signedIn: true }));
+const identity = vi.hoisted(() => ({ userId: "", selected: undefined as string | undefined, signedIn: true, configured: true }));
 vi.mock("@/lib/auth/session", () => ({
-  authConfigured: () => true,
+  authConfigured: () => identity.configured,
   currentSession: async () => identity.signedIn ? { userId: identity.userId, email: "member@example.com", name: null } : null,
 }));
 vi.mock("next/headers", () => ({ cookies: async () => ({ get: () => identity.selected ? { value: identity.selected } : undefined }) }));
@@ -28,7 +28,7 @@ beforeAll(async () => {
   identity.userId = person!.id;
   await db.insert(memberships).values([{ orgId: houseA, userId: identity.userId }, { orgId: houseB, userId: identity.userId }]);
 });
-beforeEach(() => { identity.selected = undefined; identity.signedIn = true; vi.stubEnv("TAPTAP3D_ORG_SLUG", ""); });
+beforeEach(() => { identity.selected = undefined; identity.signedIn = true; identity.configured = true; vi.stubEnv("TAPTAP3D_ORG_SLUG", ""); vi.stubEnv("TAPTAP3D_REQUIRE_AUTH", "false"); });
 afterAll(async () => {
   vi.unstubAllEnvs();
   await db.delete(orgs).where(inArray(orgs.id, [houseA, houseB, outsider]));
@@ -36,6 +36,12 @@ afterAll(async () => {
   await getPool().end();
 });
 describe("authenticated tenant resolution against Postgres", () => {
+  it("a customer deployment cannot fall back to developer tenancy when authentication is missing", async () => {
+    identity.configured = false;
+    vi.stubEnv("TAPTAP3D_REQUIRE_AUTH", "true");
+    vi.stubEnv("TAPTAP3D_ORG_SLUG", `tenant-a-${suffix}`);
+    await expect(currentOrgId()).rejects.toThrow(/Authentication configuration is required/);
+  });
   it("offers memberships only, never all houses", async () => {
     expect((await availableHouses()).map((house) => house.id)).toEqual([houseA, houseB]);
     await expect(currentOrgId()).rejects.toThrow(/Choose/);

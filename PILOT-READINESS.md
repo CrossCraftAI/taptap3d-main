@@ -4,6 +4,7 @@ Prepared 10 October 2026. Implemented in `feat/pilot-publication`; not deployed 
 
 ## Implemented
 
+- Customer manifests require Google authentication and fail the readiness probe if it is missing. The public health endpoint does not expose raw database errors.
 - Settings changes require a current owner or administrator membership. Members continue editing records and catalogues.
 - Owners manage colleagues at `/settings/team`: grant access by Google account email, change roles and revoke access. The last owner cannot be removed or demoted. Granting access does not send email automatically.
 - An operator can create an organisation and its first owner atomically with `npm run org:onboard -- --name "Pilot house" --slug pilot-house --owner owner@example.com`. A duplicate slug fails without changing the existing organisation. Use the intended environment's `DATABASE_URL`.
@@ -47,6 +48,6 @@ Public integration traffic limits and monitoring thresholds must be set against 
 
 ## Validation
 
-Local validation on 10 October 2026: 1,314 unit/database tests passed; typecheck, lint and production build passed. Chromium and WebKit checks passed for publication approval/withdrawal, iframe lifecycle messages, narrow-screen rendering, team grants/role changes/removal, existing settings, visibility and record types. The GCP manifest renderer was exercised with synthetic configuration. Developer documentation checks cover 19 pages and both runnable example tests pass.
+Local validation on 10 October 2026: 1,317 unit/database tests passed; typecheck, lint and production build passed. Chromium and WebKit checks passed for publication approval/withdrawal, iframe lifecycle messages, narrow-screen rendering, team grants/role changes/removal, existing settings, visibility and record types. The GCP manifest renderer was exercised with synthetic configuration. Developer documentation checks cover 19 pages and both runnable example tests pass.
 
 The automated suites cover approval permissions, explicit projection, tenant ownership, revision pins, exact CORS/CSP origins, image withdrawal, fresh identifiers after withdrawal, last-owner protection and browser approval/withdrawal. Production account configuration, backup restoration and customer-specific import quality require the environment and sample inputs listed above. The existing PDF browser-path tracing warning remains in the build; it is not a failed compilation.

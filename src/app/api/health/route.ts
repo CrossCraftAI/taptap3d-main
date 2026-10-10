@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 
 import { getDb } from "@/db";
+import { authConfigured } from "@/lib/auth/session";
 
 // Deliberately outside the access gate (see src/middleware.ts) so the platform
 // can tell whether the application is alive without holding a credential.
@@ -12,16 +13,18 @@ import { getDb } from "@/db";
 export const dynamic = "force-dynamic";
 
 export async function GET(): Promise<Response> {
+  if (process.env.TAPTAP3D_REQUIRE_AUTH === "true" && !authConfigured())
+    return Response.json({ status: "degraded", authentication: "unconfigured" }, { status: 503, headers: { "Cache-Control": "no-store" } });
   const startedAt = Date.now();
   try {
     await getDb().execute(sql`select 1`);
-  } catch (error) {
+  } catch {
     return Response.json(
       {
         status: "degraded",
         database: "unreachable",
-        // The message, not the stack: this endpoint is unauthenticated.
-        detail: error instanceof Error ? error.message : "unknown",
+        // Database errors can disclose hosts, users or connection details.
+        detail: "Database check failed.",
       },
       { status: 503 },
     );

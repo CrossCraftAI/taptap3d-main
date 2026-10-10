@@ -69,6 +69,7 @@ export default defineConfig({
       GATE_PASSWORD: "",
       TAPTAP3D_ASSET_ROOT: ".data/assets",
       TAPTAP3D_PUBLIC_ORIGIN: `http://127.0.0.1:${PORT}`,
+      TAPTAP3D_REQUIRE_AUTH: "false",
       // The export needs a browser. The image ships one; here we lend it the
       // browser Playwright already installed, so the PDF path is exercised
       // locally instead of only in production.

@@ -27,7 +27,7 @@ function ask(path: string, cookie?: string): NextRequest {
 }
 
 /** Saved and restored, because these are process-wide and the suite is not. */
-const KEYS = ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GATE_PASSWORD", "GATE_USER"];
+const KEYS = ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GATE_PASSWORD", "GATE_USER", "TAPTAP3D_REQUIRE_AUTH"];
 let saved: Record<string, string | undefined> = {};
 
 beforeEach(() => {

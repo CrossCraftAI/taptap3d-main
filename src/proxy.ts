@@ -85,6 +85,8 @@ export function proxy(request: NextRequest): NextResponse {
   // These routes resolve approved snapshots themselves. The shared staging gate
   // must also allow public integrations; private asset and app routes remain gated.
   if (isPublicationPath(pathname)) return NextResponse.next();
+  if (process.env.TAPTAP3D_REQUIRE_AUTH === "true" && !(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET))
+    return new NextResponse("Sign-in is temporarily unavailable.", { status: 503, headers: { "Cache-Control": "no-store" } });
 
   if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
     if (isPublic(pathname)) return NextResponse.next();
